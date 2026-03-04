@@ -14,101 +14,20 @@ function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// status emoji mapping
-const STATUS_EMOJIS = {
-  stun: '🌀',
-  freeze: '❄️',
-  cut: '🔪',
-  bleed: '🩸'
-};
-
-// apply a status effect to an entity (card or marine)
-function addStatus(entity, type, duration) {
-  if (!entity.status) entity.status = [];
-  entity.status.push({ type, remaining: duration });
-}
-
-// at the beginning of a user turn, apply cut effects and decrement durations
-function applyStartOfTurnEffects(state) {
-  state.cards.forEach(c => {
-    if (!c.status) return;
-    c.status = c.status.filter(st => {
-      if (st.type === 'cut') {
-        c.currentHP = Math.max(0, c.currentHP - 1);
-        appendLog(state, `${c.def.character} suffers cut for -1 HP!`);
-      }
-      st.remaining -= 1;
-      return st.remaining > 0;
-    });
-  });
-}
-
-// when a card with an effect hits a target, apply it
-function applyCardEffect(attacker, target, state) {
-  const def = attacker.def;
-  if (!def.effect) return;
-  const dur = def.effectDuration || 1;
-  switch (def.effect) {
-    case 'stun':
-      addStatus(target, 'stun', dur);
-      appendLog(state, `${target.rank || target.def?.character || 'Enemy'} is stunned!`);
-      break;
-    case 'freeze':
-      addStatus(target, 'freeze', dur);
-      appendLog(state, `${target.rank || target.def?.character || 'Enemy'} is frozen!`);
-      break;
-    case 'cut':
-      addStatus(target, 'cut', dur);
-      appendLog(state, `${target.rank || target.def?.character || 'Enemy'} is cut!`);
-      break;
-    case 'bleed':
-      addStatus(target, 'bleed', dur);
-      appendLog(state, `${target.rank || target.def?.character || 'Enemy'} is bleeding!`);
-      break;
-    case 'team_stun':
-      // target is expected to be array of enemies
-      if (Array.isArray(target)) {
-        target.forEach(t => {
-          addStatus(t, 'stun', dur);
-        });
-        appendLog(state, `All enemies are stunned!`);
-      }
-      break;
-  }
-}
+const statusManager = require('../src/battle/statusManager');
+const STATUS_EMOJIS = statusManager.STATUS_EMOJIS;
+const {
+  addStatus,
+  hasStatusLock,
+  getStatusLockReason,
+  applyStartOfTurnEffects: applyStatusesForTurn,
+  applyCardEffect: applyCardEffectShared,
+  calculateUserDamage: calculateUserDamageShared,
+  applyBleedOnEnergyUse
+} = statusManager;
 
 
-// compute damage for a card action (attack or special)
-function calculateUserDamage(card, type, user) {
-  // Use the resolved `scaled` stats prepared at battle start; do not
-  // re-query card definitions or ownedCards inside the main loop.
-  const scaled = card.scaled || {};
-
-  if (type === 'special') {
-    if (card.def.special_attack && scaled.special_attack) {
-      const min = scaled.special_attack.min;
-      const max = scaled.special_attack.max;
-      // ensure min<=max
-      const low = Math.min(min, max);
-      const high = Math.max(min, max);
-      const dmg = randomInt(low, high);
-      return dmg < low ? low : dmg;
-    }
-    if (scaled.attack_min != null && scaled.attack_max != null) {
-      const low = Math.min(scaled.attack_min, scaled.attack_max);
-      const high = Math.max(scaled.attack_min, scaled.attack_max);
-      return randomInt(low, high);
-    }
-    return 0;
-  }
-  if (scaled.attack_min != null && scaled.attack_max != null) {
-    const low = Math.min(scaled.attack_min, scaled.attack_max);
-    const high = Math.max(scaled.attack_min, scaled.attack_max);
-    return randomInt(low, high);
-  }
-  return 0;
-}
-
+const calculateUserDamage = calculateUserDamageShared;
 
 // map for card-type emojis (same as team command)
 const TYPE_EMOJIS = {
@@ -128,6 +47,46 @@ function hpBar(current, max) {
   const filled = Math.round((current / max) * segments);
   const empty = segments - filled;
   return '▬'.repeat(filled) + '▭'.repeat(empty);
+}
+
+// apply cut status to both teams (global turn transition)
+function applyGlobalCut(state) {
+  const logs = [];
+  logs.push(...applyStatusesForTurn(state.cards));
+  logs.push(...applyStatusesForTurn(state.marines));
+  logs.forEach(l => appendLog(state, l));
+}
+
+// send a fresh message and remove the old one to reset Discord interaction timer
+async function refreshBattleMessage(oldMsg, state, user) {
+  try {
+    await oldMsg.delete();
+  } catch {}
+  const embed = buildEmbed(state, user);
+  const components = [makeSelectionRow(state)];
+  if (state.awaitingTarget) {
+    const targetRow = makeTargetRow(state);
+    if (targetRow) components.push(targetRow);
+  } else {
+    const actionRow = makeActionRow(state);
+    if (actionRow) components.push(actionRow);
+  }
+  if (state.finished) {
+    components.forEach(r => r.components.forEach(b => b.setDisabled(true)));
+    if (state.victory) {
+      const nextIsailRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('isail_next')
+          .setLabel('Next Isail')
+          .setStyle(ButtonStyle.Success)
+      );
+      components.push(nextIsailRow);
+    }
+  }
+  const newMsg = await oldMsg.channel.send({ embeds: [embed], components });
+  battleStates.delete(oldMsg.id);
+  battleStates.set(newMsg.id, state);
+  return newMsg;
 }
 
 function energyDisplay(energy) {
@@ -213,29 +172,30 @@ function buildEmbed(state, user) {
     embed.setImage(state.embedImage);
   }
 
-  // enemy marines
-  const marineLines = state.marines.map((m, i) =>
-    `${i + 1}. ${m.rank} ${hpBar(m.currentHP, m.maxHP)} (${m.currentHP}/${m.maxHP})`
-  );
-  embed.addFields({ name: 'Enemy Marines', value: marineLines.join('\n') });
+  // enemy marines (show status emojis and HP numbers) - filter out KO
+  const aliveMarines = state.marines.filter(m => m.currentHP > 0);
+  const marineLines = aliveMarines.map((m, i) => {
+    const statusEmojis = (m.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
+    return `${i + 1}. ${m.rank} ${statusEmojis}\n${hpBar(m.currentHP, m.maxHP)} ${m.currentHP}/${m.maxHP}`;
+  });
+  const marineHeaderEmojis = Array.from(new Set(state.marines.flatMap(m => (m.status || []).map(st => STATUS_EMOJIS[st.type] || '')))).join('');
+  const marineFieldValue = marineLines.length > 0 ? marineLines.join('\n') : 'All marines defeated!';
+  embed.addFields({ name: `Enemy Marines ${marineHeaderEmojis}`, value: marineFieldValue });
 
-  // cards field
-  const lines = state.cards.map((c, i) => {
-    // show status emoji in place of rank/type if present
-    let prefix = '';
-    if (c.status && c.status.length) {
-      const emoji = STATUS_EMOJIS[c.status[0].type] || '';
-      prefix = `${emoji} `;
-    } else {
-      const rankText = c.def.rank ? `(${c.def.rank}) ` : '';
-      prefix = rankText + (TYPE_EMOJIS[c.def.type] || '');
-    }
-    let line = `${i + 1}. ${prefix}${c.def.character} ${hpBar(c.currentHP, c.maxHP)} (${c.currentHP}/${c.maxHP}) ${energyDisplay(c.energy)}`;
-    if (!c.alive) line += ' — **KO**';
-    if (state.selected === i) line = `**> ${line}**`;
+  // cards field - filter out KO, use stacked layout (name/energy on line 1, hp bar on line 2)
+  const aliveCards = state.cards.filter(c => c.currentHP > 0);
+  const lines = aliveCards.map((c, i) => {
+    // show all stacked status emojis for the card, otherwise show type emoji
+    const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
+    const prefix = statusEmojis || (TYPE_EMOJIS[c.def.type] || '');
+    // Stacked format: Name/Energy on top, HP bar below
+    let line = `${i + 1}. ${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
+    if (state.selected !== null && state.cards.indexOf(c) === state.selected) line = `**> ${line}**`;
     return line;
   });
-  embed.addFields({ name: 'Your Crew', value: lines.join('\n') });
+  const crewHeaderEmojis = Array.from(new Set(state.cards.flatMap(c => (c.status || []).map(st => STATUS_EMOJIS[st.type] || '')))).join('');
+  const crewFieldValue = lines.length > 0 ? lines.join('\n') : 'Entire crew defeated!';
+  embed.addFields({ name: `Your Crew ${crewHeaderEmojis}`, value: crewFieldValue });
 
   // action columns
   if (state.lastUserAction || state.lastMarineAction) {
@@ -256,7 +216,8 @@ function buildEmbed(state, user) {
 function makeSelectionRow(state) {
   const row = new ActionRowBuilder();
   state.cards.forEach((c, i) => {
-    const disabled = !c.alive || state.turn !== 'user' || c.energy === 0 || !!state.awaitingTarget;
+    const locked = c.status && c.status.some(st => st.type === 'stun' || st.type === 'freeze');
+    const disabled = !c.alive || state.turn !== 'user' || c.energy === 0 || !!state.awaitingTarget || locked;
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`isail_select:${i}`)
@@ -361,7 +322,8 @@ function makeTargetRow(state) {
 
 function rechargeEnergy(state) {
   state.cards.forEach(c => {
-    if (!c.usedLastTurn && c.alive && c.energy < 3) {
+    const locked = c.status && c.status.some(st => st.type === 'stun' || st.type === 'freeze');
+    if (!c.usedLastTurn && c.alive && c.energy < 3 && !locked) {
       c.energy++;
     }
     // reset used flag for next round
@@ -391,6 +353,9 @@ function marineAttack(state) {
       target.energy = 0;
     }
     logs.push(`${marine.rank} attacked ${target.def.character} for ${dmg} damage!`);
+    // if the marine is bleeding, it takes bleed damage when it attacks (1 energy spent)
+    const bleedLogsM = applyBleedOnEnergyUse(marine, 1);
+    logs.push(...bleedLogsM);
   });
   state.lastMarineAction = logs.join('\n');
   state.turn = 'user';
@@ -404,6 +369,7 @@ function maybeSkipUserTurn(state) {
     rechargeEnergy(state);
     appendLog(state, 'No energy left; crew is recharging.');
     state.turn = 'marine';
+    applyGlobalCut(state); // apply cut before marine acts
     return true;
   }
   return false;
@@ -425,6 +391,7 @@ async function finalizeUserAction(state, msg, interaction) {
   // recharge and give turn to marine
   rechargeEnergy(state);
   state.turn = 'marine';
+  applyGlobalCut(state); // cut effects trigger on every turn change
   state.selected = null;
 
   // marine takes a swing
@@ -439,11 +406,9 @@ async function finalizeUserAction(state, msg, interaction) {
 
   // back to the user – update now will show both user action and marine action
   const user = await User.findOne({ userId: state.userId });
-  // apply cut effects at start of owner's turn
-  applyStartOfTurnEffects(state);
-  await updateBattleMessage(msg, state, user);
-
-  // clear embed image afterwards so the next turn is blank
+  // apply cut effects for both sides after marine action
+  applyGlobalCut(state);
+  await refreshBattleMessage(msg, state, user);
   state.embedImage = null;
 
   // if energy still zero this will auto-skip again
@@ -530,7 +495,7 @@ async function handleVictory(state, msg, user) {
   state.log = prefix + (state.log ? '\n' + state.log : '');
   state.finished = true;
   state.victory = true;
-  await updateBattleMessage(msg, state, user);
+  await refreshBattleMessage(msg, state, user);
 }
 
 async function handleDefeat(state, msg, user) {
@@ -539,7 +504,7 @@ async function handleDefeat(state, msg, user) {
   await user.save();
   appendLog(state, 'Defeat. Better luck next time.');
   state.finished = true;
-  await updateBattleMessage(msg, state, user);
+  await refreshBattleMessage(msg, state, user);
 }
 
 function clearBattleTimeout(state) {
@@ -666,6 +631,8 @@ module.exports = {
     const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
     const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
     state.turn = userSpeed >= marineSpeed ? 'user' : 'marine';
+    // apply cut effects before first action
+    applyGlobalCut(state);
 
     // send initial message
     const embed = buildEmbed(state, user);
@@ -727,19 +694,38 @@ module.exports = {
       const action = state.awaitingTarget;
       state.awaitingTarget = null;
       const card = state.cards[state.selected];
+
+      // Check if card is locked by status effect
+      if (hasStatusLock(card)) {
+        const reason = getStatusLockReason(card);
+        appendLog(state, `${card.def.character} is ${reason} and cannot act!`);
+        state.selected = null;
+        const finished = await finalizeUserAction(state, interaction.message, interaction);
+        if (finished) battleStates.delete(msgId);
+        return interaction.deferUpdate();
+      }
+
       if (action === 'attack') {
+        // hard stun/freeze block
+        if (hasStatusLock(card)) {
+          return interaction.reply({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
+        }
         if (card.energy < 1) {
           return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 1;
         card.usedLastTurn = true;
+        // Apply bleed damage if card has bleed status (1 energy spent)
+        const bleedLogsA = applyBleedOnEnergyUse(card, 1);
+        bleedLogsA.forEach(l => appendLog(state, l));
         const user = await User.findOne({ userId: state.userId });
         const dmg = calculateUserDamage(card, 'attack', user);
         const m = state.marines[targetIdx];
         m.currentHP -= dmg;
         if (m.currentHP <= 0) m.currentHP = 0;
         // apply potential status effect from special attack (if any)
-        applyCardEffect(card, m, state);
+        const effectLogs1 = applyCardEffectShared(card, m);
+        effectLogs1.forEach(l => appendLog(state, l));
         state.lastUserAction = `${card.def.character} used Attack on ${m.rank} for ${dmg} damage! <:energy:1478051414558118052> -1`;
       } else if (action === 'special') {
         if (card.energy < 3) {
@@ -747,6 +733,9 @@ module.exports = {
         }
         card.energy -= 3;
         card.usedLastTurn = true;
+        // Apply bleed damage if card has bleed status (3 energy spent)
+        const bleedLogsB = applyBleedOnEnergyUse(card, 3);
+        bleedLogsB.forEach(l => appendLog(state, l));
         const user = await User.findOne({ userId: state.userId });
         // determine the actual range used
         // use the pre-resolved special attack range from the card state
@@ -758,18 +747,23 @@ module.exports = {
         if (m.currentHP <= 0) m.currentHP = 0;
         // effect applies regardless of whether this was special or normal, but
         // most cards only have effects on special
-        applyCardEffect(card, m, state);
+        const effectLogs2 = applyCardEffectShared(card, m);
+        effectLogs2.forEach(l => appendLog(state, l));
         state.embedImage = card.def.special_attack ? card.def.special_attack.gif : null;
         state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${dmg} damage (range ${rangeMin}-${rangeMax})! <:energy:1478051414558118052> -3`;
       } else if (action === 'ability') {
         card.energy -= 1;
         card.usedLastTurn = true;
+        // Apply bleed damage if card has bleed status (1 energy spent)
+        const bleedLogsC = applyBleedOnEnergyUse(card, 1);
+        bleedLogsC.forEach(l => appendLog(state, l));
         const user = await User.findOne({ userId: state.userId });
         const dmg = calculateUserDamage(card, 'ability', user);
         const m = state.marines[targetIdx];
         m.currentHP -= dmg;
         if (m.currentHP <= 0) m.currentHP = 0;
-        applyCardEffect(card, m, state);
+        const effectLogs3 = applyCardEffectShared(card, m);
+        effectLogs3.forEach(l => appendLog(state, l));
         state.lastUserAction = `${card.def.character} used Special Ability on ${m.rank} for ${dmg} damage! <:energy:1478051414558118052> -1`;
       }
       state.selected = null;
@@ -831,6 +825,10 @@ module.exports = {
 
       // process user action (with optional target selection)
       if (act === 'attack' || act === 'special' || act === 'ability') {
+        // block if the selected card is stunned/frozen
+        if (hasStatusLock(card)) {
+          return interaction.reply({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
+        }
         const aliveEnemies = state.marines.filter(m => m.currentHP > 0);
         if (aliveEnemies.length > 1 && !state.awaitingTarget) {
           state.awaitingTarget = act;

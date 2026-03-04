@@ -226,13 +226,35 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     { name: 'Stats', value: statsValue, inline: false }
   );
 
+  // Helper function to describe status effects
+  const getEffectDescription = (effectType, duration) => {
+    const effectDescriptions = {
+      'stun': `Stuns the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'freeze': `Freezes the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'cut': `Cuts the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'bleed': `Bleeds the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'team_stun': `Stuns all opponents for ${duration} turn${duration > 1 ? 's' : ''}`
+    };
+    return effectDescriptions[effectType] || null;
+  };
+
   // if the card has a special attack defined, show it as its own field with
   // the scaled values (level/boost already applied above)
   if (cardDef.special_attack && scaled.special_attack) {
     const sa = cardDef.special_attack;
+    let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)`;
+    
+    // If the special attack applies a status effect, include it
+    if (cardDef.effect && cardDef.effectDuration) {
+      const effectDesc = getEffectDescription(cardDef.effect, cardDef.effectDuration);
+      if (effectDesc) {
+        specialAttackValue += ` - *${effectDesc}*`;
+      }
+    }
+    
     embed.addFields({
       name: 'Special Attack',
-      value: `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)`,
+      value: specialAttackValue,
       inline: false
     });
   }
@@ -242,11 +264,6 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   if (isOwned && boostEntries && boostEntries.length) {
     const lines = boostEntries.map(b => `${b.source} - ${b.pct}%`);
     embed.addFields({ name: 'Stat Boosts', value: lines.join('\n'), inline: false });
-  }
-
-  // if the card definition includes an effect description, show it explicitly
-  if (cardDef.effect) {
-    embed.addFields({ name: 'Effect', value: cardDef.effect, inline: false });
   }
 
   return embed;

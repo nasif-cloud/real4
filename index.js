@@ -11,6 +11,7 @@ const resetCmd = require('./commands/reset');
 const teamCmd = require('./commands/team');
 const inventoryCmd = require('./commands/inventory');
 const autoTeamCmd = require('./commands/autoteam');
+const duelCmd = require('./commands/duel');
 const User = require('./models/User');
 
 async function main() {
@@ -51,6 +52,7 @@ async function main() {
         if (commandName === 'autoteam') return autoTeamCmd.execute({ interaction });
         if (commandName === 'team') return teamCmd.execute({ interaction });
         if (commandName === 'inventory') return inventoryCmd.execute({ interaction });
+        if (commandName === 'duel') return duelCmd.execute({ interaction });
         if (commandName === 'info') return require('./commands/info').execute({ interaction });
         if (commandName === 'upgrade') return require('./commands/upgrade').execute({ interaction });
         if (commandName === 'balance') return require('./commands/balance').execute({ interaction });
@@ -110,6 +112,11 @@ async function main() {
         if (action && action.startsWith('isail')) {
           return require('./commands/isail').handleButton(interaction, action, cardId);
         }
+
+        // handle duel interactions
+        if (action && action.startsWith('duel')) {
+          return duelCmd.handleButton(interaction, action, cardId);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -157,6 +164,7 @@ async function main() {
       if (cmd === 'team') return await teamCmd.execute({ message, args });
       if (cmd === 'autoteam') return await require('./commands/autoteam').execute({ message });
       if (cmd === 'inventory') return await inventoryCmd.execute({ message });
+      if (cmd === 'duel') return await duelCmd.execute({ message, args });
       if (cmd === 'info') return await require('./commands/info').execute({ message, args });
       if (cmd === 'upgrade') return await require('./commands/upgrade').execute({ message, args });
       if (cmd === 'isail') return await require('./commands/isail').execute({ message });

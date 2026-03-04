@@ -249,6 +249,8 @@ exports.cards = [
       max_atk: 17,
       gif: 'https://files.catbox.moe/79q64r.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/vmqtns.jpg'
   },
   {
@@ -339,6 +341,8 @@ exports.cards = [
       max_atk: 9,
       gif: 'https://files.catbox.moe/vemw4q.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/li3t60.jpg'
   },
   {
@@ -363,6 +367,8 @@ exports.cards = [
       max_atk: 13,
       gif: 'https://files.catbox.moe/3b5i8c.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/c00kza.jpg'
   },
   {
@@ -429,6 +435,8 @@ exports.cards = [
       max_atk: 21,
       gif: 'https://files.catbox.moe/zkymnw.gif'
     },
+    effect: 'cut',
+    effectDuration: 3,
     image_url: 'https://files.catbox.moe/5yyjh6.jpg'
   },
   {
@@ -471,6 +479,8 @@ exports.cards = [
       max_atk: 17,
       gif: 'https://files.catbox.moe/7eg2wl.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/pjqm7b.jpg'
   },
   {
@@ -537,6 +547,8 @@ exports.cards = [
       max_atk: 13,
       gif: 'https://files.catbox.moe/recrph.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/izrg20.jpg'
   },
   {
@@ -579,6 +591,8 @@ exports.cards = [
       max_atk: 15,
       gif: 'https://files.catbox.moe/atuxzj.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/jvweyp.jpg'
   },
   {
@@ -603,6 +617,8 @@ exports.cards = [
       max_atk: 19,
       gif: 'https://files.catbox.moe/nst9sc.gif'
     },
+    effect: 'team_stun',
+    effectDuration: 1,
     image_url: 'https://files.catbox.moe/k5l9ss.jpg'
   },
   {
@@ -645,6 +661,8 @@ exports.cards = [
       max_atk: 15,
       gif: 'https://files.catbox.moe/oikxve.gif'
     },
+    effect: 'freeze',
+    effectDuration: 2,
     image_url: 'https://files.catbox.moe/oofv7k.jpg'
   },
   {
@@ -669,6 +687,8 @@ exports.cards = [
       max_atk: 21,
       gif: 'https://files.catbox.moe/q575pp.gif'
     },
+    effect: 'freeze',
+    effectDuration: 2,
     image_url: 'https://files.catbox.moe/un0m1n.jpg'
   },
   {
