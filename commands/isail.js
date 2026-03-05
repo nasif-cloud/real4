@@ -176,11 +176,10 @@ function buildEmbed(state, user) {
   const aliveMarines = state.marines.filter(m => m.currentHP > 0);
   const marineLines = aliveMarines.map((m, i) => {
     const statusEmojis = (m.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
-    return `${i + 1}. ${m.rank} ${statusEmojis}\n${hpBar(m.currentHP, m.maxHP)} ${m.currentHP}/${m.maxHP}`;
+    return `${statusEmojis} ${m.rank}\n${hpBar(m.currentHP, m.maxHP)} ${m.currentHP}/${m.maxHP}`;
   });
-  const marineHeaderEmojis = Array.from(new Set(state.marines.flatMap(m => (m.status || []).map(st => STATUS_EMOJIS[st.type] || '')))).join('');
   const marineFieldValue = marineLines.length > 0 ? marineLines.join('\n') : 'All marines defeated!';
-  embed.addFields({ name: `Enemy Marines ${marineHeaderEmojis}`, value: marineFieldValue });
+  embed.addFields({ name: `Enemy Marines`, value: marineFieldValue });
 
   // cards field - filter out KO, use stacked layout (name/energy on line 1, hp bar on line 2)
   const aliveCards = state.cards.filter(c => c.currentHP > 0);
@@ -189,13 +188,12 @@ function buildEmbed(state, user) {
     const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
     const prefix = statusEmojis || (TYPE_EMOJIS[c.def.type] || '');
     // Stacked format: Name/Energy on top, HP bar below
-    let line = `${i + 1}. ${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
+    let line = `${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
     if (state.selected !== null && state.cards.indexOf(c) === state.selected) line = `**> ${line}**`;
     return line;
   });
-  const crewHeaderEmojis = Array.from(new Set(state.cards.flatMap(c => (c.status || []).map(st => STATUS_EMOJIS[st.type] || '')))).join('');
   const crewFieldValue = lines.length > 0 ? lines.join('\n') : 'Entire crew defeated!';
-  embed.addFields({ name: `Your Crew ${crewHeaderEmojis}`, value: crewFieldValue });
+  embed.addFields({ name: `Your Crew`, value: crewFieldValue });
 
   // action columns
   if (state.lastUserAction || state.lastMarineAction) {
@@ -226,6 +224,14 @@ function makeSelectionRow(state) {
         .setDisabled(disabled)
     );
   });
+  // Add forfeit button to character row
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId('isail_action:forfeit')
+      .setLabel('Forfeit')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(state.finished)
+  );
   return row;
 }
 
@@ -258,12 +264,12 @@ function makeActionRow(state) {
         .setStyle(ButtonStyle.Secondary)
     );
   }
-  // Forfeit
+  // Rest button - reset energy to 3
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId('isail_action:forfeit')
-      .setLabel('Forfeit')
-      .setStyle(ButtonStyle.Danger)
+      .setCustomId('isail_action:rest')
+      .setLabel('Rest')
+      .setStyle(ButtonStyle.Success)
   );
   return row;
 }
@@ -323,11 +329,11 @@ function makeTargetRow(state) {
 function rechargeEnergy(state) {
   state.cards.forEach(c => {
     const locked = c.status && c.status.some(st => st.type === 'stun' || st.type === 'freeze');
-    if (!c.usedLastTurn && c.alive && c.energy < 3 && !locked) {
+    if (c.turnsUntilRecharge > 0) {
+      c.turnsUntilRecharge--;
+    } else if (c.alive && c.energy < 3 && !locked) {
       c.energy++;
     }
-    // reset used flag for next round
-    c.usedLastTurn = false;
   });
 }
 
@@ -336,6 +342,12 @@ function marineAttack(state) {
   const logs = [];
   state.marines.forEach(marine => {
     if (marine.currentHP <= 0) return;
+    // Check if marine is stunned or frozen - skip turn if so
+    if (hasStatusLock(marine)) {
+      const reason = getStatusLockReason(marine);
+      logs.push(`${marine.rank} is ${reason} and cannot attack!`);
+      return;
+    }
     // choose target card (tank priority)
     let target = null;
     const tanks = state.cards.filter(c => c.alive && c.def.type === 'Tank');
@@ -388,10 +400,8 @@ async function finalizeUserAction(state, msg, interaction) {
     return true; // finished
   }
 
-  // recharge and give turn to marine
-  rechargeEnergy(state);
+  // switch to marine turn (NO recharge here - cards won't recharge twice)
   state.turn = 'marine';
-  applyGlobalCut(state); // cut effects trigger on every turn change
   state.selected = null;
 
   // marine takes a swing
@@ -408,7 +418,11 @@ async function finalizeUserAction(state, msg, interaction) {
   const user = await User.findOne({ userId: state.userId });
   // apply cut effects for both sides after marine action
   applyGlobalCut(state);
-  await refreshBattleMessage(msg, state, user);
+  // Recharge energy at the start of user turn for any cards that didn't act last turn
+  rechargeEnergy(state);
+  // Clear logs every other round to prevent spam
+  state.log = '';
+  msg = await refreshBattleMessage(msg, state, user);
   state.embedImage = null;
 
   // if energy still zero this will auto-skip again
@@ -428,7 +442,8 @@ async function runSkipCycle(state, msg, user) {
         return false; // battle ended
       }
       state.turn = 'user';
-      await updateBattleMessage(msg, state, user);
+      // refresh message after marine action
+      msg = await refreshBattleMessage(msg, state, user);
       // continue to check again
       continue;
     }
@@ -486,25 +501,50 @@ async function handleVictory(state, msg, user) {
   }
 
   await user.save();
-  // prepend victory message
-  let prefix = `Victory! You earned **${belis}** Beli.`;
-  prefix += `\nAll team members gained **${xpGain} XP**!`;
+  // Create a simple victory embed
+  let victoryText = `Victory! You earned **${belis}** Beli.`;
+  victoryText += `\nAll team members gained **${xpGain} XP**!`;
   if (levelUpLines.length) {
-    prefix += '\n' + levelUpLines.join('\n');
+    victoryText += '\n' + levelUpLines.join('\n');
   }
-  state.log = prefix + (state.log ? '\n' + state.log : '');
-  state.finished = true;
-  state.victory = true;
-  await refreshBattleMessage(msg, state, user);
+  
+  const victoryEmbed = new EmbedBuilder()
+    .setColor('#00AA00')
+    .setTitle('Victory!')
+    .setDescription(victoryText);
+  
+  const nextSailRow = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('isail_next')
+        .setLabel('Next Sail')
+        .setStyle(ButtonStyle.Primary)
+    );
+  
+  try { await msg.delete(); } catch {}
+  await msg.channel.send({ embeds: [victoryEmbed], components: [nextSailRow] });
 }
 
 async function handleDefeat(state, msg, user) {
   clearBattleTimeout(state);
   user.lastIsailFail = new Date();
   await user.save();
-  appendLog(state, 'Defeat. Better luck next time.');
-  state.finished = true;
-  await refreshBattleMessage(msg, state, user);
+  
+  const defeatEmbed = new EmbedBuilder()
+    .setColor('#AA0000')
+    .setTitle('Defeat')
+    .setDescription('Better luck next time.');
+  
+  const nextSailRow = new ActionRowBuilder()
+    .addComponents(
+      new ButtonBuilder()
+        .setCustomId('isail_next')
+        .setLabel('Next Sail')
+        .setStyle(ButtonStyle.Primary)
+    );
+  
+  try { await msg.delete(); } catch {}
+  await msg.channel.send({ embeds: [defeatEmbed], components: [nextSailRow] });
 }
 
 function clearBattleTimeout(state) {
@@ -516,13 +556,24 @@ function clearBattleTimeout(state) {
 
 function setupTimeout(state, msg, user) {
   clearBattleTimeout(state);
-  if (state.turn === 'user' && !state.finished) {
+  if (!state.finished) {
     state.timeout = setTimeout(async () => {
-      if (state.finished) return;
-      state.log = 'Battle timed out due to inactivity.';
-      state.finished = true;
-      await updateBattleMessage(msg, state, user);
-      battleStates.delete(msg.id);
+      try {
+        // Check if battle state still exists with this message ID
+        if (!battleStates.has(msg.id)) return;
+        if (state.finished) return;
+        state.log = 'Battle timed out due to inactivity.';
+        state.finished = true;
+        // Try to update, but handle case where message was deleted
+        try {
+          await msg.edit({ embeds: [buildEmbed(state, user)], components: [] });
+        } catch (e) {
+          // Message was deleted, that's okay
+        }
+        battleStates.delete(msg.id);
+      } catch (e) {
+        console.error('Timeout handler error:', e);
+      }
     }, 30000);
   }
 }
@@ -608,7 +659,7 @@ module.exports = {
         maxHP: (scaled && scaled.health) || def.health,
         energy: 3,
         alive: true,
-        usedLastTurn: false,
+        turnsUntilRecharge: 0,
         status: [] // status effects container
       };
     });
@@ -658,7 +709,10 @@ module.exports = {
         return;
       }
       state.turn = 'user';
-      await updateBattleMessage(msg, state, user);
+      // apply cut effects at turn transition
+      applyGlobalCut(state);
+      // refresh message after marine action
+      msg = await refreshBattleMessage(msg, state, user);
       // in case all cards have no energy, let skip cycle run automatically
       await runSkipCycle(state, msg, user);
     }
@@ -714,7 +768,7 @@ module.exports = {
           return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 1;
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // Apply bleed damage if card has bleed status (1 energy spent)
         const bleedLogsA = applyBleedOnEnergyUse(card, 1);
         bleedLogsA.forEach(l => appendLog(state, l));
@@ -722,9 +776,12 @@ module.exports = {
         const dmg = calculateUserDamage(card, 'attack', user);
         const m = state.marines[targetIdx];
         m.currentHP -= dmg;
-        if (m.currentHP <= 0) m.currentHP = 0;
+        if (m.currentHP <= 0) {
+          m.currentHP = 0;
+          m.alive = false;
+        }
         // apply potential status effect from special attack (if any)
-        const effectLogs1 = applyCardEffectShared(card, m);
+        const effectLogs1 = [];
         effectLogs1.forEach(l => appendLog(state, l));
         state.lastUserAction = `${card.def.character} used Attack on ${m.rank} for ${dmg} damage! <:energy:1478051414558118052> -1`;
       } else if (action === 'special') {
@@ -732,7 +789,7 @@ module.exports = {
           return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 3;
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // Apply bleed damage if card has bleed status (3 energy spent)
         const bleedLogsB = applyBleedOnEnergyUse(card, 3);
         bleedLogsB.forEach(l => appendLog(state, l));
@@ -744,7 +801,10 @@ module.exports = {
         const dmg = calculateUserDamage(card, 'special', user);
         const m = state.marines[targetIdx];
         m.currentHP -= dmg;
-        if (m.currentHP <= 0) m.currentHP = 0;
+        if (m.currentHP <= 0) {
+          m.currentHP = 0;
+          m.alive = false;
+        }
         // effect applies regardless of whether this was special or normal, but
         // most cards only have effects on special
         const effectLogs2 = applyCardEffectShared(card, m);
@@ -753,7 +813,7 @@ module.exports = {
         state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${dmg} damage (range ${rangeMin}-${rangeMax})! <:energy:1478051414558118052> -3`;
       } else if (action === 'ability') {
         card.energy -= 1;
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // Apply bleed damage if card has bleed status (1 energy spent)
         const bleedLogsC = applyBleedOnEnergyUse(card, 1);
         bleedLogsC.forEach(l => appendLog(state, l));
@@ -761,8 +821,11 @@ module.exports = {
         const dmg = calculateUserDamage(card, 'ability', user);
         const m = state.marines[targetIdx];
         m.currentHP -= dmg;
-        if (m.currentHP <= 0) m.currentHP = 0;
-        const effectLogs3 = applyCardEffectShared(card, m);
+        if (m.currentHP <= 0) {
+          m.currentHP = 0;
+          m.alive = false;
+        }
+        const effectLogs3 = [];
         effectLogs3.forEach(l => appendLog(state, l));
         state.lastUserAction = `${card.def.character} used Special Ability on ${m.rank} for ${dmg} damage! <:energy:1478051414558118052> -1`;
       }
@@ -785,21 +848,10 @@ module.exports = {
       if (!card.alive) {
         return interaction.reply({ content: 'That card is knocked out.', ephemeral: true });
       }
-      // check for stun/freeze effects
-      if (card.status && card.status.length) {
-        const st = card.status[0];
-        if (st.type === 'stun' || st.type === 'freeze') {
-          appendLog(state, `${card.def.character} is ${st.type === 'stun' ? 'stunned' : 'frozen'} and skips a turn!`);
-          st.remaining -= 1;
-          if (st.remaining <= 0) {
-            card.status.shift();
-          }
-          // move on as if an action occurred
-          state.selected = null;
-          const finished = await finalizeUserAction(state, interaction.message, await User.findOne({ userId: state.userId }));
-          if (finished) battleStates.delete(msgId);
-          return interaction.deferUpdate();
-        }
+      // Hard stun/freeze block - prevent selection of stunned/frozen cards
+      if (hasStatusLock(card)) {
+        const reason = getStatusLockReason(card);
+        return interaction.reply({ content: `${card.def.character} is ${reason}!`, ephemeral: true });
       }
       state.selected = idx;
       // no desktop art; gif-only display handled separately
@@ -813,6 +865,16 @@ module.exports = {
       if (state.finished) {
         return interaction.reply({ content: 'The battle has already ended.', ephemeral: true });
       }
+      
+      // Handle forfeit BEFORE checking card selection
+      if (act === 'forfeit') {
+        const user = await User.findOne({ userId: state.userId });
+        state.lastUserAction = `${user.username} forfeited.`;
+        await handleDefeat(state, interaction.message, user);
+        battleStates.delete(msgId);
+        return interaction.deferUpdate();
+      }
+      
       const card = state.cards[state.selected];
       if (!card || !card.alive) {
         state.selected = null;
@@ -867,7 +929,7 @@ module.exports = {
             }
           }
         }
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // recalc damage with user context so boosts are always included
         const user = await User.findOne({ userId: state.userId });
         const dmg = calculateUserDamage(card, act === 'ability' ? 'attack' : act, user);
@@ -875,7 +937,8 @@ module.exports = {
         m.currentHP -= dmg;
         if (m.currentHP <= 0) m.currentHP = 0;
         // apply any status effect from the attacker's card
-        applyCardEffect(card, m, state);
+        const effectLogs = applyCardEffectShared(card, m);
+        effectLogs.forEach(l => appendLog(state, l));
         const cost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
         if (act === 'special') {
           state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${dmg} damage! <:energy:1478051414558118052> -${cost}`;
@@ -883,12 +946,12 @@ module.exports = {
           const label = act === 'attack' ? 'Attack' : 'Special Ability';
           state.lastUserAction = `${card.def.character} used ${label} on ${m.rank} for ${dmg} damage! <:energy:1478051414558118052> -${cost}`;
         }
-      } else if (act === 'forfeit') {
-        state.lastUserAction = `${card.def.character} forfeited.`;
-        const user = await User.findOne({ userId: state.userId });
-        await handleDefeat(state, interaction.message, user);
-        battleStates.delete(msgId);
-        return interaction.update({ embeds: [buildEmbed(state, user)], components: [] });
+      } else if (act === 'rest') {
+        // Rest action: restore card's energy to 3
+        card.energy = 3;
+        card.turnsUntilRecharge = 2;
+        appendLog(state, `${card.def.character} rested and restored energy!`);
+        state.lastUserAction = `${card.def.character} took a rest and restored energy!`;
       } else {
         return interaction.reply({ content: 'Unknown action.', ephemeral: true });
       }

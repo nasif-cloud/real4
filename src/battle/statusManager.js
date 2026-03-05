@@ -68,7 +68,12 @@ function applyCardEffect(attacker, target) {
   const logs = [];
   if (!attacker || !attacker.def || !attacker.def.effect) return logs;
   const def = attacker.def;
-  const dur = def.effectDuration || 1;
+  // Stun and freeze get +1 duration so they last for the current turn being checked
+  let dur = def.effectDuration || 1;
+  if (def.effect === 'stun' || def.effect === 'freeze') {
+    dur = (def.effectDuration || 1) + 1;
+  }
+  // Cut and other status effects use duration as-is
   switch (def.effect) {
     case 'stun':
       addStatus(target, 'stun', dur);

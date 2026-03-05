@@ -85,7 +85,13 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
   if (!author.name) author.name = card.faculty;
   
   // Calculate attack value for display
-  const attackVal = card.attack_min === card.attack_max ? `${card.attack_min}` : `${card.attack_min} - ${card.attack_max}`;
+  const attackVal = `${card.attack_min} - ${card.attack_max}`;
+  
+  // Build stats field - exclude attack for Boost cards
+  let statsText = `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}`;
+  if (card.type !== 'Boost') {
+    statsText += `\n**Attack:** ${attackVal}`;
+  }
   
   const embed = new EmbedBuilder()
     .setColor(color)
@@ -93,7 +99,7 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
     .setAuthor(author)
     .setDescription(card.title || '')
     .addFields(
-      { name: 'Stats', value: `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}\n**Attack:** ${attackVal}`, inline: false }
+      { name: 'Stats', value: statsText, inline: false }
     )
     .setImage(card.image_url || null)
     .setFooter({ text: `${username} pulled this card | ${pityText}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });

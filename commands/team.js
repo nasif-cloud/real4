@@ -74,7 +74,7 @@ module.exports = {
     }
 
     if (card.type === 'Boost') {
-      const reply = `Boost cards cannot be added to your team.`;
+      const reply = ` <:special:1478020172496506932> **Boost** type cards cannot be added to your team.`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

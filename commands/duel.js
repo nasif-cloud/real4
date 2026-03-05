@@ -27,6 +27,8 @@ const TYPE_EMOJIS = {
   Special: '<:special:1478020172496506932>'
 };
 
+// Map to track pending duel requests (messageId => pendingState)
+const pendingDuelRequests = new Map();
 const duelStates = new Map();
 
 // global cut damage helper
@@ -71,13 +73,10 @@ function energyDisplay(energy) {
 }
 
 function buildEmbed(state, user1, user2) {
-  const p1HeaderEmojis = Array.from(new Set(state.player1Cards.flatMap(c => (c.status || []).map(st => STATUS_EMOJIS[st.type] || '')))).join('');
-  const p2HeaderEmojis = Array.from(new Set(state.player2Cards.flatMap(c => (c.status || []).map(st => STATUS_EMOJIS[st.type] || '')))).join('');
-
   const embed = new EmbedBuilder()
     .setColor('#EEEEEE')
     .setTitle('Duel: Interactive Battle')
-    .setDescription(`${user1.username} ${p1HeaderEmojis} vs ${user2.username} ${p2HeaderEmojis}`);
+    .setDescription(`${user1.username} vs ${user2.username}`);
   // attach any queued gif image
   if (state.embedImage) {
     embed.setImage(state.embedImage);
@@ -88,24 +87,24 @@ function buildEmbed(state, user1, user2) {
   const p1Lines = p1Alive.map((c, i) => {
     const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
     const prefix = statusEmojis || (TYPE_EMOJIS[c.def.type] || '');
-    let line = `${i + 1}. ${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
+    let line = `${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
     if (state.selected !== null && state.player1Cards.indexOf(c) === state.selected && state.turn === 'player1') line = `**> ${line}**`;
     return line;
   });
   const p1FieldValue = p1Lines.length > 0 ? p1Lines.join('\n') : 'All cards defeated!';
-  embed.addFields({ name: `${user1.username} ${p1HeaderEmojis}`, value: p1FieldValue });
+  embed.addFields({ name: `${user1.username}`, value: p1FieldValue });
 
   // Player 2 team - filter out KO, use stacked layout
   const p2Alive = state.player2Cards.filter(c => c.currentHP > 0);
   const p2Lines = p2Alive.map((c, i) => {
     const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
     const prefix = statusEmojis || (TYPE_EMOJIS[c.def.type] || '');
-    let line = `${i + 1}. ${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
+    let line = `${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
     if (state.selected !== null && state.player2Cards.indexOf(c) === state.selected && state.turn === 'player2') line = `**> ${line}**`;
     return line;
   });
   const p2FieldValue = p2Lines.length > 0 ? p2Lines.join('\n') : 'All cards defeated!';
-  embed.addFields({ name: `${user2.username} ${p2HeaderEmojis}`, value: p2FieldValue });
+  embed.addFields({ name: `${user2.username}`, value: p2FieldValue });
 
   // action columns
   if (state.lastP1Action || state.lastP2Action) {
@@ -137,6 +136,14 @@ function makeSelectionRow(state, isPlayer1Turn) {
         .setDisabled(disabled)
     );
   });
+  // Add forfeit button to character row
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId('duel_action:forfeit')
+      .setLabel('Forfeit')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(state.finished)
+  );
   return row;
 }
 
@@ -168,11 +175,12 @@ function makeActionRow(state, isPlayer1Turn) {
         .setStyle(ButtonStyle.Secondary)
     );
   }
+  // Rest button - reset energy to 3
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId('duel_action:forfeit')
-      .setLabel('Forfeit')
-      .setStyle(ButtonStyle.Danger)
+      .setCustomId('duel_action:rest')
+      .setLabel('Rest')
+      .setStyle(ButtonStyle.Success)
   );
   return row;
 }
@@ -225,17 +233,19 @@ async function updateDuelMessage(msg, state, user1, user2) {
 function rechargeEnergy(state) {
   state.player1Cards.forEach(c => {
     const locked = c.status && c.status.some(st => st.type === 'stun' || st.type === 'freeze');
-    if (!c.usedLastTurn && c.alive && c.energy < 3 && !locked) {
+    if (c.turnsUntilRecharge > 0) {
+      c.turnsUntilRecharge--;
+    } else if (c.alive && c.energy < 3 && !locked) {
       c.energy++;
     }
-    c.usedLastTurn = false;
   });
   state.player2Cards.forEach(c => {
     const locked = c.status && c.status.some(st => st.type === 'stun' || st.type === 'freeze');
-    if (!c.usedLastTurn && c.alive && c.energy < 3 && !locked) {
+    if (c.turnsUntilRecharge > 0) {
+      c.turnsUntilRecharge--;
+    } else if (c.alive && c.energy < 3 && !locked) {
       c.energy++;
     }
-    c.usedLastTurn = false;
   });
 }
 
@@ -254,9 +264,20 @@ function setupTimeout(state, msg, user1, user2) {
   clearDuelTimeout(state);
   if (!state.finished) {
     state.timeout = setTimeout(async () => {
-      if (state.finished) return;
-      appendLog(state, `${state.turn === 'player1' ? user1.username : user2.username} took too long. Turn passed.`);
-      await finalizeAction(state, msg, user1, user2, true);
+      try {
+        // Check if duel state still exists with this message ID
+        if (!duelStates.has(msg.id)) return;
+        if (state.finished) return;
+        appendLog(state, `${state.turn === 'player1' ? user1.username : user2.username} took too long. Turn passed.`);
+        // Try to finalize, but handle case where message was deleted
+        try {
+          await finalizeAction(state, msg, user1, user2, true);
+        } catch (e) {
+          console.error('Timeout error:', e);
+        }
+      } catch (e) {
+        console.error('Timeout handler error:', e);
+      }
     }, 30000);
   }
 }
@@ -274,23 +295,29 @@ async function finalizeAction(state, msg, user1, user2, timedOut = false) {
   if (checkTeamDefeated(currentTeam)) {
     state.finished = true;
     const winner = state.turn === 'player1' ? user2 : user1;
-    appendLog(state, `${winner.username} wins the duel!`);
-    // send a fresh victory embed
-    msg = await refreshDuelMessage(msg, state, user1, user2);
+    const loser = state.turn === 'player1' ? user1 : user2;
+    
+    // Create simple victory embed
+    const victorEmbed = new EmbedBuilder()
+      .setColor('#00AA00')
+      .setTitle('Duel Victory!')
+      .setDescription(`${winner.username} wins!`);
+    
+    try { await msg.delete(); } catch {}
+    await msg.channel.send({ embeds: [victorEmbed] });
+    duelStates.delete(msg.id);
   } else {
     // Recharge and switch turn
     rechargeEnergy(state);
     state.turn = state.turn === 'player1' ? 'player2' : 'player1';
-    applyGlobalCut(state); // global cut on every turn switch
     state.selected = null;
     state.lastP1Action = state.lastP1Action || '';
     state.lastP2Action = state.lastP2Action || '';
     state.log = ''; // Clear log at start of new turn
+    state.embedImage = null; // Clear special attack gif
 
-    // Apply start-of-turn effects (still keep per-team for backward compatibility)
-    const teamAboutToAct = state.turn === 'player1' ? state.player1Cards : state.player2Cards;
-    const startLogs = applyStatusesForTurn(teamAboutToAct);
-    startLogs.forEach(l => appendLog(state, l));
+    // Apply start-of-turn effects to ALL cards (both teams)
+    applyGlobalCut(state);
 
     // refresh message instead of editing
     msg = await refreshDuelMessage(msg, state, user1, user2);
@@ -298,9 +325,15 @@ async function finalizeAction(state, msg, user1, user2, timedOut = false) {
     if (checkTeamDefeated(state.turn === 'player1' ? state.player1Cards : state.player2Cards)) {
       state.finished = true;
       const winner = state.turn === 'player1' ? user2 : user1;
-      appendLog(state, `${winner.username} wins the duel!`);
-      // send fresh victory embed
-      msg = await refreshDuelMessage(msg, state, user1, user2);
+      
+      // Create simple victory embed
+      const victorEmbed = new EmbedBuilder()
+        .setColor('#00AA00')
+        .setTitle('Duel Victory!')
+        .setDescription(`${winner.username} wins!`);
+      
+      try { await msg.delete(); } catch {}
+      await msg.channel.send({ embeds: [victorEmbed] });
       duelStates.delete(msg.id);
     }
   }
@@ -353,22 +386,23 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // Check both have full teams
-    if (!Array.isArray(user1.team) || user1.team.length < 3) {
-      const reply = 'Your team is not full (3 cards required).';
-      if (message) return message.reply(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
-    }
-
-    if (!Array.isArray(user2.team) || user2.team.length < 3) {
-      const reply = `${user2.username} doesn't have a full team.`;
-      if (message) return message.reply(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
-    }
-
     // Get user objects for discord
     const discordUser1 = message ? message.author : interaction.user;
     const discordUser2 = await (message ? message.client.users.fetch(opponentId) : interaction.client.users.fetch(opponentId));
+
+    // Check both have at least 1 card on their team
+    if (!Array.isArray(user1.team) || user1.team.length === 0) {
+      const reply = 'Your team must have at least 1 card.';
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    if (!Array.isArray(user2.team) || user2.team.length === 0) {
+      const opponent2Username = user2.username || discordUser2?.username || 'That user';
+      const reply = `${opponent2Username} must have at least 1 card on their team.`;
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
 
     // Resolve teams with stats
     const resolveTeam = (user, teamIds) => {
@@ -392,7 +426,7 @@ module.exports = {
           maxHP: (scaled && scaled.health) || def.health,
           energy: 3,
           alive: true,
-          usedLastTurn: false,
+          turnsUntilRecharge: 0,
           status: []
         };
       }).filter(Boolean);
@@ -411,39 +445,96 @@ module.exports = {
     const p1Speed = Math.max(...p1Team.map(c => c.def.speed || 0));
     const p2Speed = Math.max(...p2Team.map(c => c.def.speed || 0));
 
-    const state = {
+    // Send acceptance message
+    const acceptEmbed = new EmbedBuilder()
+      .setColor('#3498db')
+      .setTitle('Duel Request')
+      .setDescription(`${discordUser1.username} has challenged ${discordUser2.username} to a duel!`)
+      .addFields({ name: 'Do you accept?', value: 'Click Accept to begin or Decline to reject.' });
+    
+    const acceptRow = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId('duel_accept:accept')
+          .setLabel('Accept')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId('duel_accept:decline')
+          .setLabel('Decline')
+          .setStyle(ButtonStyle.Danger)
+      );
+    
+    let acceptMsg;
+    if (message) {
+      acceptMsg = await message.channel.send({ embeds: [acceptEmbed], components: [acceptRow] });
+    } else {
+      acceptMsg = await interaction.reply({ embeds: [acceptEmbed], components: [acceptRow], fetchReply: true });
+    }
+    
+    // Store pending duel request temporarily
+    const pendingState = {
       player1Id: userId,
       player2Id: opponentId,
       player1Cards: p1Team,
       player2Cards: p2Team,
-      turn: p1Speed >= p2Speed ? 'player1' : 'player2',
-      selected: null,
-      awaitingTarget: null,
-      finished: false,
-      log: '',
-      lastP1Action: '',
-      lastP2Action: '',
-      timeout: null,
-      embedImage: null
+      p1Speed,
+      p2Speed,
+      discordUser1,
+      discordUser2
     };
-    // early cut/duration effects at game start
-    applyGlobalCut(state);
-
-    // Send initial message
-    const embed = buildEmbed(state, discordUser1, discordUser2);
-    const row = makeSelectionRow(state, state.turn === 'player1');
-    let msg;
-    if (message) {
-      msg = await message.channel.send({ embeds: [embed], components: [row] });
-    } else {
-      msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
-    }
-    duelStates.set(msg.id, state);
-    await setupTimeout(state, msg, discordUser1, discordUser2);
+    pendingDuelRequests.set(acceptMsg.id, pendingState);
   },
 
   async handleButton(interaction, rawAction, cardId) {
     const msgId = interaction.message.id;
+    
+    // Handle accept/decline actions
+    if (rawAction.startsWith('duel_accept:')) {
+      const pending = pendingDuelRequests.get(msgId);
+      if (!pending) {
+        return interaction.reply({ content: 'This duel request has expired.', ephemeral: true });
+      }
+      
+      if (interaction.user.id !== pending.player2Id) {
+        return interaction.reply({ content: 'Only the challenged player can respond.', ephemeral: true });
+      }
+      
+      if (rawAction === 'duel_accept:decline') {
+        try { await interaction.message.delete(); } catch {}
+        return interaction.reply({ content: 'Duel request declined.' });
+      }
+      
+      if (rawAction === 'duel_accept:accept') {
+        // Start the duel
+        const state = {
+          player1Id: pending.player1Id,
+          player2Id: pending.player2Id,
+          player1Cards: pending.player1Cards,
+          player2Cards: pending.player2Cards,
+          turn: pending.p1Speed >= pending.p2Speed ? 'player1' : 'player2',
+          selected: null,
+          awaitingTarget: null,
+          finished: false,
+          log: '',
+          lastP1Action: '',
+          lastP2Action: '',
+          timeout: null,
+          embedImage: null
+        };
+        applyGlobalCut(state);
+        
+        const embed = buildEmbed(state, pending.discordUser1, pending.discordUser2);
+        const row = makeSelectionRow(state, state.turn === 'player1');
+        
+        try { await interaction.message.delete(); } catch {}
+        const battleMsg = await interaction.channel.send({ embeds: [embed], components: [row] });
+        duelStates.set(battleMsg.id, state);
+        pendingDuelRequests.delete(msgId);
+        await setupTimeout(state, battleMsg, pending.discordUser1, pending.discordUser2);
+        return interaction.deferUpdate();
+      }
+    }
+    
     const state = duelStates.get(msgId);
 
     if (!state) {
@@ -497,15 +588,18 @@ module.exports = {
           return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 1;
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // Apply bleed damage if card has bleed status (1 energy spent)
         const bleedLogsD1 = applyBleedOnEnergyUse(card, 1);
         bleedLogsD1.forEach(l => appendLog(state, l));
         const dmg = calculateUserDamage(card, 'attack', myUser);
         const target = opponentTeam[targetIdx];
         target.currentHP -= dmg;
-        if (target.currentHP <= 0) target.currentHP = 0;
-        const effectLogsD1 = applyCardEffectShared(card, target);
+        if (target.currentHP <= 0) {
+          target.currentHP = 0;
+          target.alive = false;
+        }
+        const effectLogsD1 = [];
         effectLogsD1.forEach(l => appendLog(state, l));
         const actionText = `${card.def.character} used Attack on ${target.def.character} for ${dmg} damage! <:energy:1478051414558118052> -1`;
         if (isPlayer1) state.lastP1Action = actionText;
@@ -515,14 +609,17 @@ module.exports = {
           return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 3;
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // Apply bleed damage if card has bleed status (3 energy spent)
         const bleedLogsD2 = applyBleedOnEnergyUse(card, 3);
         bleedLogsD2.forEach(l => appendLog(state, l));
         const dmg = calculateUserDamage(card, 'special', myUser);
         const target = opponentTeam[targetIdx];
         target.currentHP -= dmg;
-        if (target.currentHP <= 0) target.currentHP = 0;
+        if (target.currentHP <= 0) {
+          target.currentHP = 0;
+          target.alive = false;
+        }
         const effectLogsD2 = applyCardEffectShared(card, target);
         effectLogsD2.forEach(l => appendLog(state, l));
         // queue gif for embed
@@ -534,15 +631,18 @@ module.exports = {
         else state.lastP2Action = actionText;
       } else if (action === 'ability') {
         card.energy -= 1;
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         // Apply bleed damage if card has bleed status (1 energy spent)
         const bleedLogsD3 = applyBleedOnEnergyUse(card, 1);
         bleedLogsD3.forEach(l => appendLog(state, l));
         const dmg = calculateUserDamage(card, 'ability', myUser);
         const target = opponentTeam[targetIdx];
         target.currentHP -= dmg;
-        if (target.currentHP <= 0) target.currentHP = 0;
-        const effectLogsD3 = applyCardEffectShared(card, target);
+        if (target.currentHP <= 0) {
+          target.currentHP = 0;
+          target.alive = false;
+        }
+        const effectLogsD3 = [];
         effectLogsD3.forEach(l => appendLog(state, l));
         const actionText = `${card.def.character} used Special Ability on ${target.def.character} for ${dmg} damage! <:energy:1478051414558118052> -1`;
         if (isPlayer1) state.lastP1Action = actionText;
@@ -570,19 +670,10 @@ module.exports = {
         return interaction.reply({ content: 'That card is knocked out.', ephemeral: true });
       }
 
-      // Check for stun/freeze
-      if (card.status && card.status.length) {
-        const st = card.status[0];
-        if (st.type === 'stun' || st.type === 'freeze') {
-          appendLog(state, `${card.def.character} is ${st.type === 'stun' ? 'stunned' : 'frozen'} and skips a turn!`);
-          st.remaining -= 1;
-          if (st.remaining <= 0) {
-            card.status.shift();
-          }
-          state.selected = null;
-          await finalizeAction(state, interaction.message, discordUser1, discordUser2);
-          return interaction.deferUpdate();
-        }
+      // Hard stun/freeze block - prevent selection of stunned/frozen cards
+      if (hasStatusLock(card)) {
+        const reason = getStatusLockReason(card);
+        return interaction.reply({ content: `${card.def.character} is ${reason}!`, ephemeral: true });
       }
 
       state.selected = idx;
@@ -648,7 +739,7 @@ module.exports = {
           }
         }
 
-        card.usedLastTurn = true;
+        card.turnsUntilRecharge = 2;
         const dmg = calculateUserDamage(card, act === 'ability' ? 'attack' : act, myUser);
         const target = opponentTeam[targetIdx];
         target.currentHP -= dmg;
@@ -666,11 +757,25 @@ module.exports = {
         }
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
+      } else if (act === 'rest') {
+        // Rest action: restore card's energy to 3
+        card.energy = 3;
+        card.turnsUntilRecharge = 2;
+        appendLog(state, `${card.def.character} rested and restored energy!`);
+        const actionText = `${card.def.character} took a rest and restored energy!`;
+        if (isPlayer1) state.lastP1Action = actionText;
+        else state.lastP2Action = actionText;
       } else if (act === 'forfeit') {
         const winner = isPlayer1 ? discordUser2 : discordUser1;
-        appendLog(state, `${interaction.user.username} forfeited. ${winner.username} wins!`);
-        state.finished = true;
-        await updateDuelMessage(interaction.message, state, discordUser1, discordUser2);
+        
+        // Create simple forfeit embed
+        const forfeitEmbed = new EmbedBuilder()
+          .setColor('#00AA00')
+          .setTitle('Duel Victory!')
+          .setDescription(`${interaction.user.username} forfeited.\n${winner.username} wins!`);
+        
+        try { await interaction.message.delete(); } catch {}
+        await interaction.channel.send({ embeds: [forfeitEmbed] });
         duelStates.delete(msgId);
         return interaction.deferUpdate();
       }
