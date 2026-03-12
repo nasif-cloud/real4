@@ -37,8 +37,43 @@ commands.push({ name: 'inventory', description: 'Show your items and packs' });
 
 // autoteam command
 commands.push({ name: 'autoteam', description: 'Automatically set your team to top 3 cards' });
+
+// sell command
+commands.push({
+  name: 'sell',
+  description: 'Sell a card for currency based on its rank',
+  options: [{ name: 'query', type: 3, description: 'Card name', required: true }]
+});
+
 // infinite sail battle
 commands.push({ name: 'isail', description: 'Challenge the Infinite Sail' });
+
+// shop & economy
+commands.push({ name: 'shop', description: 'View the shop' });
+commands.push({
+  name: 'buy',
+  description: 'Buy an item from the shop',
+  options: [{ name: 'item', type: 3, description: 'Item name', required: true }]
+});
+
+// bounty system
+commands.push({ name: 'bounty', description: 'Find a random player to duel for bounty' });
+
+// profile & leaderboards
+commands.push({
+  name: 'user',
+  description: 'View a user\'s profile',
+  options: [{ name: 'target', type: 6, description: 'User to view (optional)', required: false }]
+});
+commands.push({ name: 'leaderboard', description: 'View global leaderboards' });
+
+// pack system
+commands.push({ name: 'stock', description: 'View current pack stock' });
+commands.push({
+  name: 'open',
+  description: 'Open a pack to get cards',
+  options: [{ name: 'pack', type: 3, description: 'Pack name', required: true }]
+});
 
 const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
 const rest = new REST({ version: '10' }).setToken(token);

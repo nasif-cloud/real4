@@ -16,7 +16,10 @@ module.exports = {
     }
 
     const items = (user.items || []).map(i => `${i.itemId} x${i.quantity}`).join('\n') || 'None';
-    const packs = (user.packs || []).map(p => `${p.packType} x${p.quantity}`).join('\n') || 'None';
+    const packsObj = user.packInventory || {};
+    const packs = Object.keys(packsObj).length
+      ? Object.entries(packsObj).map(([name, qty]) => `${name} x${qty}`).join('\n')
+      : 'None';
 
     const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
     const embed = new EmbedBuilder()

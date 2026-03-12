@@ -19,8 +19,11 @@ async function list({ message }) {
     .setColor(0xFF0000)
     .setDescription('Available prefix commands for the bot owner/developer')
     .addFields(
-      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, resettoken, card\nif type is card then <amount> should be the cardId', inline: false },
+      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
+      { name: 'op owner setdrops <#channel>', value: 'Enable card drops in a channel (spawns every 5 min, expires in 10 min)', inline: false },
+      { name: 'op owner unsetdrops', value: 'Disable card drops globally', inline: false },
+      { name: 'op owner toggleupgrade <on|off>', value: 'Enable/disable upgrade requirements system globally', inline: false },
       { name: 'op ownerlist', value: 'Show this list', inline: false }
     );
   return message.channel.send({ embeds: [embed] });
@@ -33,55 +36,90 @@ async function execute({ message, args }) {
 
   const sub = args[0];
   if (!sub) {
-    return message.reply('Usage: op owner <give|resetdata> ...');
+    return message.reply('Usage: op owner <give|resetdata|toggleupgrade|setdrops> ...');
   }
 
   if (sub === 'give') {
-    const type = args[1];
-    const amountArg = args[2];
-    const mention = args[3];
-    const targetId = parseMention(mention);
-    if (!type || !amountArg || !targetId) {
-      return message.reply('Usage: op owner give <type> <amount> <@user>');
-    }
+      const type = args[1];
+      if (!type) return message.reply('Usage: op owner give <type> ...');
 
-    let target = await User.findOne({ userId: targetId });
-    if (!target) {
-      return message.reply('Target user does not have an account.');
-    }
+      let targetId;
+      let amt;
 
-    if (type === 'beli') {
-      const amt = parseInt(amountArg, 10);
-      if (isNaN(amt)) return message.reply('Amount must be a number');
-      await User.findOneAndUpdate({ userId: targetId }, { $inc: { balance: amt } });
-      return message.reply(`Given ¥${amt} to <@${targetId}>`);
-    }
-
-    if (type === 'resettoken') {
-      const amt = parseInt(amountArg, 10);
-      if (isNaN(amt)) return message.reply('Amount must be a number');
-      await User.findOneAndUpdate({ userId: targetId }, { $inc: { resetTokens: amt } });
-      return message.reply(`Given ${amt} reset token(s) to <@${targetId}>`);
-    }
-
-    if (type === 'card') {
-      const cardId = amountArg;
-      // check existence
-      const cardDef = cards.find(c => c.id === cardId);
-      if (!cardDef) return message.reply(`No card with id ${cardId} exists`);
-      // check ownership first
-      if (target.ownedCards.some(e => e.cardId === cardId)) {
-        return message.reply('User already owns that card, gift cancelled.');
+      if (type === 'pack') {
+        // syntax: give pack <crew> <amount> <@user>
+        const crewQuery = args[2];
+        amt = parseInt(args[3], 10);
+        const mention = args[4];
+        targetId = parseMention(mention);
+        if (!crewQuery || isNaN(amt) || !targetId) {
+          return message.reply('Usage: op owner give pack <crew name> <amount> <@user>');
+        }
+        // fuzzy match crew name from full list
+        const crewList = require('../data/crews').map(c => c.name);
+        const match = crewList.find(c => c.toLowerCase().includes(crewQuery.toLowerCase()));
+        if (!match) {
+          return message.reply(`Crew "${crewQuery}" not recognized.`);
+        }
+        const crewName = match;
+        let target = await User.findOne({ userId: targetId });
+        if (!target) return message.reply('Target user does not have an account.');
+        target.packInventory = target.packInventory || {};
+        target.packInventory[crewName] = (target.packInventory[crewName] || 0) + amt;
+        target.markModified('packInventory');
+        await target.save();
+        return message.reply(`Given ${amt} ${crewName} pack(s) to <@${targetId}>`);
       }
-      target.ownedCards.push({ cardId, level: 1, xp: 0 });
-      if (!target.history.includes(cardId)) target.history.push(cardId);
-      await target.save();
-      return message.reply(`Added card ${cardId} to <@${targetId}>'s collection`);
+
+      // fallback for simple two-arg give
+      const amountArg = args[2];
+      const mention = args[3];
+      targetId = parseMention(mention);
+      if (!amountArg || !targetId) {
+        return message.reply('Usage: op owner give <type> <amount> <@user>');
+      }
+
+      let target = await User.findOne({ userId: targetId });
+      if (!target) {
+        return message.reply('Target user does not have an account.');
+      }
+
+      if (type === 'beli' || type === 'gems') {
+        const amtParsed = parseInt(amountArg, 10);
+        if (isNaN(amtParsed)) return message.reply('Amount must be a number');
+        if (type === 'beli') {
+          await User.findOneAndUpdate({ userId: targetId }, { $inc: { balance: amtParsed } });
+          return message.reply(`Given ¥${amtParsed} to <@${targetId}>`);
+        } else {
+          await User.findOneAndUpdate({ userId: targetId }, { $inc: { gems: amtParsed } });
+          return message.reply(`Given ${amtParsed} gem(s) to <@${targetId}>`);
+        }
+      }
+
+      if (type === 'resettoken') {
+        const amtParsed = parseInt(amountArg, 10);
+        if (isNaN(amtParsed)) return message.reply('Amount must be a number');
+        await User.findOneAndUpdate({ userId: targetId }, { $inc: { resetTokens: amtParsed } });
+        return message.reply(`Given ${amtParsed} reset token(s) to <@${targetId}>`);
+      }
+
+      if (type === 'card') {
+        const cardId = amountArg;
+        // check existence
+        const cardDef = cards.find(c => c.id === cardId);
+        if (!cardDef) return message.reply(`No card with id ${cardId} exists`);
+        // check ownership first
+        if (target.ownedCards.some(e => e.cardId === cardId)) {
+          return message.reply('User already owns that card, gift cancelled.');
+        }
+        target.ownedCards.push({ cardId, level: 1, xp: 0 });
+        if (!target.history.includes(cardId)) target.history.push(cardId);
+        await target.save();
+        return message.reply(`Added card ${cardId} to <@${targetId}>'s collection`);
+      }
+
+      return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');
     }
-
-    return message.reply('Unknown give type; valid types are beli, resettoken, card');
-  }
-
   if (sub === 'resetdata') {
     const mention = args[1];
     const targetId = parseMention(mention);
@@ -89,6 +127,62 @@ async function execute({ message, args }) {
 
     await User.deleteOne({ userId: targetId });
     return message.reply(`Deleted data for <@${targetId}>`);
+  }
+
+  if (sub === 'toggleupgrade') {
+    const state = args[1];
+    if (!state || !['on', 'off'].includes(state.toLowerCase())) {
+      return message.reply('Usage: op owner toggleupgrade <on|off>');
+    }
+
+    const enabled = state.toLowerCase() === 'on';
+    // Store in a global setting or database; for simplicity, we'll use environment/config
+    // For now, store as a flag that can be checked
+    const config = require('../config');
+    config.upgradeRequirementsEnabled = enabled;
+    
+    // Also update all existing users; if enabling, set flag to false (not disabled)
+    // If disabling, set flag to true (disabled)
+    const updateOp = enabled ? { upgradeRequirementsDisabled: false } : { upgradeRequirementsDisabled: true };
+    await User.updateMany({}, updateOp);
+
+    const status = enabled ? 'enabled' : 'disabled';
+    return message.reply(`Upgrade requirements system ${status} for all users.`);
+  }
+
+  if (sub === 'setdrops') {
+    const channelMention = args[1];
+    if (!channelMention) {
+      return message.reply('Usage: op owner setdrops <#channel>');
+    }
+
+    // Parse channel mention (e.g., <#1234567890>)
+    const channelMatch = channelMention.match(/<#(\d+)>/);
+    if (!channelMatch) {
+      return message.reply('Invalid channel format. Use: op owner setdrops <#channel>');
+    }
+
+    const channelId = channelMatch[1];
+    const dropsModule = require('./drops');
+    
+    try {
+      dropsModule.startDropTimer(message.client, channelId);
+      return message.reply(`✅ Card drops enabled in <#${channelId}>! Drops will spawn every 5 minutes and expire after 10 minutes.`);
+    } catch (err) {
+      console.error('Error setting up drops:', err);
+      return message.reply('Failed to set up drops. Make sure the channel exists.');
+    }
+  }
+
+  if (sub === 'unsetdrops') {
+    const dropsModule = require('./drops');
+    try {
+      dropsModule.stopDropTimer();
+      return message.reply('✅ Card drops disabled.');
+    } catch (err) {
+      console.error('Error disabling drops:', err);
+      return message.reply('Failed to disable drops.');
+    }
   }
 
   return message.reply('Unrecognized owner subcommand.');

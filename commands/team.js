@@ -47,7 +47,7 @@ module.exports = {
       const lines = user.team.map(id => {
         const def = require('../data/cards').cards.find(c => c.id === id);
         if (!def) return id;
-        return `(${def.rank}) ${def.character} ${TYPE_EMOJIS[def.type] || ''}`;
+        return `${def.emoji || '•'} ${def.character} (${def.rank})`;
       });
       const nameList = lines.length ? lines.join('\n') : 'None';
       const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
@@ -73,11 +73,8 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    if (card.type === 'Boost') {
-      const reply = ` <:special:1478020172496506932> **Boost** type cards cannot be added to your team.`;
-      if (message) return message.reply(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
-    }
+
+    // Removed boost type restriction - any card can now be on team
 
     const owned = user.ownedCards.some(e => e.cardId === card.id);
     if (!owned) {
@@ -110,7 +107,7 @@ module.exports = {
       const lines = user.team.map(id => {
         const def = require('../data/cards').cards.find(c => c.id === id);
         if (!def) return id;
-        return `(${def.rank}) ${def.character} ${TYPE_EMOJIS[def.type] || ''}`;
+        return `${def.emoji || '•'} ${def.character} (${def.rank})`;
       });
       const nameList = lines.length ? lines.join('\n') : 'None';
       const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();

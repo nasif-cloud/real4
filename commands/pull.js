@@ -117,16 +117,30 @@ module.exports = {
         }
         duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''}`;
       } else {
-        // Pulled a higher version than what they own - add it and remove lower versions
-        user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
-        // Remove all lower versions of this character
-        user.ownedCards = user.ownedCards.filter(e => {
-          const eCard = getCardById(e.cardId);
-          if (!eCard || eCard.character !== card.character) return true;
-          return eCard.mastery >= card.mastery;
-        });
-        if (!user.history.includes(card.id)) user.history.push(card.id);
-        duplicateText = `Upgraded! Higher version acquired. Lower versions removed.`;
+        // Pulled a higher version than what they own
+        const bestOwnedIdVal = bestOwnedId; // id of version they currently have
+        // check if the card on team prevents upgrade
+        if (user.team && user.team.includes(bestOwnedIdVal)) {
+          // treat as duplicate XP instead of upgrade
+          bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+          const gained = Math.floor(bestOwnedEntry.xp / 100);
+          if (gained > 0) {
+            bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
+            bestOwnedEntry.xp = bestOwnedEntry.xp % 100;
+          }
+          duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''} (upgrade blocked while on team)`;
+        } else {
+          // normal upgrade: add new version and remove lower ones
+          user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
+          // Remove all lower versions of this character
+          user.ownedCards = user.ownedCards.filter(e => {
+            const eCard = getCardById(e.cardId);
+            if (!eCard || eCard.character !== card.character) return true;
+            return eCard.mastery >= card.mastery;
+          });
+          if (!user.history.includes(card.id)) user.history.push(card.id);
+          duplicateText = `Upgraded! Higher version acquired. Lower versions removed.`;
+        }
       }
     } else {
       // Don't own any version - add this one
@@ -135,6 +149,7 @@ module.exports = {
     }
 
     user.pullsRemaining -= 1;
+    user.totalPulls = (user.totalPulls || 0) + 1;
     await user.save();
 
     const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();

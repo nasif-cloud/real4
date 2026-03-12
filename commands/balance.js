@@ -22,7 +22,7 @@ module.exports = {
       .setTitle(`${username}'s Balance`)
       .setThumbnail(message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL())
       .addFields(
-        { name: '**Balance**', value: `¥ ${balance}`, inline: false },
+        { name: '**Balance**', value: `¥ ${balance}\n<:gem:1479922885161128017> ${user.gems || 0}`, inline: false },
         { name: '**Reset Tokens**', value: `${resetTokens}`, inline: false }
       );
 

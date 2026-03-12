@@ -1,9 +1,9 @@
 // Centralized status and battle utilities shared by isail and duel
 const STATUS_EMOJIS = {
-  stun: '🌀',
-  freeze: '❄️',
-  cut: '🔪',
-  bleed: '🩸'
+  stun: '<:Stun:1479135399573061751>',
+  freeze: '<:Freeze:1479137305749880924>',
+  cut: '<:Cut:1479136751397109771>',
+  bleed: '<:1000043584:1479138154572156928>'
 };
 
 function randomInt(min, max) {
@@ -39,7 +39,8 @@ function _handleKO(entity) {
   return null;
 }
 
-// Apply start-of-turn status effects (cut) to the provided team array.
+// Apply start-of-turn status effects (cut, bleed, stun expiration, etc.) to the
+// provided team array. Bleed damage and duration are handled here per turn.
 // Returns an array of log strings describing what happened.
 function applyStartOfTurnEffects(teamArray) {
   const logs = [];
@@ -54,7 +55,38 @@ function applyStartOfTurnEffects(teamArray) {
         logs.push(`${e.def?.character || e.rank || 'Entity'} suffers cut for -1 HP!`);
         const ko = _handleKO(e);
         if (ko) logs.push(ko);
+        // only decrement if NOT permanent
+        if (st.remaining !== Infinity) {
+          st.remaining -= 1;
+        }
+        return st.remaining > 0 || st.remaining === Infinity;
       }
+      if (st.type === 'bleed') {
+        // Apply bleed damage per turn
+        e.currentHP = Math.max(0, (e.currentHP || 0) - 2);
+        logs.push(`${e.def?.character || e.rank || 'Entity'} suffers bleed for -2 HP!`);
+        const ko = _handleKO(e);
+        if (ko) logs.push(ko);
+        // only decrement if NOT permanent
+        if (st.remaining !== Infinity) {
+          st.remaining -= 1;
+        }
+        return st.remaining > 0 || st.remaining === Infinity;
+      }
+      // log expiration of stun/freeze when they wear off
+      if (st.type === 'stun' || st.type === 'freeze') {
+        // only decrement if NOT permanent
+        if (st.remaining !== Infinity) {
+          st.remaining -= 1;
+          if (st.remaining <= 0) {
+            const msg = `${e.def?.character || e.rank || 'Entity'} is no longer ${st.type === 'stun' ? 'stunned' : 'frozen'}!`;
+            logs.push(msg);
+            return false;
+          }
+        }
+        return true;
+      }
+      // other statuses just decrement once per turn
       st.remaining -= 1;
       return st.remaining > 0;
     });
@@ -64,37 +96,48 @@ function applyStartOfTurnEffects(teamArray) {
 
 // Apply card effect (stun, freeze, cut, bleed, team_stun)
 // Mutates target(s) by adding statuses and returns array of log strings.
+// Duration 0 = permanent effect; duration > 0 = ticks down each action/turn.
 function applyCardEffect(attacker, target) {
   const logs = [];
   if (!attacker || !attacker.def || !attacker.def.effect) return logs;
   const def = attacker.def;
-  // Stun and freeze get +1 duration so they last for the current turn being checked
-  let dur = def.effectDuration || 1;
-  if (def.effect === 'stun' || def.effect === 'freeze') {
-    dur = (def.effectDuration || 1) + 1;
+  // Store original duration for message display
+  const origDur = def.effectDuration || 1;
+  // If duration is 0, effect is permanent (use Infinity internally)
+  let dur = origDur === 0 ? Infinity : origDur;
+  // locking statuses tick down twice per round (once after each action), so
+  // we multiply by two to ensure the intended number of victim turns are
+  // blocked.  This pattern applies to stun, freeze and team-wide stuns.
+  if (dur !== Infinity && (def.effect === 'stun' || def.effect === 'freeze' || def.effect === 'team_stun')) {
+    dur = dur * 2;
   }
-  // Cut and other status effects use duration as-is
+  // Cut and other status effects: apply the multiplied duration or Infinity
   switch (def.effect) {
     case 'stun':
       addStatus(target, 'stun', dur);
-      logs.push(`${target.def?.character || target.rank || 'Enemy'} is stunned!`);
+      const stunMsg = origDur === 0 ? ` (permanent)` : ` for ${origDur} turn${origDur > 1 ? 's' : ''}`;
+      logs.push(`${target.def?.character || target.rank || 'Enemy'} is stunned and can't move${stunMsg}!`);
       break;
     case 'freeze':
       addStatus(target, 'freeze', dur);
-      logs.push(`${target.def?.character || target.rank || 'Enemy'} is frozen!`);
+      const freezeMsg = origDur === 0 ? ` (permanent)` : ` for ${origDur} turn${origDur > 1 ? 's' : ''}`;
+      logs.push(`${target.def?.character || target.rank || 'Enemy'} is frozen and can't move${freezeMsg}!`);
       break;
     case 'cut':
       addStatus(target, 'cut', dur);
-      logs.push(`${target.def?.character || target.rank || 'Enemy'} is cut!`);
+      const cutMsg = origDur === 0 ? ` (permanent)` : ` for ${origDur} turn${origDur > 1 ? 's' : ''}`;
+      logs.push(`${target.def?.character || target.rank || 'Enemy'} is cut${cutMsg}!`);
       break;
     case 'bleed':
       addStatus(target, 'bleed', dur);
-      logs.push(`${target.def?.character || target.rank || 'Enemy'} is bleeding!`);
+      const bleedMsg = origDur === 0 ? ` (permanent)` : ` for ${origDur} use${origDur > 1 ? 's' : ''}`;
+      logs.push(`${target.def?.character || target.rank || 'Enemy'} is bleeding${bleedMsg}!`);
       break;
     case 'team_stun':
       if (Array.isArray(target)) {
         target.forEach(t => addStatus(t, 'stun', dur));
-        logs.push(`All opponents are stunned!`);
+        const teamMsg = origDur === 0 ? ` (permanent)` : ` for ${origDur} turn${origDur > 1 ? 's' : ''}`;
+        logs.push(`All opponents are stunned${teamMsg}!`);
       }
       break;
   }
@@ -102,7 +145,7 @@ function applyCardEffect(attacker, target) {
 }
 
 // Calculate damage using the resolved `card.scaled` stats.
-function calculateUserDamage(card, type, user) {
+function calculateUserDamage(card, type) {
   const scaled = card.scaled || {};
   if (type === 'special') {
     if (card.def.special_attack && scaled.special_attack) {
@@ -137,6 +180,14 @@ function applyBleedOnEnergyUse(entity, energySpent) {
   const total = 2 * energySpent;
   entity.currentHP = Math.max(0, (entity.currentHP || 0) - total);
   logs.push(`${entity.def?.character || entity.rank || 'Entity'} takes -${total} HP from bleed!`);
+  // only decrement if NOT permanent (finite remaining)
+  if (bleed.remaining !== Infinity) {
+    bleed.remaining = Math.max(0, bleed.remaining - 1);
+    if (bleed.remaining <= 0) {
+      entity.status = entity.status.filter(s => s.type !== 'bleed');
+      logs.push(`${entity.def?.character || entity.rank || 'Entity'} is no longer bleeding!`);
+    }
+  }
   const ko = _handleKO(entity);
   if (ko) logs.push(ko);
   return logs;
@@ -149,6 +200,5 @@ module.exports = {
   getStatusLockReason,
   applyStartOfTurnEffects,
   applyCardEffect,
-  calculateUserDamage,
-  applyBleedOnEnergyUse
+  calculateUserDamage
 };

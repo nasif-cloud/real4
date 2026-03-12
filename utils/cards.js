@@ -1,6 +1,12 @@
 const { EmbedBuilder } = require('discord.js');
 const { cards, rankData } = require('../data/cards');
-const crewIcons = require('../data/crews');
+const crews = require('../data/crews');
+
+// Create icon map
+const crewIcons = {};
+crews.forEach(crew => {
+  crewIcons[crew.name] = crew.icon;
+});
 
 // Get a card definition by its ID
 function getCardById(cardId) {
@@ -64,6 +70,72 @@ async function findBestOwnedCard(userId, query) {
   
   // return highest mastery owned, or fallback to base if none owned
   return ownedMatches.length ? ownedMatches[ownedMatches.length - 1] : matches[0];
+}
+
+// Simulate a pull with optional faculty filter
+function simulatePull(pityCount, faculty = null) {
+  const { PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
+  
+  // Determine rank
+  let rank;
+  if (pityCount >= PITY_TARGET) {
+    const r = Math.random() * 100;
+    let running = 0;
+    for (const [rk, pct] of Object.entries(PITY_DISTRIBUTION)) {
+      running += pct;
+      if (r <= running) {
+        rank = rk;
+        break;
+      }
+    }
+  } else {
+    const r = Math.random() * 100;
+    let running = 0;
+    for (const [rk, pct] of Object.entries(PULL_RATES)) {
+      running += pct;
+      if (r <= running) {
+        rank = rk;
+        break;
+      }
+    }
+  }
+
+  // Filter cards by rank and then apply faculty constraint if given
+  // Only include base/u1 versions (mastery === 1) to prevent pulling upgraded versions from packs
+  let pool = cards.filter(c => c.pullable && c.mastery === 1 && c.rank === rank);
+  if (faculty) {
+    // Check if card's current upgrade OR any future upgrade has the target faculty
+    const facultyPool = pool.filter(c => {
+      if (c.faculty === faculty) return true;
+      // Check if any other upgrade of this character has the target faculty
+      const allVersionIds = getAllCardVersions(c.character);
+      return allVersionIds.some(versionId => {
+        const versionCard = getCardById(versionId);
+        return versionCard && versionCard.faculty === faculty;
+      });
+    });
+    if (facultyPool.length > 0) {
+      pool = facultyPool;
+    } else {
+      // no cards of the right faculty at this rank; fall back to any rank within the faculty
+      const alt = cards.filter(c => {
+        if (c.pullable && c.mastery === 1 && c.faculty === faculty) return true;
+        // Also check if any upgrade has the faculty
+        const allVersionIds = getAllCardVersions(c.character);
+        return allVersionIds.some(versionId => {
+          const versionCard = getCardById(versionId);
+          return versionCard && versionCard.faculty === faculty;
+        });
+      });
+      if (alt.length > 0) {
+        pool = alt;
+      }
+      // if alt empty for some reason, keep the unfiltered rank pool as ultimate fallback
+    }
+  }
+
+  const card = pool[Math.floor(Math.random() * pool.length)];
+  return card;
 }
 
 
@@ -140,11 +212,11 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
   // move most metadata into description so only stats use a dedicated field
   let desc = cardDef.title || '';
-  // order: Type, Faculty, Source (only shown if owned), Level (only shown if owned)
-  desc += `\n**Type:** ${cardDef.type}`;
+  // order: Attribute, Faculty, Source (only shown if owned), Level (only shown if owned)
+  desc += `\n**Attribute:** ${cardDef.attribute || cardDef.type || 'unknown'}`;
   // always show the bare faculty name in the description – the emoji is used
   // only for the author icon above the embed.
-  desc += `\n**Faculty:** ${cardDef.faculty}`;
+  desc += `\n**Faculty:** ${cardDef.faculty || 'none'}`;
 
   const embed = new EmbedBuilder()
     .setColor(color)
@@ -183,16 +255,58 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   let totalBoostPct = 0;
   if ((isOwned || !higherVersionOwned) && user && user.ownedCards) {
     const { cards } = require('../data/cards');
+    
+    // Helper: Calculate effective boost percentage for a boost card that may itself be boosted
+    const getEffectiveBoost = (boostCardId, baseBoostPct) => {
+      let effectiveBoost = baseBoostPct;
+      // Check if this boost card receives boosts from other boost cards
+      user.ownedCards.forEach(entry => {
+        const def = cards.find(c => c.id === entry.cardId);
+        if (def && def.type === 'Boost' && def.boost && entry.cardId !== boostCardId) {
+          const boostCard = cards.find(c => c.id === boostCardId);
+          if (boostCard) {
+            // Check if this boost targets the boost card
+            const charRegex = new RegExp(`${boostCard.character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\((\\d+)%\\)`, 'i');
+            const charMatch = def.boost.match(charRegex);
+            if (charMatch) {
+              const applyBoost = parseInt(charMatch[1], 10);
+              effectiveBoost = Math.ceil(effectiveBoost * (1 + applyBoost / 100));
+            }
+          }
+        }
+      });
+      return effectiveBoost;
+    };
+    
     user.ownedCards.forEach(entry => {
       const def = cards.find(c => c.id === entry.cardId);
       if (def && def.type === 'Boost' && def.boost) {
-        // look for exact match of this card's character in the boost string
-        const regex = new RegExp(`${cardDef.character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\((\\d+)%\\)`, 'i');
-        const m = def.boost.match(regex);
-        if (m) {
-          const pct = parseInt(m[1], 10);
-          totalBoostPct += pct;
-          boostEntries.push({ source: def.character, pct });
+        let appliedBoost = false;
+        let boostAmount = 0;
+        
+        // Check for character name match
+        const charRegex = new RegExp(`${cardDef.character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\((\\d+)%\\)`, 'i');
+        const charMatch = def.boost.match(charRegex);
+        if (charMatch) {
+          boostAmount = parseInt(charMatch[1], 10);
+          // Apply boost stacking: if this boost card itself is boosted, scale the percentage
+          boostAmount = getEffectiveBoost(def.id, boostAmount);
+          totalBoostPct += boostAmount;
+          boostEntries.push({ source: def.character, pct: boostAmount });
+          appliedBoost = true;
+        }
+        
+        // Check for faculty/crew match (e.g., "Strawhat Pirates (5%)")
+        if (!appliedBoost && cardDef.faculty) {
+          const facultyRegex = new RegExp(`${cardDef.faculty.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\((\\d+)%\\)`, 'i');
+          const facultyMatch = def.boost.match(facultyRegex);
+          if (facultyMatch) {
+            boostAmount = parseInt(facultyMatch[1], 10);
+            // Apply boost stacking
+            boostAmount = getEffectiveBoost(def.id, boostAmount);
+            totalBoostPct += boostAmount;
+            boostEntries.push({ source: def.character, pct: boostAmount, type: 'faculty' });
+          }
         }
       }
     });
@@ -238,7 +352,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       'stun': `Stuns the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
       'freeze': `Freezes the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
       'cut': `Cuts the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
-      'bleed': `Bleeds the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+      // bleed triggers when the affected card spends energy
+      // (attack/special/ability); duration counts the number of uses
+      'bleed': `Bleeds the opponent for ${duration} energy use${duration > 1 ? 's' : ''}`,
       'team_stun': `Stuns all opponents for ${duration} turn${duration > 1 ? 's' : ''}`
     };
     return effectDescriptions[effectType] || null;
@@ -320,6 +436,20 @@ function calculateFinalStats(cardDef, level, boostPct = 0) {
   return computeScaledStats(cardDef, level, boostPct);
 }
 
+// expose helper for other modules to describe status effects on attacks
+function getEffectDescription(effectType, duration) {
+  const effectDescriptions = {
+    'stun': `Stuns the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'freeze': `Freezes the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'cut': `Cuts the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
+    // bleed triggers when the affected card spends energy
+    // (attack/special/ability); duration counts the number of uses
+    'bleed': `Bleeds the opponent for ${duration} energy use${duration > 1 ? 's' : ''}`,
+    'team_stun': `Stuns all opponents for ${duration} turn${duration > 1 ? 's' : ''}`
+  };
+  return effectDescriptions[effectType] || null;
+}
+
 module.exports = {
   searchCards,
   findFirstCard,
@@ -330,5 +460,7 @@ module.exports = {
   calculateFinalStats,
   getCardById,
   getAllCardVersions,
-  findBestOwnedVersion
+  findBestOwnedVersion,
+  getEffectDescription,
+  simulatePull
 };

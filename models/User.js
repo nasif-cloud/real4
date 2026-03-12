@@ -16,16 +16,17 @@ const UserSchema = new Schema({
   ownedCards: { type: [UserCardSchema], default: [] },
   history: { type: [String], default: [] },
   balance: { type: Number, default: 500 },
+  gems: { type: Number, default: 0 },
+  bounty: { type: Number, default: 100 },
+  totalPulls: { type: Number, default: 0 },
   resetTokens: { type: Number, default: 5 },
   // inventory for future shop/consumables
   items: { type: [{ itemId: String, quantity: Number }], default: [] },
   packs: { type: [{ packType: String, quantity: Number }], default: [] },
   // active team (up to 3 cardIds)
   team: { type: [String], default: [] },
-  // infinite sail progress tracker
-  isailProgress: { type: Number, default: 1 },
-  lastIsailFail: { type: Date, default: null },
-  lastIsailEnemies: { type: [String], default: [] }
+  // pack inventory for global stock system
+  packInventory: { type: Object, default: {} },
 });
 
 module.exports = mongoose.model('User', UserSchema);

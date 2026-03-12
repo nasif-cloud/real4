@@ -44,10 +44,11 @@ module.exports = {
     // If no pulls left, use token directly
     user.resetTokens -= 1;
     user.pullsRemaining = 7;
+    user.gems = (user.gems || 0) + 1;
     user.lastReset = new Date();
     await user.save();
 
-    const reply = `Successfully used a **Reset Token**! Pull count has been reset.`;
+    const reply = `Successfully used a **Reset Token**! Pull count has been reset. You gained **1 Gem**.`;
     if (message) return message.reply(reply);
     return interaction.reply({ content: reply });
   },
@@ -64,10 +65,11 @@ module.exports = {
 
       user.resetTokens -= 1;
       user.pullsRemaining = 7;
+      user.gems = (user.gems || 0) + 1;
       user.lastReset = new Date();
       await user.save();
 
-      return interaction.update({ content: `Successfully used a **Reset Token**! Pull count has been reset.`, components: [] });
+      return interaction.update({ content: `Successfully used a **Reset Token**! Pull count has been reset. You gained **1 Gem**.`, components: [] });
     } else {
       return interaction.update({ content: 'Reset token use cancelled.', components: [] });
     }

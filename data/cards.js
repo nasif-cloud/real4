@@ -36,7 +36,9 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/mtmgbl.jpg'
+    attribute: 'DEX',
+    emoji: '<:MonkeyDLuffy:1481698180209971361>',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/lDbfzvp.png'
   },
   {
     id: 'luffy-u2',
@@ -62,7 +64,8 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/uz9sa9.jpg'
+    upgradeRequirements: ['zoro-u1', 'nami-u1', 'usopp-u1', 'sanji-u1'],
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/g5NhBgN.png'
   },
    {
     id: 'luffy-u3',
@@ -88,7 +91,8 @@ exports.cards = [
     },
     effect: 'bleed',
     effectDuration: 3,
-    image_url: 'https://files.catbox.moe/hhusn4.jpg'
+    upgradeRequirements: ['chopper-u1', 'robin-u1', 'franky-u1', 'brook-u1'],
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/2RJrsJN'
   },
   {
     id: 'luffy-u4',
@@ -100,7 +104,7 @@ exports.cards = [
     mastery: 4,
     mastery_total: 4,
     pullable: false,
-    power: 115,
+    power: 52,
     health: 78,
     speed: 24,
     attack_min: 15,
@@ -113,7 +117,8 @@ exports.cards = [
       gif: 'https://files.catbox.moe/1x0eu8.gif'
     },
     effect: 'Sun God Revival: Revives to max HP once per battle.',
-    image_url: 'https://files.catbox.moe/ugints.jpg'
+    upgradeRequirements: ['jinbe-u1'],
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/deRr9tW'
   },
   {
     id: 'zoro-u1',
@@ -137,7 +142,7 @@ exports.cards = [
       max_atk: 9,
       gif: 'https://files.catbox.moe/mkqkd7.gif'
     },
-    image_url: 'https://files.catbox.moe/pokaq6.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/lst3Ppp.png'
   },
   // new cards added below
   {
@@ -145,7 +150,7 @@ exports.cards = [
     character: 'Makino',
     alias: ['makino'],
     title: 'Barmaid of the Partys Bar',
-    faculty: 'Partys Bar',
+    faculty: null,
     rank: 'D',
     mastery: 1,
     mastery_total: 2,
@@ -157,14 +162,14 @@ exports.cards = [
     attack_max: 0,
     type: 'Boost',
     boost: 'Monkey D. Luffy (5%), Figarland Shanks (5%)',
-    image_url: 'https://files.catbox.moe/4hqls0.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/jygjq2q.png'
   },
   {
     id: 'makino_u2',
     character: 'Makino',
     alias: ['makino'],
     title: 'Seasoned Bartender of Partys Bar',
-    faculty: 'Partys Bar',
+    faculty: null,
     rank: 'C',
     mastery: 2,
     mastery_total: 2,
@@ -176,7 +181,7 @@ exports.cards = [
     attack_max: 0,
     type: 'Boost',
     boost: 'Monkey D. Luffy (7%), Figarland Shanks (7%)',
-    image_url: 'https://files.catbox.moe/4tx179.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/dkqNc3f.png'
   },
   {
     id: 'franky-u1',
@@ -201,7 +206,7 @@ exports.cards = [
       max_atk: 7,
       gif: 'https://files.catbox.moe/yheddw.gif'
     },
-    image_url: 'https://files.catbox.moe/vb0ma0.webp'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/aUSfoWu.png'
   },
   {
     id: 'franky-u2',
@@ -225,7 +230,7 @@ exports.cards = [
       max_atk: 9,
       gif: 'https://files.catbox.moe/ue4qr2.gif'
     },
-    image_url: 'https://files.catbox.moe/ydavi6.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/bMH4EWP.png'
   },
   {
     id: 'franky-u3',
@@ -251,7 +256,7 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/vmqtns.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/ODzjNp3'
   },
   {
     id: 'zoro-u2',
@@ -275,7 +280,7 @@ exports.cards = [
       max_atk: 21,
       gif: 'https://files.catbox.moe/cswvsg.gif'
     },
-    image_url: 'https://files.catbox.moe/ljf7z2.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/o1pXcH8.png'
   },
   {
     id: 'zoro-u3',
@@ -299,10 +304,10 @@ exports.cards = [
       max_atk: 34,
       gif: 'https://files.catbox.moe/o8hcyj.gif'
     },
-    image_url: 'https://files.catbox.moe/1prkog.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/jnsEZ0y'
   },
   {
-    id: 'Nami-u1',
+    id: 'nami-u1',
     character: 'Nami',
     alias: ['nami'],
     title: 'Navigator of the Strawhat Pirates',
@@ -317,10 +322,10 @@ exports.cards = [
     attack_min: 1,
     attack_max: 1,
     type: 'Combat',
-    image_url: 'https://files.catbox.moe/7ld4hp.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/gCh3nWP.png'
   },
   {
-    id: 'Nami-u2',
+    id: 'nami-u2',
     character: 'Nami',
     alias: ['nami'],
     title: 'Cat burglar',
@@ -343,10 +348,10 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/li3t60.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/l05ABiW.png'
   },
   {
-    id: 'Nami-u3',
+    id: 'nami-u3',
     character: 'Nami',
     alias: ['nami'],
     title: 'Cat burglar',
@@ -369,7 +374,7 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/c00kza.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/lwoA9mK'
   },
   {
     id: 'sanji-u1',
@@ -387,7 +392,7 @@ exports.cards = [
     attack_min: 2,
     attack_max: 4,
     type: 'Combat',
-    image_url: 'https://files.catbox.moe/rocqrh.webp'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/UbYf36i.png'
   },
   {
     id: 'Sanji-u2',
@@ -411,7 +416,7 @@ exports.cards = [
       max_atk: 15,
       gif: 'https://files.catbox.moe/x6f0pl.gif'
     },
-    image_url: 'https://files.catbox.moe/tzoisi.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/cEvfr7F.png'
   },
   {
     id: 'Sanji-u3',
@@ -437,10 +442,10 @@ exports.cards = [
     },
     effect: 'cut',
     effectDuration: 3,
-    image_url: 'https://files.catbox.moe/5yyjh6.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/kLga5EL'
   },
   {
-    id: 'Chopper-u1',
+    id: 'chopper-u1',
     character: 'Tony Tony Chopper',
     alias: ['chopper'],
     title: 'Cotton Candy Lover',
@@ -455,10 +460,10 @@ exports.cards = [
     attack_min: 0,
     attack_max: 0,
     type: 'Boost',
-    image_url: 'https://files.catbox.moe/3alz8p.webp'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/MegxsOu.png'
   },
   {
-    id: 'Chopper-u2',
+    id: 'chopper-u2',
     character: 'Tony Tony Chopper',
     alias: ['chopper'],
     title: 'Monster Point',
@@ -481,14 +486,14 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/pjqm7b.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/QEfJIhZ.png'
   },
   {
-    id: 'Usopp-u1',
+    id: 'usopp-u1',
     character: 'Usopp',
     alias: ['usopp', 'god'],
     title: 'Sharpshooter of the Strawhat Pirates',
-    faculty: 'Strawhat Pirates',
+    faculty: 'Usopp Pirates',
     rank: 'C',
     mastery: 1,
     mastery_total: 3,
@@ -499,10 +504,10 @@ exports.cards = [
     attack_min: 1,
     attack_max: 1,
     type: 'Combat',
-    image_url: 'https://files.catbox.moe/zab1c1.webp'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/elLlCS9.png'
   },
   {
-    id: 'Usopp-u2',
+    id: 'usopp-u2',
     character: 'Usopp',
     alias: ['usopp', 'god'],
     title: 'Sniper king',
@@ -523,10 +528,10 @@ exports.cards = [
       max_atk: 7,
       gif: 'https://files.catbox.moe/vsztx7.gif'
     },
-    image_url: 'https://files.catbox.moe/zi8avu.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/j84FU8x.png'
   },
   {
-    id: 'Usopp-u3',
+    id: 'usopp-u3',
     character: 'Usopp',
     alias: ['usopp', 'god'],
     title: 'GOD',
@@ -549,14 +554,14 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/izrg20.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/7tRPjue'
   },
   {
     id: 'robin-u1',
     character: 'Nico Robin',
     alias: ['robin',],
     title: 'Miss all Sunday',
-    faculty: 'Strawhat Pirates',
+    faculty: 'Boroque Works',
     rank: 'A',
     mastery: 1,
     mastery_total: 3,
@@ -567,7 +572,7 @@ exports.cards = [
     attack_min: 3,
     attack_max: 4,
     type: 'Combat',
-    image_url: 'https://files.catbox.moe/sebbdi.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/WQNJRUG.png'
   },
   {
     id: 'robin-u2',
@@ -593,7 +598,7 @@ exports.cards = [
     },
     effect: 'stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/jvweyp.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/AbucvHW.png'
   },
   {
     id: 'robin-u3',
@@ -619,7 +624,7 @@ exports.cards = [
     },
     effect: 'team_stun',
     effectDuration: 1,
-    image_url: 'https://files.catbox.moe/k5l9ss.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/p5LTjdh'
   },
   {
     id: 'Brook-u1',
@@ -637,7 +642,7 @@ exports.cards = [
     attack_min: 3,
     attack_max: 5,
     type: 'Combat',
-    image_url: 'https://files.catbox.moe/w7zohw.webp'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/RwUFlMT.png'
   },
   {
     id: 'Brook-u2',
@@ -663,7 +668,7 @@ exports.cards = [
     },
     effect: 'freeze',
     effectDuration: 2,
-    image_url: 'https://files.catbox.moe/oofv7k.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/q6WvmnM.png'
   },
   {
     id: 'Brook-u3',
@@ -689,10 +694,10 @@ exports.cards = [
     },
     effect: 'freeze',
     effectDuration: 2,
-    image_url: 'https://files.catbox.moe/un0m1n.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/bBAXniE'
   },
   {
-    id: 'Jinbe-u1',
+    id: 'jinbe-u1',
     character: 'Jinbe',
     alias: ['Jimbei',],
     title: 'Warlord of the sea',
@@ -707,10 +712,12 @@ exports.cards = [
     attack_min: 3,
     attack_max: 5,
     type: 'Tank',
-    image_url: 'https://files.catbox.moe/47xh9e.webp'
+    attribute: 'QCK',
+    emoji: '<:Jinbe:1481698679936127027>',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/KDhnqgL.png'
   },
   {
-    id: 'Jinbe-u2',
+    id: 'jinbe-u2',
     character: 'Jinbe',
     alias: ['Jimbei',],
     title: 'Pilot of the Strawhat Pirates',
@@ -731,11 +738,11 @@ exports.cards = [
       max_atk: 15,
       gif: 'https://files.catbox.moe/1gvgyc.gif'
     },
-    image_url: 'https://files.catbox.moe/dfemxu.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/YBCTiWq.png'
   },
   
   {
-    id: 'Jinbe-u3',
+    id: 'jinbe-u3',
     character: 'Jinbe',
     alias: ['Jimbei',],
     title: 'Knight of the Sea',
@@ -756,6 +763,440 @@ exports.cards = [
       max_atk: 17,
       gif: 'https://files.catbox.moe/mwl2r5.gif'
     },
-    image_url: 'https://files.catbox.moe/gm4lnd.jpg'
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/4NFb31i'
   },
+  {
+    id: 'alvida-u1',
+    character: 'Alvida',
+    alias: ['alvida',],
+    title: 'Captain of the Alvida Pirates',
+    faculty: 'Alvida Pirates',
+    rank: 'C',
+    mastery: 1,
+    mastery_total: 3,
+    pullable: true,
+    power: 9,
+    health: 10,
+    speed: 1,
+    attack_min: 2,
+    attack_max: 3,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/kF9E2EE.png'
+  },
+  {
+    id: 'alvida-u2',
+    character: 'Alvida',
+    alias: ['alvida',],
+    title: 'Iron Mace',
+    faculty: 'Buggy Pirates',
+    rank: 'A',
+    mastery: 2,
+    mastery_total: 3,
+    pullable: false,
+    power: 15,
+    health: 28,
+    speed: 5,
+    attack_min: 3,
+    attack_max: 5,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/Ka5AkQC.png'
+  },
+  {
+    id: 'alvida-u3',
+    character: 'Alvida',
+    alias: ['alvida',],
+    title: 'Iron Mace',
+    faculty: 'Cross Guild',
+    rank: 'A',
+    mastery: 3,
+    mastery_total: 3,
+    pullable: false,
+    power: 18,
+    health: 30,
+    speed: 7,
+    attack_min: 4,
+    attack_max: 6,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/ENnEHR1.png'
+  },
+  {
+    id: 'coby-u1',
+    character: 'Coby',
+    alias: ['koby',],
+    title: 'Cabin boy',
+    faculty: 'Alvida Pirates',
+    rank: 'D',
+    mastery: 1,
+    mastery_total: 3,
+    pullable: true,
+    power: 1,
+    health: 5,
+    speed: 1,
+    attack_min: 0,
+    attack_max: 1,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/9BylcGi.png'
+  },
+  {
+    id: 'coby-u2',
+    character: 'Coby',
+    alias: ['koby',],
+    title: 'Master Chief Petty Officer',
+    faculty: 'Marines',
+    rank: 'B',
+    mastery: 2,
+    mastery_total: 3,
+    pullable: false,
+    power: 10,
+    health: 13,
+    speed: 2,
+    attack_min: 1,
+    attack_max: 3,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/aamlTog.png'
+  },
+  {
+    id: 'coby-u3',
+    character: 'Coby',
+    alias: ['koby',],
+    title: 'Koby the Hero',
+    faculty: 'Marines',
+    rank: 'S',
+    mastery: 3,
+    mastery_total: 3,
+    pullable: false,
+    power: 28,
+    health: 39,
+    speed: 10,
+    attack_min: 7,
+    attack_max: 10,
+    type: 'Combat',
+    special_attack: {
+      name: 'Honesty Impact',
+      min_atk: 16,
+      max_atk: 24,
+      gif: 'https://one-piece-artworks.com/app/view/assets/img/rHRC8mf'
+    },
+    effect: 'stun',
+    effectDuration: 2,
+    image_url: 'https://files.catbox.moe/5z2a8n.jpg'
+  },
+  {
+    id: 'Buggy-u1',
+    character: 'Buggy',
+    alias: ['buggy',],
+    title: 'Captain of the Buggy Pirates',
+    faculty: 'Buggy Pirates',
+    rank: 'B',
+    mastery: 1,
+    mastery_total: 3,
+    pullable: true,
+    power: 11,
+    health: 14,
+    speed: 2,
+    attack_min: 2,
+    attack_max: 3,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/AZNSg7Z.png'
+  },
+  {
+    id: 'Buggy-u2',
+    character: 'Buggy',
+    alias: ['buggy',],
+    title: 'The Star Clown',
+    faculty: 'Buggy Pirates',
+    rank: 'A',
+    mastery: 2,
+    mastery_total: 3,
+    pullable: false,
+    power: 16,
+    health: 28,
+    speed: 5,
+    attack_min: 2,
+    attack_max: 4,
+    type: 'Combat',
+    special_attack: {
+      name: 'Bara Bara Festival',
+      min_atk: 3,
+      max_atk: 9,
+      gif: 'https://files.catbox.moe/7igapl.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/onGEdMW.png'
+  },
+  {
+    id: 'Buggy-u3',
+    character: 'Buggy',
+    alias: ['buggy',],
+    title: 'Emperor of the new World',
+    faculty: 'Cross Guild',
+    rank: 'S',
+    mastery: 3,
+    mastery_total: 3,
+    pullable: false,
+    power: 22,
+    health: 35,
+    speed: 9,
+    attack_min: 6,
+    attack_max: 7,
+    type: 'Combat',
+    special_attack: {
+      name: 'Bara Bara Festival',
+      min_atk: 11,
+      max_atk: 15,
+      gif: 'https://files.catbox.moe/7igapl.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/hXkq04a'
+  },
+  {
+    id: 'Galdino-u1',
+    character: 'Galdino',
+    alias: ['Mr. 3',],
+    title: 'Mr.3 Of Boroque Works',
+    faculty: 'Boroque Works',
+    rank: 'A',
+    mastery: 1,
+    mastery_total: 3,
+    pullable: true,
+    power: 16,
+    health: 18,
+    speed: 3,
+    attack_min: 3,
+    attack_max: 5,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/McvTEak.png'
+  },
+  {
+    id: 'Galdino-u2',
+    character: 'Galdino',
+    alias: ['Mr. 3',],
+    title: 'Loan Shark',
+    faculty: 'Buggy Pirates',
+    rank: 'A',
+    mastery: 2,
+    mastery_total: 3,
+    pullable: false,
+    power: 17,
+    health: 28,
+    speed: 4,
+    attack_min: 3,
+    attack_max: 6,
+    type: 'Combat',
+      special_attack: {
+      name: 'Wax Weapons',
+      min_atk: 5,
+      max_atk: 12,
+      gif: 'https://media1.tenor.com/m/RIcW9zpVekAAAAAC/mr3.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/KeZHoqt.png'
+  },
+  {
+    id: 'Galdino-u3',
+    character: 'Galdino',
+    alias: ['Mr. 3',],
+    title: 'Loan Shark',
+    faculty: 'Cross Guild',
+    rank: 'A',
+    mastery: 3,
+    mastery_total: 3,
+    pullable: false,
+    power: 20,
+    health: 30,
+    speed: 6,
+    attack_min: 4,
+    attack_max: 7,
+    type: 'Combat',
+      special_attack: {
+      name: 'Wax Weapons',
+      min_atk: 7,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/RIcW9zpVekAAAAAC/mr3.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/ztgxNN8.png'
+  },
+  {
+    id: 'crocodile-u1',
+    character: 'Crocodile',
+    alias: ['mr. 0',],
+    title: 'President of Boroque Works',
+    faculty: 'Boroque Works',
+    rank: 'A',
+    mastery: 1,
+    mastery_total: 3,
+    pullable: true,
+    power: 20,
+    health: 30,
+    speed: 5,
+    attack_min: 4,
+    attack_max: 6,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/uuR19Hs.png'
+  },
+  {
+    id: 'crocodile-u2',
+    character: 'Crocodile',
+    alias: ['mr. 0',],
+    title: 'Former Warlord of the Sea',
+    faculty: null,
+    rank: 'S',
+    mastery: 2,
+    mastery_total: 3,
+    pullable: false,
+    power: 21,
+    health: 32,
+    speed: 5,
+    attack_min: 4,
+    attack_max: 7,
+    type: 'Combat',
+          special_attack: {
+      name: 'Sables (Sandstorm)',
+      min_atk: 7,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/p8kha-qt3isAAAAC/crocodile-warlord.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/ycjwoCK.png'
+  },
+  {
+    id: 'crocodile-u3',
+    character: 'Crocodile',
+    alias: ['mr. 0',],
+    title: 'Desert King',
+    faculty: 'Cross Guild',
+    rank: 'S',
+    mastery: 3,
+    mastery_total: 3,
+    pullable: false,
+    power: 29,
+    health: 44,
+    speed: 10,
+    attack_min: 7,
+    attack_max: 11,
+    type: 'Combat',
+          special_attack: {
+      name: 'Sables (Sandstorm)',
+      min_atk: 13,
+      max_atk: 23,
+      gif: 'https://media1.tenor.com/m/VbmZWE02BkMAAAAd/crocodile-crocodile-one-piece.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/N8RUyMn'
+  },
+  {
+    id: 'mihawk-u1',
+    character: 'Dracule Mihawk',
+    alias: ['fraud',],
+    title: 'Strongest Swordsman in the World',
+    faculty: null,
+    rank: 'SS',
+    mastery: 1,
+    mastery_total: 2,
+    pullable: true,
+    power: 46,
+    health: 70,
+    speed: 13,
+    attack_min: 15,
+    attack_max: 18,
+    type: 'Combat',
+          special_attack: {
+      name: 'Black Blade One Flash',
+      min_atk: 29,
+      max_atk: 40,
+      gif: 'https://media1.tenor.com/m/vf5isZQBOX0AAAAd/jozu-mihawk.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/KcnD5km'
+  },
+  {
+    id: 'mihawk-u2',
+    character: 'Dracule Mihawk',
+    alias: ['fraud',],
+    title: 'Strongest Swordsman in the World',
+    faculty: null,
+    rank: 'UR',
+    mastery: 2,
+    mastery_total: 2,
+    pullable: false,
+    power: 54,
+    health: 80,
+    speed: 18,
+    attack_min: 17,
+    attack_max: 20,
+    type: 'Combat',
+          special_attack: {
+      name: 'Black Blade One Flash',
+      min_atk: 34,
+      max_atk: 44,
+      gif: 'https://media1.tenor.com/m/vf5isZQBOX0AAAAd/jozu-mihawk.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/fiLOArn'
+  },
+  {
+    id: 'dazbones-u1',
+    character: 'Daz Bones',
+    alias: ['Mr. 1',],
+    title: 'Mr. 1 Of Boroque Works',
+    faculty: 'Boroque Works',
+    rank: 'B',
+    mastery: 1,
+    mastery_total: 3,
+    pullable: true,
+    power: 15,
+    health: 22,
+    speed: 3,
+    attack_min: 2,
+    attack_max: 5,
+    type: 'Combat',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/BDPmWCR.png'
+  },
+  {
+    id: 'dazbones-u2',
+    character: 'Daz Bones',
+    alias: ['Mr. 1',],
+    title: 'The Killer',
+    faculty: null,
+    rank: 'A',
+    mastery: 2,
+    mastery_total: 3,
+    pullable: false,
+    power: 17,
+    health: 26,
+    speed: 4,
+    attack_min: 3,
+    attack_max: 5,
+    type: 'Combat',
+     special_attack: {
+      name: 'Spar Claw',
+      min_atk: 5,
+      max_atk: 11,
+      gif: 'https://media1.tenor.com/m/FESeJXBo8lsAAAAd/one-piece-anime.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/rLv6C7O.png'
+  },
+  {
+    id: 'dazbones-u3',
+    character: 'Daz Bones',
+    alias: ['Mr. 1',],
+    title: 'The Killer',
+    faculty: 'Cross Guild',
+    rank: 'A',
+    mastery: 3,
+    mastery_total: 3,
+    pullable: false,
+    power: 19,
+    health: 30,
+    speed: 5,
+    attack_min: 4,
+    attack_max: 6,
+    type: 'Combat',
+     special_attack: {
+      name: 'Spar Claw',
+      min_atk: 7,
+      max_atk: 13,
+      gif: 'https://media1.tenor.com/m/FESeJXBo8lsAAAAd/one-piece-anime.gif'
+    },
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/Ut0pOgP'
+  },
+  // Additional cards from morecards.js
+  ...require('./morecards').moreCards
 ];
