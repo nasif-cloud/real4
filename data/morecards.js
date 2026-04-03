@@ -1,86 +1,41 @@
 // Secondary card dataset - additional characters from early arcs
 exports.moreCards = [
   // Alvida Pirates trio
-  { id: 'heppoko-u1', character: 'Heppoko', alias: ['heppoko'], title: 'Member of Alvida Pirates', faculty: 'Alvida Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 4, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/8zp9fz.webp' },
-  { id: 'peppoko-u1', character: 'Peppoko', alias: ['peppoko'], title: 'Member of Alvida Pirates', faculty: 'Alvida Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 3, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/gifxf9.webp' },
-  { id: 'poppoko-u1', character: 'Poppoko', alias: ['poppoko'], title: 'Member of Alvida Pirates', faculty: 'Alvida Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 4, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/55j9uj.webp' },
   
   // Buggy Pirates - single upgrades
-  { id: 'funan-u1', character: 'Tightrope Walking Funan Bros', alias: ['funan', 'funan bros', 'tightrope'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 3, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/1ez338.webp' },
-  { id: 'domingos-u1', character: 'Superhuman Domingos', alias: ['domingos', 'superhuman'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 3, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/yekz1r.webp' },
-  { id: 'fuwas-u1', character: 'Acrobatic Fuwas', alias: ['fuwas', 'acrobatic'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 4, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/7iw49q.webp' },
-  { id: 'kinoko-u1', character: 'Kinoko', alias: ['kinoko'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 1, health: 3, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://files.catbox.moe/nrzn7g.webp' },
   
   // Buggy Pirates - multi-upgrade characters
-  { id: 'mohji-u1', character: 'Mohji', alias: ['mohji'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'C', mastery: 1, mastery_total: 2, pullable: true, power: 7, health: 10, speed: 1, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://files.catbox.moe/tmzqwm.webp' },
-  { id: 'mohji-u2', character: 'Mohji', alias: ['mohji'], title: 'Member of Cross Guild', faculty: 'Cross Guild', rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 8, health: 12, speed: 2, attack_min: 1, attack_max: 3, type: 'Combat', image_url: 'https://files.catbox.moe/khoesd.webp' },
   
-  { id: 'richie-u1', character: 'Richie', alias: ['richie'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'C', mastery: 1, mastery_total: 2, pullable: true, power: 6, health: 10, speed: 1, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://files.catbox.moe/q8yru9.webp' },
-  { id: 'richie-u2', character: 'Richie', alias: ['richie'], title: 'Member of Cross Guild', faculty: 'Cross Guild', rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 8, health: 12, speed: 2, attack_min: 1, attack_max: 3, type: 'Combat', image_url: 'https://files.catbox.moe/k1gdg7.webp' },
   
-  { id: 'cabaji-u1', character: 'Cabaji', alias: ['cabaji'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 7, health: 11, speed: 1, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://files.catbox.moe/j6ivbr.webp' },
   
-  { id: 'mooji-u1', character: 'Mooji', alias: ['mooji'], title: 'Member of Buggy Pirates', faculty: 'Buggy Pirates', rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 7, health: 10, speed: 1, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://files.catbox.moe/oz3pnl.webp' },
 
   // Shells Town area - Rika and support characters
-  { id: 'rika-u1', character: 'Rika', alias: ['rika'], title: 'Shells Town', faculty: null, rank: 'D', mastery: 1, mastery_total: 2, pullable: true, power: 2, health: 4, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Strawhat Pirates (2%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/e/ef/Rika_Manga_Pre_Timeskip_Infobox.png/revision/latest?cb=20170318151730' },
-  { id: 'rika-u2', character: 'Rika', alias: ['rika'], title: 'Waitress at the 153rd Marine Branch', faculty: 'Marines', rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 6, health: 10, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Strawhat Pirates (3%), Marines HP (3%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/1/1b/Rika_Manga_Post_Timeskip_Infobox.png/revision/latest?cb=20170318151459' },
   
-  { id: 'soro-u1', character: 'Soro', alias: ['soro', 'helmeppo pet'], title: 'Helmeppo\'s Pet', faculty: 'Marines', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 3, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/2/22/Soro_Anime_Infobox.png/revision/latest?cb=20130123225106' },
   
-  { id: 'ririka-u1', character: 'Ririka', alias: ['ririka'], title: 'Shells Town', faculty: null, rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 1, health: 3, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Rika (5%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/b/bd/Ririka_Anime_Infobox.png/revision/latest?cb=20190625084415' },
 
   // Early East Blue area
-  { id: 'kuina-u1', character: 'Shimotsuki Kuina', alias: ['kuina', 'shimotsuki kuina'], title: 'Trainee Swordsman', faculty: null, rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 8, health: 12, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://one-piece-artworks.com/app/view/assets/img/NLEJUOD.png' },
   
-  { id: 'rokkaku-u1', character: 'Rokkaku', alias: ['rokkaku'], title: 'Marine Lieutenant Junior Grade', faculty: 'Marines', rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 7, health: 11, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/d/d2/Rokkaku_Anime_Infobox.png/revision/latest?cb=20240306171149' },
   
-  { id: 'ukkari-u1', character: 'Ukkari', alias: ['ukkari'], title: 'Marine Seaman Recruit', faculty: 'Marines', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/a/ad/Ukkari_Anime_Infobox.png/revision/latest?cb=20181013120427' },
   
-  { id: 'ripper-u1', character: 'Ripper', alias: ['ripper'], title: 'Marine Commander; Base Commander', faculty: 'Marines', rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 8, health: 12, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/8/82/Ripper_Anime_Infobox.png/revision/latest?cb=20240306170748' },
   
-  { id: 'higuma-u1', character: 'Higuma', alias: ['higuma'], title: 'Leader of the Higuma Bandits', faculty: null, rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 9, health: 13, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/e/e2/Higuma_Anime_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20220828051240' },
 
   // Foosha Village - Woop Slap
-  { id: 'woopslap-u1', character: 'Woop Slap', alias: ['woop slap', 'woopslap'], title: 'Mayor of Foosha Village', faculty: null, rank: 'C', mastery: 1, mastery_total: 2, pullable: true, power: 5, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Monkey D. Luffy (3%), Monkey D. Garp (3%), Makino (3%), Dadan (3%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/6/67/Woop_Slap_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20130704102653' },
-  { id: 'woopslap-u2', character: 'Woop Slap', alias: ['woop slap', 'woopslap'], title: 'Mayor of Foosha Village', faculty: null, rank: 'B', mastery: 2, mastery_total: 2, pullable: false, power: 10, health: 16, speed: 2, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Monkey D. Luffy (5%), Monkey D. Garp (5%), Makino (5%), Dadan (5%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/b/bf/Woop_Slap_Anime_Post_Timeskip_Infobox.png/revision/latest?cb=20190519184815' },
 
   // Sea creatures and forest
-  { id: 'lordcoast-u1', character: 'Lord of the Coast', alias: ['lord of the coast', 'sea king'], title: 'Type C Creature', faculty: null, rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 9, health: 13, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/a/a5/Lord_of_the_Coast_Anime_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20240723123231' },
   
-  { id: 'pinky-u1', character: 'Pinky', alias: ['pinky'], title: 'Type C Creature', faculty: null, rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 4, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/6/63/Pinky_Anime_Infobox.png/revision/latest?cb=20250526230606' },
 
   // Orange Town
-  { id: 'chouchou-u1', character: 'Chouchou', alias: ['chouchou'], title: 'Dog from Orange Town', faculty: null, rank: 'D', mastery: 1, mastery_total: 2, pullable: true, power: 2, health: 4, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Boodle (3%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/2/2d/Chouchou_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20240512205010' },
-  { id: 'chouchou-u2', character: 'Chouchou', alias: ['chouchou'], title: 'Dog from Orange Town', faculty: null, rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 5, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Boodle (5%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/3/3d/Chouchou_Anime_Post_Timeskip_Infobox.png/revision/latest?cb=20251102161457' },
 
-  { id: 'boodle-u1', character: 'Boodle', alias: ['boodle'], title: 'Mayor of Orange Town', faculty: null, rank: 'C', mastery: 1, mastery_total: 2, pullable: true, power: 5, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Strawhat Pirates (3%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/c/c0/Boodle_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20240516215612' },
-  { id: 'boodle-u2', character: 'Boodle', alias: ['boodle'], title: 'Mayor of Orange Town', faculty: null, rank: 'B', mastery: 2, mastery_total: 2, pullable: false, power: 10, health: 16, speed: 2, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Strawhat Pirates (5%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/a/a9/Boodle_Anime_Post_Timeskip_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20251102161418' },
   
-  { id: 'hocker-u1', character: 'Hocker', alias: ['hocker'], title: 'Owner of the Pet Food Shop in Orange Town', faculty: null, rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 2, health: 4, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Chouchou (3%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/d/db/Hocker_Anime_Infobox.png/revision/latest?cb=20240513003848' },
   
-  { id: 'poro-u1', character: 'Poro', alias: ['poro'], title: 'Bookstore Owner in Orange Town', faculty: null, rank: 'D', mastery: 1, mastery_total: 2, pullable: true, power: 2, health: 4, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Boodle (3%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/3/3b/Poro_Anime_Pre_Timeskip_Infobox.png/revision/latest?cb=20100629215710' },
-  { id: 'poro-u2', character: 'Poro', alias: ['poro'], title: 'Bookstore Owner in Orange Town', faculty: null, rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 5, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Boodle (5%)', image_url: 'https://static.wikia.nocookie.net/onepiece/images/6/65/Poro_Manga_Post_Timeskip_Infobox.png/revision/latest?cb=20190120065016' },
 
   // Syrup Village - Usopp Pirates
-  { id: 'ninjin-u1', character: 'Ninjin', alias: ['ninjin'], title: 'Member of the Usopp Pirates', faculty: 'Usopp Pirates', rank: 'D', mastery: 1, mastery_total: 2, pullable: true, power: 2, health: 4, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://one-piece-artworks.com/app/view/assets/img/zRHY81Q.png' },
-  { id: 'ninjin-u2', character: 'Ninjin', alias: ['ninjin'], title: 'Former Member of the Usopp Pirates', faculty: 'Usopp Pirates', rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 6, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Usopp (5%)', image_url: 'https://one-piece-artworks.com/app/view/assets/img/aiEjW40.png' },
   
-  { id: 'piiman-u1', character: 'Piiman', alias: ['piiman'], title: 'Member of the Usopp Pirates', faculty: 'Usopp Pirates', rank: 'D', mastery: 1, mastery_total: 2, pullable: true, power: 3, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://one-piece-artworks.com/app/view/assets/img/zRHY81Q.png' },
-  { id: 'piiman-u2', character: 'Piiman', alias: ['piiman'], title: 'Former Member of the Usopp Pirates', faculty: 'Usopp Pirates', rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 6, health: 10, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Usopp (5%)', image_url: 'https://one-piece-artworks.com/app/view/assets/img/aiEjW40.png' },
   
-  { id: 'tamanegi-u1', character: 'Tamanegi', alias: ['tamanegi'], title: 'Member of the Usopp Pirates', faculty: 'Usopp Pirates', rank: 'D', mastery: 1, mastery_total: 2, pullable: true, power: 2, health: 4, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://one-piece-artworks.com/app/view/assets/img/zRHY81Q.png' },
-  { id: 'tamanegi-u2', character: 'Tamanegi', alias: ['tamanegi'], title: 'Former Member of the Usopp Pirates', faculty: 'Usopp Pirates', rank: 'C', mastery: 2, mastery_total: 2, pullable: false, power: 6, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Usopp (5%)', image_url: 'https://one-piece-artworks.com/app/view/assets/img/aiEjW40.png' },
   
-  { id: 'mansions-u1', character: 'Mansion\'s Guards', alias: ['mansions guards', 'guards'], title: 'Kaya\'s Security Guards', faculty: 'Usopp Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 3, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/9/93/Mansion%27s_Guards_Manga_Infobox.png/revision/latest?cb=20130127094833' },
   
-  { id: 'kaya-u1', character: 'Kaya', alias: ['kaya'], title: 'Syrup Village', faculty: 'Usopp Pirates', rank: 'C', mastery: 1, mastery_total: 2, pullable: true, power: 5, health: 9, speed: 1, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Usopp Pirates (5%), Going Merry (5%)', image_url: 'https://one-piece-artworks.com/app/view/assets/img/Y58dOKE.png' },
-  { id: 'kaya-u2', character: 'Kaya', alias: ['kaya'], title: 'Medical Student', faculty: 'Usopp Pirates', rank: 'B', mastery: 2, mastery_total: 2, pullable: false, power: 10, health: 16, speed: 2, attack_min: 0, attack_max: 0, type: 'Boost', boost: 'Usopp Pirates (10%), Going Merry (10%)', image_url: 'https://one-piece-artworks.com/app/view/assets/img/yhWZhcp.png' },
 
   // Black Cat Pirates - Note: Black Cat Pirates not in crews.js, use null faculty
-  { id: 'nugire-u1', character: 'Nugire Yainu', alias: ['nugire yainu', 'nugire'], title: 'Shipwright of the Black Cat Pirates', faculty: 'Black Cat Pirates', rank: 'D', mastery: 1, mastery_total: 1, pullable: true, power: 3, health: 5, speed: 1, attack_min: 1, attack_max: 1, type: 'Combat', image_url: 'https://static.wikia.nocookie.net/onepiece/images/5/58/Nugire_Yainu_Anime_Infobox.png/revision/latest?cb=20221026005439' },
   
-  { id: 'sham-u1', character: 'Sham', alias: ['sham'], title: 'Officer of the Black Cat Pirates', faculty: 'Black Cat Pirates', rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 7, health: 11, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://one-piece-artworks.com/app/view/assets/img/Iq5ljKT.png' },
   
-  { id: 'buchi-u1', character: 'Buchi', alias: ['buchi'], title: 'Officer of the Black Cat Pirates', faculty: 'Black Cat Pirates', rank: 'C', mastery: 1, mastery_total: 1, pullable: true, power: 8, health: 12, speed: 2, attack_min: 1, attack_max: 2, type: 'Combat', image_url: 'https://one-piece-artworks.com/app/view/assets/img/q7Y7eBP.png' }
 ];

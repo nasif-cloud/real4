@@ -46,6 +46,7 @@ module.exports = {
       .setTitle(`${username}'s Profile`)
       .setThumbnail(avatarUrl)
       .addFields(
+        { name: 'Bounty', value: `¥${user.bounty || 100}`, inline: true },
         { name: '**Rankings**', value: `Wealth: #${wealthRank}\nBounty: #${bountyRank}\nDex: #${dexRank}`, inline: false },
         { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}`, inline: false }
       );
@@ -53,4 +54,38 @@ module.exports = {
     if (message) return message.channel.send({ embeds: [embed] });
     return interaction.reply({ embeds: [embed] });
   }
+};
+
+module.exports.buildUserProfileEmbed = async function (targetId, discordUser) {
+  const user = await User.findOne({ userId: targetId });
+  if (!user) return null;
+
+  const username = discordUser.username;
+  const avatarUrl = discordUser.displayAvatarURL();
+
+  const uniqueCardsCount = user.ownedCards ? user.ownedCards.length : 0;
+  const totalCardsCount = cardDefs.filter(c => c.pullable).length;
+
+  const allUsers = await User.find({});
+  const wealthRank = allUsers
+    .sort((a, b) => (b.balance || 0) - (a.balance || 0))
+    .findIndex(u => u.userId === targetId) + 1;
+  const bountyRank = allUsers
+    .sort((a, b) => (b.bounty || 100) - (a.bounty || 100))
+    .findIndex(u => u.userId === targetId) + 1;
+  const dexRank = allUsers
+    .sort((a, b) => (b.ownedCards?.length || 0) - (a.ownedCards?.length || 0))
+    .findIndex(u => u.userId === targetId) + 1;
+
+  const embed = new EmbedBuilder()
+    .setColor('#FFFFFF')
+    .setTitle(`${username}'s Profile`)
+    .setThumbnail(avatarUrl)
+    .addFields(
+      { name: 'Bounty', value: `¥${user.bounty || 100}`, inline: true },
+      { name: '**Rankings**', value: `Wealth: #${wealthRank}\nBounty: #${bountyRank}\nDex: #${dexRank}`, inline: false },
+      { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}`, inline: false }
+    );
+
+  return embed;
 };

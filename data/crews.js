@@ -42,4 +42,19 @@ module.exports = [
     icon: '<:BlackCatPirates:1481637030629867650>',
     rank: 'D'
   },
+  {
+    name: "Red-Haired Pirates",
+    icon: '<:redhairpirates:1489447902391570432>',
+    rank: 'S'
+  },
+  {
+    name: "Blackbeard Pirates",
+    icon: 'EMOJI_PLACEHOLDER',
+    rank: 'S'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: 'EMOJI_PLACEHOLDER',
+    rank: 'S'
+  },
 ];

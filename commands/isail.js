@@ -4,6 +4,9 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 
 // helper to safely defer interaction updates without crashing on expired ones
 async function safeDefer(interaction) {
+  // If already acknowledged, nothing to do
+  if (interaction.deferred || interaction.replied) return;
+
   try {
     await interaction.deferUpdate();
   } catch (e) {
@@ -18,6 +21,7 @@ const marines = require('../data/marines');
 const { resolveStats } = require('../utils/statResolver');
 const { getEffectDescription } = require('../utils/cards');
 const { getDamageMultiplier, getAttributeDescription } = require('../utils/attributeSystem');
+const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 
 
 
@@ -33,18 +37,15 @@ const {
   getStatusLockReason,
   applyStartOfTurnEffects: applyStatusesForTurn,
   applyCardEffect: applyCardEffectShared,
-  calculateUserDamage: calculateUserDamageShared
+  calculateUserDamage: calculateUserDamageShared,
+  hasTruesight,
+  consumeTruesight,
+  handleKO
 } = statusManager;
 
 
 const calculateUserDamage = calculateUserDamageShared;
 
-// map for card-type emojis (same as team command)
-const TYPE_EMOJIS = {
-  Combat: '<:combat:1478019288668438528>',
-  Tank: '<:tank:1478019541580648539>',
-  Special: '<:special:1478020172496506932>'
-};
 
 // key: message.id -> state object
 const battleStates = new Map();
@@ -52,11 +53,78 @@ const battleStates = new Map();
 const OWNER_ID = process.env.OWNER_ID;
 
 function hpBar(current, max) {
-  if (max <= 0) return '';
-  const segments = 10;
-  const filled = Math.round((current / max) * segments);
-  const empty = segments - filled;
-  return '▬'.repeat(filled) + '▭'.repeat(empty);
+  if (max <= 0 || current <= 0) {
+    return '<:Healthemptyleft:1481750325151928391>'
+      + '<:Healthemptymiddle:1481750341489004596>'.repeat(6)
+      + '<:healthemptyright:1481750363286667334>';
+  }
+  
+  // Calculate percentage of health remaining
+  const healthPercent = Math.max(0, Math.min(1, current / max));
+  // 6 middle sections, so we have 0-6 filled sections
+  const filledSections = Math.floor(healthPercent * 6);
+  
+  // Build the bar: right-to-left filling
+  const leftIcon = '<:Healthfullleft:1481750264074469437>';
+  const rightIcon = filledSections === 6 ? '<:healthfullright:1481750302679105710>' : '<:healthemptyright:1481750363286667334>';
+  
+  let bar = leftIcon;
+  
+  // Add filled middle sections first (on left side for left-to-right filling)
+  for (let i = 0; i < filledSections; i++) {
+    bar += '<:healthfullmiddle:1481750286795149435>';
+  }
+  
+  // Add empty middle sections after (on right side)
+  for (let i = filledSections; i < 6; i++) {
+    bar += '<:Healthemptymiddle:1481750341489004596>';
+  }
+  
+  bar += rightIcon;
+  return bar;
+}
+
+function getEffectString(card, target) {
+  if (!card.def.effect) return '';
+  if (card.def.effect === 'team_stun') {
+    return ` (${STATUS_EMOJIS.stun} stuns the whole crew for **${card.def.effectDuration || 1}** turn(s))`;
+  } else {
+    const effectVerbs = {
+      'stun': 'stuns',
+      'freeze': 'freezes',
+      'cut': 'cuts',
+      'bleed': 'bleeds',
+      'regen': 'regenerates',
+      'confusion': 'confuses',
+      'attackup': 'boosts attack on',
+      'attackdown': 'reduces attack on',
+      'defenseup': 'boosts defense on',
+      'defensedown': 'reduces defense on',
+      'truesight': 'grants truesight to',
+      'undead': 'grants undead to'
+    };
+    const verb = effectVerbs[card.def.effect] || 'affects';
+    const duration = card.def.effectDuration || 1;
+    const targetName = card.def.itself ? card.def.character : (target ? (target.rank || target.def?.character) : 'target');
+    const icon = STATUS_EMOJIS[card.def.effect] || '';
+    const defaultAmount = 25;
+    const effectAmount = card.def.effectAmount ?? (card.def.effect === 'regen' ? 10 : defaultAmount);
+    const effectChance = card.def.effectChance ?? 30;
+    let details = '';
+    if (card.def.effect === 'regen') details = ` (${effectAmount}%)`;
+    if (card.def.effect === 'confusion') details = ` (${effectChance}%)`;
+    if (['attackup', 'attackdown', 'defenseup', 'defensedown'].includes(card.def.effect)) details = ` (${effectAmount}%)`;
+    return ` (${icon} ${verb} ${targetName}${details} for **${duration}** turn(s))`;
+  }
+}
+
+function addEmbedFieldLines(embed, baseName, lines, inline = false) {
+  const maxLen = 1024;
+  let content = lines.join('\n');
+  if (content.length > maxLen) {
+    content = content.slice(0, maxLen - 1) + '…';
+  }
+  embed.addFields({ name: baseName, value: content, inline });
 }
 
 // apply cut status to both teams (global turn transition)
@@ -68,11 +136,11 @@ function applyGlobalCut(state) {
 }
 
 // send a fresh message and remove the old one to reset Discord interaction timer
-async function refreshBattleMessage(oldMsg, state, user) {
+async function refreshBattleMessage(oldMsg, state, user, discordUser) {
   try {
     await oldMsg.delete();
   } catch {}
-  const embed = buildEmbed(state, user);
+  const embed = buildEmbed(state, user, discordUser);
   const components = [makeSelectionRow(state)];
   if (state.awaitingTarget) {
     const targetRow = makeTargetRow(state);
@@ -162,7 +230,7 @@ function getMarinesForLevel(stage, prevRanks = []) {
   return best ? best.group : [];
 }
 
-function buildEmbed(state, user) {
+function buildEmbed(state, user, discordUser) {
   // Ensure the battle uses the pre-resolved stats prepared at start.
   // `state.cards` already contains a `scaled` object created from the DB
   // instance via `resolveStats`. Just clamp currentHP to the resolved max.
@@ -176,36 +244,51 @@ function buildEmbed(state, user) {
   // color remains fixed based on who started (user = white, marine = black)
   const embedColor = state.startingPlayer === 'user' ? '#FFFFFF' : '#000000';
   const embed = new EmbedBuilder()
-    .setColor(embedColor)
+    .setColor('#FFFFFF')
     .setTitle('Adventure: Infinite Sailing')
-    .setDescription(`Progress: Level ${user.isailProgress}`);
+    .setDescription(`-- Progress: Level ${user.isailProgress}`);
   // set any image override (special attack gif) or default art
   if (state.embedImage) {
     embed.setImage(state.embedImage);
   }
+  if (discordUser) {
+    embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  }
 
   // enemy marines (show status emojis and HP numbers) - filter out KO
   const aliveMarines = state.marines.filter(m => m.currentHP > 0);
-  const marineLines = aliveMarines.map((m, i) => {
-    const statusEmojis = (m.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
-    return `${statusEmojis} ${m.rank}\n${hpBar(m.currentHP, m.maxHP)} ${m.currentHP}/${m.maxHP}`;
-  });
-  const marineFieldValue = marineLines.length > 0 ? marineLines.join('\n') : 'All marines defeated!';
-  embed.addFields({ name: `Enemy Marines`, value: marineFieldValue });
+  if (aliveMarines.length > 0) {
+    for (const m of aliveMarines) {
+      const statusEmojis = (m.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
+      const value = `${statusEmojis} ${hpBar(m.currentHP, m.maxHP)}\n${m.currentHP}/${m.maxHP}`;
+      embed.addFields({ name: m.rank, value, inline: true });
+    }
+  } else {
+    embed.addFields({ name: 'Enemy Marines', value: 'All marines defeated!', inline: false });
+  }
 
-  // cards field - filter out KO, use stacked layout (emoji/name/energy on line 1, hp bar on line 2)
+  // Separator between teams
+  embed.addFields({ name: '\u200B', value: '\u200B' });
+
+  // cards field - filter out KO, new multi-line format with level/upgrade
   const aliveCards = state.cards.filter(c => c.currentHP > 0);
-  const lines = aliveCards.map((c, i) => {
-    // show all stacked status emojis for the card, otherwise show card emoji
-    const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
-    const prefix = statusEmojis || (c.def.emoji || '');
-    // Stacked format: Emoji Name Energy on top, HP bar below
-    let line = `${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
-    if (state.selected !== null && state.cards.indexOf(c) === state.selected) line = `**> ${line}**`;
-    return line;
-  });
-  const crewFieldValue = lines.length > 0 ? lines.join('\n') : 'Entire crew defeated!';
-  embed.addFields({ name: `Your Crew`, value: crewFieldValue });
+  if (aliveCards.length > 0) {
+    for (const c of aliveCards) {
+      const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
+      const prefix = statusEmojis || (c.def.emoji || '');
+      const idx = state.cards.indexOf(c);
+      const isSelected = state.selected !== null && idx === state.selected;
+      const level = c.userEntry ? c.userEntry.level : 1;
+      const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
+      let value = `${prefix} ${hpBar(c.currentHP, c.maxHP)}`;
+      value += `\nLv. ${level} U${upgradeMatch}`;
+      value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
+      if (isSelected) value = `**> ${value}**`;
+      embed.addFields({ name: c.def.character, value, inline: true });
+    }
+  } else {
+    embed.addFields({ name: 'Your Crew', value: 'Entire crew defeated!', inline: false });
+  }
 
   // action columns
   if (state.lastUserAction || state.lastMarineAction) {
@@ -213,11 +296,6 @@ function buildEmbed(state, user) {
       { name: 'Your Action', value: state.lastUserAction || '—', inline: true },
       { name: 'Marine Action', value: state.lastMarineAction || '—', inline: true }
     );
-  }
-
-  // generic log/messages
-  if (state.log) {
-    embed.addFields({ name: 'Battle Log', value: state.log });
   }
 
   return embed;
@@ -267,15 +345,6 @@ function makeActionRow(state) {
         .setStyle(ButtonStyle.Primary)
     );
   }
-  // Special ability (only actual Special-type cards have abilities)
-  if (card.def.type === 'Special') {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId('isail_action:ability')
-        .setLabel('Special Ability')
-        .setStyle(ButtonStyle.Secondary)
-    );
-  }
   // Rest button - reset energy to 3
   row.addComponents(
     new ButtonBuilder()
@@ -286,8 +355,8 @@ function makeActionRow(state) {
   return row;
 }
 
-async function updateBattleMessage(msg, state, user) {
-  const embed = buildEmbed(state, user);
+async function updateBattleMessage(msg, state, user, discordUser) {
+  const embed = buildEmbed(state, user, discordUser);
   const components = [makeSelectionRow(state)];
   if (state.awaitingTarget) {
     const targetRow = makeTargetRow(state);
@@ -315,7 +384,7 @@ async function updateBattleMessage(msg, state, user) {
   if (state.finished) {
     clearBattleTimeout(state);
   } else {
-    setupTimeout(state, msg, user);
+    setupTimeout(state, msg, user, discordUser);
   }
 }
 
@@ -362,26 +431,28 @@ function marineAttack(state) {
       logs.push(`${marine.rank} is ${reason} and cannot attack!`);
       return;
     }
-    // choose target card (tank priority)
-    let target = null;
-    const tanks = state.cards.filter(c => c.alive && c.def.type === 'Tank');
-    if (tanks.length) target = tanks[0];
-    else {
-      const alive = state.cards.filter(c => c.alive);
-      if (alive.length) target = alive[Math.floor(Math.random() * alive.length)];
+    // choose the same target the user just hit, if still alive; otherwise random alive target
+    let target = state.lastMarineTarget && state.lastMarineTarget.alive ? state.lastMarineTarget : null;
+    const alive = state.cards.filter(c => c.alive);
+    if (!target && alive.length) {
+      target = alive[Math.floor(Math.random() * alive.length)];
     }
     if (!target) return;
     const dmg = marine.atk;
     
     // Apply attribute multiplier
+    if (hasTruesight(target)) {
+      logs.push(`${target.def.character} dodges with truesight!`);
+      return;
+    }
+
     const marineAttrMultiplier = getDamageMultiplier(marine.attribute, target.def.attribute);
     const finalMarineDmg = Math.floor(dmg * marineAttrMultiplier);
     
     target.currentHP -= finalMarineDmg;
     if (target.currentHP <= 0) {
-      target.currentHP = 0;
-      target.alive = false;
-      target.energy = 0;
+      const ko = handleKO(target);
+      if (ko) logs.push(ko);
     }
     // unfreeze the target if frozen
     if (target.status) {
@@ -462,20 +533,20 @@ async function finalizeUserAction(state, msg, interaction) {
   return false;
 }
 
-async function runSkipCycle(state, msg, user) {
+async function runSkipCycle(state, msg, user, discordUser) {
   // loop until either it's the user's turn with available energy or battle finishes
   while (!state.finished && state.turn === 'user') {
     if (maybeSkipUserTurn(state)) {
       // perform marine attack now that we've switched to marine
       marineAttack(state);
       if (checkForDefeat(state)) {
-        await handleDefeat(state, msg, user);
+        await handleDefeat(state, msg, user, discordUser);
         battleStates.delete(msg.id);
         return false; // battle ended
       }
       state.turn = 'user';
       // refresh message after marine action
-      msg = await refreshBattleMessage(msg, state, user);
+      msg = await refreshBattleMessage(msg, state, user, discordUser);
       state.log = '';
       // continue to check again
       continue;
@@ -485,8 +556,9 @@ async function runSkipCycle(state, msg, user) {
   return !state.finished;
 }
 
-async function handleVictory(state, msg, user) {
+async function handleVictory(state, msg, user, discordUser) {
   clearBattleTimeout(state);
+  console.log(`[isail] handleVictory: user=${user.userId} startProgress=${user.isailProgress}`);
   
   // Bounty mapping for marine ranks
   const bountyMap = {
@@ -533,12 +605,13 @@ async function handleVictory(state, msg, user) {
   state.marines && (user.lastIsailEnemies = state.marines.map(m => m.rank));
 
   // ===== XP & level-up handling =====
-  // give each of the three active team members XP and handle level ups.
+  // give each active team member XP and handle level ups.
   const xpGain = 30;
   const levelUpLines = [];
   if (Array.isArray(user.team)) {
-    user.team.slice(0, 3).forEach(cardId => {
-      if (!cardId) return;
+    // Only give XP to cards that were actually used in this battle
+    const activeCardIds = state.cards.map(c => c.def.id);
+    activeCardIds.forEach(cardId => {
       // find the matching owned card entry; if missing create a placeholder.
       let entry = (user.ownedCards || []).find(e => e.cardId === cardId);
       if (!entry) {
@@ -568,14 +641,19 @@ async function handleVictory(state, msg, user) {
     victoryText += `\nYou gained **${bountyGain}** Bounty!`;
   }
   victoryText += `\nAll team members gained **${xpGain} XP**!`;
+  // notify about level progression
+  victoryText += `\nProgressed to **Level ${user.isailProgress}**!`;
   if (levelUpLines.length) {
     victoryText += '\n' + levelUpLines.join('\n');
   }
   
   const victoryEmbed = new EmbedBuilder()
-    .setColor('#00AA00')
+    .setColor('#FFFFFF')
     .setTitle('Victory!')
     .setDescription(victoryText);
+  if (discordUser) {
+    victoryEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  }
   
   const nextSailRow = new ActionRowBuilder()
     .addComponents(
@@ -589,15 +667,18 @@ async function handleVictory(state, msg, user) {
   await msg.channel.send({ embeds: [victoryEmbed], components: [nextSailRow] });
 }
 
-async function handleDefeat(state, msg, user) {
+async function handleDefeat(state, msg, user, discordUser) {
   clearBattleTimeout(state);
   user.lastIsailFail = new Date();
   await user.save();
   
   const defeatEmbed = new EmbedBuilder()
-    .setColor('#AA0000')
+    .setColor('#FFFFFF')
     .setTitle('Defeat')
     .setDescription('Better luck next time.');
+  if (discordUser) {
+    defeatEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  }
   
   const nextSailRow = new ActionRowBuilder()
     .addComponents(
@@ -618,7 +699,7 @@ function clearBattleTimeout(state) {
   }
 }
 
-function setupTimeout(state, msg, user) {
+function setupTimeout(state, msg, user, discordUser) {
   clearBattleTimeout(state);
   if (!state.finished) {
     state.timeout = setTimeout(async () => {
@@ -630,7 +711,7 @@ function setupTimeout(state, msg, user) {
         state.finished = true;
         // Try to update, but handle case where message was deleted
         try {
-          await msg.edit({ embeds: [buildEmbed(state, user)], components: [] });
+          await msg.edit({ embeds: [buildEmbed(state, user, discordUser)], components: [] });
         } catch (e) {
           // Message was deleted, that's okay
         }
@@ -653,6 +734,7 @@ module.exports = {
   options: [],
   async execute({ message, interaction }) {
     const userId = message ? message.author.id : interaction.user.id;
+    const discordUser = message ? message.author : interaction.user;
     let user = await User.findOne({ userId });
     if (!user) {
       const reply = 'You need an account first – run `op start` or /start.';
@@ -660,7 +742,7 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
     user.isailProgress = user.isailProgress || 1;
-    user.lastIsailFail = user.lastIsailFail || null;
+  console.log(`[isail] execute: user=${userId} progress=${user.isailProgress}`);
 
     // Check if user already has an active isail battle
     let activeIsail = null;
@@ -689,15 +771,15 @@ module.exports = {
       }
     }
 
-    if (!Array.isArray(user.team) || user.team.length < 3) {
-      const reply = 'Your team is not full (3 cards required).';
+    if (!Array.isArray(user.team) || user.team.length === 0) {
+      const reply = 'Your team must have at least 1 card.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
     const teamDefs = user.team.slice(0, 3).map(id => cardDefs.find(c => c.id === id)).filter(Boolean);
-    if (teamDefs.length < 3) {
-      const reply = 'One or more cards on your team could not be found.';
+    if (teamDefs.length === 0) {
+      const reply = 'Your team must have at least 1 valid card.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -752,7 +834,7 @@ module.exports = {
     applyGlobalCut(state);
 
     // send initial message
-    const embed = buildEmbed(state, user);
+    const embed = buildEmbed(state, user, discordUser);
     const row = makeSelectionRow(state);
     const components = [row];
     let msg;
@@ -763,14 +845,21 @@ module.exports = {
     }
     battleStates.set(msg.id, state);
     // start inactivity timeout for first turn
-    await setupTimeout(state, msg, user);
+    await setupTimeout(state, msg, user, discordUser);
+
+    // 3-minute expiration timeout
+    setTimeout(() => {
+      const expiredEmbed = buildEmbed(state, user, discordUser);
+      expiredEmbed.setFooter({ text: 'Expired' });
+      msg.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
+    }, 180000);
 
     // if marine goes first, perform an immediate attack
     if (state.turn === 'marine') {
       marineAttack(state);
       // after marine attack, check defeat
       if (checkForDefeat(state)) {
-        await handleDefeat(state, msg, user);
+        await handleDefeat(state, msg, user, discordUser);
         battleStates.delete(msg.id);
         return;
       }
@@ -778,132 +867,76 @@ module.exports = {
       // apply cut effects at turn transition
       applyGlobalCut(state);
       // refresh message after marine action
-      msg = await refreshBattleMessage(msg, state, user);
+      msg = await refreshBattleMessage(msg, state, user, discordUser);
       state.log = '';
       // in case all cards have no energy, let skip cycle run automatically
-      await runSkipCycle(state, msg, user);
+      await runSkipCycle(state, msg, user, discordUser);
     }
   },
 
   async handleButton(interaction, rawAction, cardId) {
     const msgId = interaction.message.id;
     const state = battleStates.get(msgId);
-    
+    const discordUser = interaction.user;
+
     // Handle next isail button
     if (rawAction === 'isail_next') {
+      // Remove old state in case old message is reused
       battleStates.delete(msgId);
-      // Don't call execute - instead, directly start a new isail without replying
-      // Just defer and let the button click resolve
+
       try {
         await interaction.deferUpdate();
       } catch (e) {
         if (e.code !== 10062) console.error('Failed to defer:', e);
       }
-      
-      // Now start a fresh isail for the same user
+
       const userId = interaction.user.id;
       const user = await User.findOne({ userId });
-      if (!user) return;
-      
+      if (!user) {
+        return interaction.followUp({ content: 'Unable to find your profile. Please start with `/isail` again.', ephemeral: true });
+      }
+
+      // Guarantee existing progress is respected. If missing, set to 1.
       user.isailProgress = user.isailProgress || 1;
-      
-      // Check if user already has another active isail in progress
-      let activeIsail = null;
-      for (const [mId, st] of battleStates) {
-        if (st.userId === userId && !st.finished) {
-          activeIsail = mId;
-          break;
+      await user.save();
+      console.log(`[isail_next] user ${userId} resumes at progress ${user.isailProgress}`);
+
+      // Start the next sail run by invoking execute with a message-style context (no duplicate interaction reply)
+      const fakeMessage = {
+        channel: interaction.channel,
+        author: interaction.user,
+        reply: async (content) => {
+          if (typeof content === 'string') {
+            return interaction.followUp({ content, ephemeral: true });
+          }
+          return interaction.followUp(content);
         }
-      }
-      
-      if (activeIsail) return;
-      
-      // Rebuild the same startup flow as execute()
-      if (!Array.isArray(user.team) || user.team.length < 3) return;
-      
-      const teamDefs = user.team.slice(0, 3).map(id => cardDefs.find(c => c.id === id)).filter(Boolean);
-      if (teamDefs.length < 3) return;
-      
-      const resolvedTeam = teamDefs.map(def => {
-        const entry = (user.ownedCards || []).find(e => e.cardId === def.id) || { cardId: def.id, level: 1, xp: 0 };
-        const scaled = resolveStats(entry, user.ownedCards || []);
-        return {
-          def,
-          userEntry: entry,
-          scaled: scaled || { health: def.health, power: def.power, speed: def.speed, attack_min: def.attack_min, attack_max: def.attack_max, special_attack: def.special_attack ? { min: def.special_attack.min_atk || def.special_attack.min, max: def.special_attack.max_atk || def.special_attack.max } : undefined },
-          currentHP: (scaled && scaled.health) || def.health,
-          maxHP: (scaled && scaled.health) || def.health,
-          energy: 3,
-          alive: true,
-          turnsUntilRecharge: 0,
-          status: []
-        };
-      });
-      
-      const state = {
-        userId,
-        marines: getMarinesForLevel(user.isailProgress),
-        cards: resolvedTeam,
-        turn: null,
-        startingPlayer: null,
-        log: '',
-        selected: null,
-        awaitingTarget: null,
-        finished: false,
-        lastUserAction: '',
-        lastMarineAction: '',
-        timeout: null,
-        embedImage: null
       };
-      
-      const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
-      const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
-      state.turn = userSpeed >= marineSpeed ? 'user' : 'marine';
-      state.startingPlayer = state.turn;
-      applyGlobalCut(state);
-      
-      const embed = buildEmbed(state, user);
-      const row = makeSelectionRow(state);
-      const components = [row];
-      
-      // Send new message in the same channel
-      const msg = await interaction.channel.send({ embeds: [embed], components });
-      battleStates.set(msg.id, state);
-      
-      await setupTimeout(state, msg, user);
-      
-      if (state.turn === 'marine') {
-        marineAttack(state);
-        if (checkForDefeat(state)) {
-          await handleDefeat(state, msg, user);
-          battleStates.delete(msg.id);
-          return;
-        }
-        state.turn = 'user';
-        applyGlobalCut(state);
-        const newMsg = await refreshBattleMessage(msg, state, user);
-        state.log = '';
-        await runSkipCycle(state, newMsg, user);
-      }
+
+      await module.exports.execute({ message: fakeMessage });
       return;
     }
-    
-    if (!state) {
-      return interaction.reply({ content: 'This battle session has expired.', ephemeral: true });
-    }
-    if (interaction.user.id !== state.userId) {
-      return interaction.reply({ content: 'You are not part of this battle.', ephemeral: true });
-    }
 
-    // parse action
-    const parts = rawAction.split('_');
-    const type = parts[1]; // 'select' or 'action'
+    try {
+      // Defer the interaction to acknowledge it
+      await safeDefer(interaction);
+
+      if (!state) {
+        return interaction.followUp({ content: 'This battle session has expired.', ephemeral: true });
+      }
+      if (interaction.user.id !== state.userId) {
+        return interaction.followUp({ content: 'You are not part of this battle.', ephemeral: true });
+      }
+
+      // parse action
+      const parts = rawAction.split('_');
+      const type = parts[1]; // 'select' or 'action'
 
     // handle target choice if user is choosing which enemy to hit
     if (rawAction.startsWith('isail_target')) {
       const targetIdx = parseInt(cardId, 10);
       if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= state.marines.length) {
-        return interaction.reply({ content: 'Invalid target.', ephemeral: true });
+        return interaction.followUp({ content: 'Invalid target.', ephemeral: true });
       }
       const action = state.awaitingTarget;
       state.awaitingTarget = null;
@@ -922,22 +955,41 @@ module.exports = {
       if (action === 'attack') {
         // hard stun/freeze block
         if (hasStatusLock(card)) {
-          return interaction.reply({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
+          return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
         }
         if (card.energy < 1) {
-          return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
+          return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 1;
         card.turnsUntilRecharge = 2;
         const user = await User.findOne({ userId: state.userId });
-        const dmg = calculateUserDamage(card, 'attack', user);
+        let dmg = calculateUserDamage(card, 'attack', user);
         const m = state.marines[targetIdx];
-        
+
+        // Check for confusion on attacker
+        const confusionStatus = card.status?.find(st => st.type === 'confusion');
+        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance || 30)) {
+          state.lastUserAction = `${card.def.character} is confused and misses the attack! <:energy:1478051414558118052> -1`;
+          const finished = await finalizeUserAction(state, interaction.message, interaction);
+          if (finished) battleStates.delete(msgId);
+          return safeDefer(interaction);
+        }
+
+        // Check for truesight on target (marine doesn't have status, so skip)
+
         // Apply attribute multiplier
         const attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
+
+        // Apply attack modifiers
+        const attackUp = card.status?.find(st => st.type === 'attackup');
+        const attackDown = card.status?.find(st => st.type === 'attackdown');
+        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount || 10) / 100));
+        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount || 10) / 100));
+
         const finalDmg = Math.floor(dmg * attrMultiplier);
         
         m.currentHP -= finalDmg;
+        state.lastMarineTarget = m;
         if (m.currentHP <= 0) {
           m.currentHP = 0;
           m.alive = false;
@@ -947,15 +999,11 @@ module.exports = {
         const effectLogs1 = [];
         effectLogs1.forEach(l => appendLog(state, l));
         
-        // Log attribute advantage/disadvantage
-        if (attrMultiplier !== 1) {
-          appendLog(state, getAttributeDescription(card.def.attribute, m.attribute));
-        }
-        
-        state.lastUserAction = `${card.def.character} used Attack on ${m.rank} for ${finalDmg} damage! <:energy:1478051414558118052> -1`;
+        const effectivenessStr = attrMultiplier > 1 ? ' (effective!)' : attrMultiplier < 1 ? ' (weak)' : '';
+        state.lastUserAction = `${card.def.character} used Attack on ${m.rank} for ${finalDmg} damage${effectivenessStr}! <:energy:1478051414558118052> -1`;
       } else if (action === 'special') {
         if (card.energy < 3) {
-          return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
+          return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 3;
         card.turnsUntilRecharge = 2;
@@ -964,14 +1012,33 @@ module.exports = {
         // use the pre-resolved special attack range from the card state
         const rangeMin = card.scaled && card.scaled.special_attack ? card.scaled.special_attack.min : 0;
         const rangeMax = card.scaled && card.scaled.special_attack ? card.scaled.special_attack.max : 0;
-        const dmg = calculateUserDamage(card, 'special', user);
+        let dmg = calculateUserDamage(card, 'special', user);
         const m = state.marines[targetIdx];
-        
+
+        // Check for confusion on attacker
+        const confusionStatus = card.status?.find(st => st.type === 'confusion');
+        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance || 30)) {
+          state.lastUserAction = `${card.def.character} is confused and misses the special attack! <:energy:1478051414558118052> -3`;
+          const finished = await finalizeUserAction(state, interaction.message, interaction);
+          if (finished) battleStates.delete(msgId);
+          return safeDefer(interaction);
+        }
+
+        // Check for truesight on target (marine doesn't have status, so skip)
+
         // Apply attribute multiplier
         const attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
+
+        // Apply attack modifiers
+        const attackUp = card.status?.find(st => st.type === 'attackup');
+        const attackDown = card.status?.find(st => st.type === 'attackdown');
+        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount || 10) / 100));
+        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount || 10) / 100));
+
         const finalDmg = Math.floor(dmg * attrMultiplier);
         
         m.currentHP -= finalDmg;
+        state.lastMarineTarget = m;
         if (m.currentHP <= 0) {
           m.currentHP = 0;
           m.alive = false;
@@ -979,11 +1046,6 @@ module.exports = {
         // only apply status from special attack
         const effectLogs2 = applyCardEffectShared(card, m);
         effectLogs2.forEach(l => appendLog(state, l));
-        
-        // Log attribute advantage/disadvantage
-        if (attrMultiplier !== 1) {
-          appendLog(state, getAttributeDescription(card.def.attribute, m.attribute));
-        }
         
         if (card.def.special_attack?.gif) {
           state.embedImage = card.def.special_attack.gif;
@@ -1005,60 +1067,39 @@ module.exports = {
         } else {
           state.embedImage = null;
         }
-        state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${finalDmg} damage (range ${rangeMin}-${rangeMax})! <:energy:1478051414558118052> -3`;
-      } else if (action === 'ability') {
-        card.energy -= 1;
-        card.turnsUntilRecharge = 2;
-        const user = await User.findOne({ userId: state.userId });
-        const dmg = calculateUserDamage(card, 'ability', user);
-        const m = state.marines[targetIdx];
-        
-        // Apply attribute multiplier
-        const abilityAttrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
-        const abilityFinalDmg = Math.floor(dmg * abilityAttrMultiplier);
-        
-        m.currentHP -= abilityFinalDmg;
-        if (m.currentHP <= 0) {
-          m.currentHP = 0;
-          m.alive = false;
-        }
-        const effectLogs3 = [];
-        effectLogs3.forEach(l => appendLog(state, l));
-        
-        // Log attribute advantage/disadvantage
-        if (abilityAttrMultiplier !== 1) {
-          appendLog(state, getAttributeDescription(card.def.attribute, m.attribute));
-        }
-        
-        state.lastUserAction = `${card.def.character} used Special Ability on ${m.rank} for ${abilityFinalDmg} damage! <:energy:1478051414558118052> -1`;
+        const effectStr = getEffectString(card, m);
+        state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${finalDmg} damage**${effectStr}! <:energy:1478051414558118052> -3`;
       }
+
       state.selected = null;
       const finished = await finalizeUserAction(state, interaction.message, interaction);
       if (finished) battleStates.delete(msgId);
       return safeDefer(interaction);
     }
 
+    // end of target selection handling
+
     if (type === 'select') {
       const idx = parseInt(cardId, 10);
       if (isNaN(idx) || idx < 0 || idx >= state.cards.length) {
-        return interaction.reply({ content: 'Invalid selection.', ephemeral: true });
+        return interaction.followUp({ content: 'Invalid selection.', ephemeral: true });
       }
       // selection only allowed if it's user's turn and not finished
       if (state.finished || state.turn !== 'user') {
-        return interaction.reply({ content: 'You cannot select now.', ephemeral: true });
+        return interaction.followUp({ content: 'You cannot select now.', ephemeral: true });
       }
       const card = state.cards[idx];
       if (!card.alive) {
-        return interaction.reply({ content: 'That card is knocked out.', ephemeral: true });
+        return interaction.followUp({ content: 'That card is knocked out.', ephemeral: true });
       }
       // Hard stun/freeze block - prevent selection of stunned/frozen cards
       if (hasStatusLock(card)) {
         const reason = getStatusLockReason(card);
-        return interaction.reply({ content: `${card.def.character} is ${reason}!`, ephemeral: true });
+        return interaction.followUp({ content: `${card.def.character} is ${reason}!`, ephemeral: true });
       }
       state.selected = idx;
       // no desktop art; gif-only display handled separately
-      await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }));
+      await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }), discordUser);
       return safeDefer(interaction);
     }
 
@@ -1066,14 +1107,14 @@ module.exports = {
       const act = cardId;
       // do not respond if battle finished
       if (state.finished) {
-        return interaction.reply({ content: 'The battle has already ended.', ephemeral: true });
+        return interaction.followUp({ content: 'The battle has already ended.', ephemeral: true });
       }
       
       // Handle forfeit BEFORE checking card selection
       if (act === 'forfeit') {
         const user = await User.findOne({ userId: state.userId });
         state.lastUserAction = `${user.username} forfeited.`;
-        await handleDefeat(state, interaction.message, user);
+        await handleDefeat(state, interaction.message, user, discordUser);
         battleStates.delete(msgId);
         return safeDefer(interaction);
       }
@@ -1081,93 +1122,88 @@ module.exports = {
       const card = state.cards[state.selected];
       if (!card || !card.alive) {
         state.selected = null;
-        await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }));
-        return interaction.reply({ content: 'Selected card is unavailable.', ephemeral: true });
+        await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }), discordUser);
+        return interaction.followUp({ content: 'Selected card is unavailable.', ephemeral: true });
       }
       if (state.turn !== 'user') {
-        return interaction.reply({ content: 'It is not your turn.', ephemeral: true });
+        return interaction.followUp({ content: 'It is not your turn.', ephemeral: true });
       }
 
       // process user action (with optional target selection)
-      if (act === 'attack' || act === 'special' || act === 'ability') {
+      if (act === 'attack' || act === 'special') {
         // block if the selected card is stunned/frozen
         if (hasStatusLock(card)) {
-          return interaction.reply({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
+          return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
         }
         const aliveEnemies = state.marines.filter(m => m.currentHP > 0);
-        const aliveTanks = aliveEnemies.filter(m => m.def && m.def.type === 'Tank');
-        // if tank present, auto‑target it (or prompt among tanks)
-        if (aliveTanks.length > 0) {
-          if (aliveTanks.length > 1 && !state.awaitingTarget) {
-            state.awaitingTarget = act;
-            await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }));
-            return safeDefer(interaction);
-          }
-          // locate index of single tank
-          var targetIdx = state.marines.findIndex(m => m === aliveTanks[0]);
-        } else {
-          // prompt for a specific damage target if there are multiple opponents
-          if (aliveEnemies.length > 1 && !state.awaitingTarget) {
-            state.awaitingTarget = act;
-            await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }));
-            return safeDefer(interaction);
-          }
-          var targetIdx = 0;
-          if (aliveEnemies.length === 1) {
-            targetIdx = state.marines.findIndex(m => m.currentHP > 0);
-          }
+        if (aliveEnemies.length === 0) {
+          return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+        }
+        let targetIdx = state.marines.findIndex(m => m.currentHP > 0);
+        if (aliveEnemies.length > 1 && !state.awaitingTarget) {
+          state.awaitingTarget = act;
+          await updateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }), discordUser);
+          return safeDefer(interaction);
         }
         // cost checks and energy deduction
         if (act === 'attack') {
-          if (card.energy < 1) return interaction.reply({ content: 'Not enough energy for attack.', ephemeral: true });
+          if (card.energy < 1) return interaction.followUp({ content: 'Not enough energy for attack.', ephemeral: true });
           card.energy -= 1;
         } else if (act === 'special') {
-          if (card.energy < 3) return interaction.reply({ content: 'Special attack requires 3 <:energy:1478051414558118052>.', ephemeral: true });
+          if (card.energy < 3) return interaction.followUp({ content: 'Special attack requires 3 <:energy:1478051414558118052>.', ephemeral: true });
           card.energy -= 3;
           // set gif display
           if (card.def.special_attack && card.def.special_attack.gif) {
             state.embedImage = card.def.special_attack.gif;
           }
-        } else if (act === 'ability') {
-          if (card.def.type !== 'Special') return interaction.reply({ content: 'That card has no special ability.', ephemeral: true });
-          if (card.energy < 1) return interaction.reply({ content: 'Not enough energy for ability (cost 1 <:energy:1478051414558118052>).', ephemeral: true });
-          card.energy -= 1;
         }
-        // bleed effect: apply standardized bleed damage and decrement
-        // duration using shared helper.
         const energyCost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
         card.turnsUntilRecharge = 2;
         // recalc damage with user context so boosts are always included
         const user = await User.findOne({ userId: state.userId });
-        const dmg = calculateUserDamage(card, act === 'ability' ? 'attack' : act, user);
+        const baseDmg = calculateUserDamage(card, act, user);
         let damageTarget;
         let effectTarget;
         if (act === 'special' && card.def.effect === 'team_stun') {
           // team_stun: damage single target, stun all alive enemies
           damageTarget = state.marines[targetIdx];
-          damageTarget.currentHP -= dmg;
-          if (damageTarget.currentHP <= 0) damageTarget.currentHP = 0;
           effectTarget = state.marines.filter(m => m.currentHP > 0);
         } else {
           const m = state.marines[targetIdx];
           damageTarget = m;
           effectTarget = m;
-          m.currentHP -= dmg;
-          if (m.currentHP <= 0) m.currentHP = 0;
+        }
+        // calculate final damage with attribute multiplier
+        let attrMultiplier = 1;
+        let isDodgedByTruesight = false;
+        if (damageTarget) {
+          attrMultiplier = getDamageMultiplier(card.def.attribute, damageTarget.attribute || damageTarget.def?.attribute);
+          if (hasTruesight(damageTarget)) {
+            isDodgedByTruesight = true;
+            consumeTruesight(damageTarget);
+            const dodgeMsg = `${damageTarget.def.character} dodges with truesight!`;
+            appendLog(state, dodgeMsg);
+            state.lastUserAction = `${card.def.character} tries to attack but ${damageTarget.def.character} evades with truesight!`;
+          }
+        }
+
+        const dmg = isDodgedByTruesight ? 0 : Math.floor(baseDmg * attrMultiplier);
+        if (damageTarget && !isDodgedByTruesight) {
+          damageTarget.currentHP -= dmg;
+          if (damageTarget.currentHP <= 0) damageTarget.currentHP = 0;
+          const ko = handleKO(damageTarget);
+          if (ko) appendLog(state, ko);
         }
         // unfreeze the damage target if it was frozen
         if (damageTarget.status) {
           const freezeIdx = damageTarget.status.findIndex(st => st.type === 'freeze');
           if (freezeIdx >= 0) {
             damageTarget.status.splice(freezeIdx, 1);
-            appendLog(state, `${damageTarget.rank || 'Target'} was unfrozen by the attack!`);
           }
         }
-        // apply any status effect from the attacker's card (only for special attacks)
-        const effectLogs = act === 'special' ? applyCardEffectShared(card, effectTarget) : [];
+        const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, effectTarget) : [];
         effectLogs.forEach(l => appendLog(state, l));
-        // send gif as a separate message if available
-        if (act === 'special' && card.def.special_attack?.gif) {
+        if (!isDodgedByTruesight && act === 'special' && card.def.special_attack?.gif) {
           try {
             let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
             if (card.def.effect && card.def.effectDuration) {
@@ -1185,56 +1221,45 @@ module.exports = {
           }
         }
         const cost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
+        const effectivenessStr = attrMultiplier > 1 ? ' (super effective)' : attrMultiplier < 1 ? ' (not very effective)' : '';
+        const effectMessages = effectLogs.length > 0 ? ` *${effectLogs.join(', ')}*` : '';
         if (act === 'special') {
           if (card.def.effect === 'team_stun') {
-            state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${damageTarget.rank} for ${dmg} damage and stunned the whole crew! <:energy:1478051414558118052> -${cost}`;
+            state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${damageTarget.rank} for ${dmg} damage!${effectivenessStr} *stunned the whole crew*${effectMessages} <:energy:1478051414558118052> -${cost}`;
           } else {
-            state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${dmg} damage! <:energy:1478051414558118052> -${cost}`;
+            state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${dmg} damage!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} <:energy:1478051414558118052> -${cost}`;
           }
         } else {
-          const label = act === 'attack' ? 'Attack' : 'Special Ability';
-          const targetDesc = damageTarget.rank || (damageTarget.map ? damageTarget.map(x=>x.rank).join(', ') : '');
-          state.lastUserAction = `${card.def.character} used ${label} on ${targetDesc} for ${dmg} damage! <:energy:1478051414558118052> -${cost}`;
+          state.lastUserAction = `${card.def.character} used Attack on ${damageTarget.rank} for ${dmg} damage!${effectivenessStr}${effectMessages} <:energy:1478051414558118052> -${cost}`;
         }
       } else if (act === 'rest') {
         // Rest action: restore card's energy to 3
         card.energy = 3;
         card.turnsUntilRecharge = 2;
-        appendLog(state, `${card.def.character} rested and restored energy!`);
         state.lastUserAction = `${card.def.character} took a rest and restored energy!`;
       } else {
-        return interaction.reply({ content: 'Unknown action.', ephemeral: true });
+        return interaction.followUp({ content: 'Unknown action.', ephemeral: true });
       }
+
+      // Clear log after action to prevent accumulation
+      state.log = '';
 
       const finished = await finalizeUserAction(state, interaction.message, interaction);
       if (finished) battleStates.delete(msgId);
       return safeDefer(interaction);
-
-      // recharge and give turn to marine
-      rechargeEnergy(state);
-      state.turn = 'marine';
-      state.selected = null;
-
-      // marine takes a swing
-      marineAttack(state);
-      // check if all cards died
-      if (checkForDefeat(state)) {
-        const user = await User.findOne({ userId: state.userId });
-        await handleDefeat(state, interaction.message, user);
-        battleStates.delete(msgId);
-        return safeDefer(interaction);
-      }
-
-      // back to the user
-      state.turn = 'user';
-      const user = await User.findOne({ userId: state.userId });
-      await updateBattleMessage(interaction.message, state, user);
-      // if energy still zero this will auto-skip again
-      await runSkipCycle(state, interaction.message, user);
-      return safeDefer(interaction);
     }
 
     // default fallback
-    return interaction.reply({ content: 'Unsupported interaction.', ephemeral: true });
+    return interaction.followUp({ content: 'Unsupported interaction.', ephemeral: true });
+  } catch (e) {
+    console.error('Error handling isail button:', e);
+    try {
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.reply({ content: 'An error occurred handling the interaction.', ephemeral: true });
+      } else {
+        await interaction.followUp({ content: 'An error occurred handling the interaction.', ephemeral: true });
+      }
+    } catch {}
   }
-};
+},
+}

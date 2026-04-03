@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { simulatePull, buildPullEmbed } = require('../utils/cards');
+const { simulatePull, buildPullEmbed, getAllCardVersions, getCardById } = require('../utils/cards');
 const crews = require('../data/crews');
 
 module.exports = {
@@ -43,10 +43,19 @@ module.exports = {
     // Open pack: pull 5 cards along with duplicate info
     const pulledCards = [];
     for (let i = 0; i < 5; i++) {
-      const card = simulatePull(user.pityCount, matchedPack);
+      let card = simulatePull(user.pityCount, matchedPack);
+      if (!card) continue;
+      // On 5th pull, small chance for U2 upgrade (never U3/U4 directly from this chance)
+      if (i === 4 && card.mastery === 1 && Math.random() < 0.08) {
+        const versionIds = getAllCardVersions(card.character);
+        const upgradeCard = versionIds
+          .map(id => getCardById(id))
+          .find(c => c && c.mastery === 2);
+        if (upgradeCard) card = upgradeCard;
+      }
       // compute duplicate text same as pull.js logic
       let duplicateText = '';
-      const allVersions = require('../utils/cards').getAllCardVersions(card.character);
+      const allVersions = getAllCardVersions(card.character);
       let bestOwnedEntry = null;
       let bestOwnedId = null;
       for (const versionId of allVersions) {
@@ -57,7 +66,7 @@ module.exports = {
         }
       }
       if (bestOwnedEntry && bestOwnedId) {
-        const bestOwnedCard = require('../utils/cards').getCardById(bestOwnedId);
+        const bestOwnedCard = getCardById(bestOwnedId);
         if (card.mastery < bestOwnedCard.mastery) {
           bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
           const gained = Math.floor(bestOwnedEntry.xp / 100);
@@ -75,14 +84,16 @@ module.exports = {
           }
           duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''}`;
         } else {
+          // Higher version - add new and remove lower ones
           if (!user.team || !user.team.includes(bestOwnedId)) {
             user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
             user.ownedCards = user.ownedCards.filter(e => {
-              const eCard = require('../utils/cards').getCardById(e.cardId);
+              const eCard = getCardById(e.cardId);
               if (!eCard || eCard.character !== card.character) return true;
               return eCard.mastery >= card.mastery;
             });
             if (!user.history.includes(card.id)) user.history.push(card.id);
+            duplicateText = `Upgraded!`;
           } else {
             bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
             const gained = Math.floor(bestOwnedEntry.xp / 100);
@@ -90,8 +101,8 @@ module.exports = {
               bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
               bestOwnedEntry.xp = bestOwnedEntry.xp % 100;
             }
+            duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''} (upgrade blocked while on team)`;
           }
-          duplicateText = `Upgraded!`;
         }
       } else {
         user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });

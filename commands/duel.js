@@ -2,6 +2,8 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 
 // wrapper for deferring interactions safely (avoids 10062 Unknown interaction)
 async function safeDefer(interaction) {
+  if (interaction.deferred || interaction.replied) return;
+
   try {
     await interaction.deferUpdate();
   } catch (e) {
@@ -14,7 +16,7 @@ const User = require('../models/User');
 const { cards: cardDefs } = require('../data/cards');
 const { resolveStats } = require('../utils/statResolver');
 const { getEffectDescription } = require('../utils/cards');
-const { getDamageMultiplier } = require('../utils/attributeSystem');
+const { getDamageMultiplier, getAttributeDescription } = require('../utils/attributeSystem');
 
 const statusManager = require('../src/battle/statusManager');
 const STATUS_EMOJIS = statusManager.STATUS_EMOJIS;
@@ -24,7 +26,13 @@ const {
   getStatusLockReason,
   applyStartOfTurnEffects: applyStatusesForTurn,
   applyCardEffect: applyCardEffectShared,
-  calculateUserDamage: calculateUserDamageShared
+  calculateUserDamage: calculateUserDamageShared,
+  getAttackModifier,
+  getDefenseModifier,
+  getConfusionChance,
+  hasTruesight,
+  consumeTruesight,
+  handleKO
 } = statusManager;
 
 function randomInt(min, max) {
@@ -33,11 +41,6 @@ function randomInt(min, max) {
 
 const calculateUserDamage = calculateUserDamageShared;
 
-const TYPE_EMOJIS = {
-  Combat: '<:combat:1478019288668438528>',
-  Tank: '<:tank:1478019541580648539>',
-  Special: '<:special:1478020172496506932>'
-};
 
 // Map to track pending duel requests (messageId => pendingState)
 const pendingDuelRequests = new Map();
@@ -72,11 +75,78 @@ async function refreshDuelMessage(oldMsg, state) {
 
 
 function hpBar(current, max) {
-  if (max <= 0) return '';
-  const segments = 10;
-  const filled = Math.round((current / max) * segments);
-  const empty = segments - filled;
-  return '▬'.repeat(filled) + '▭'.repeat(empty);
+  if (max <= 0 || current <= 0) {
+    return '<:Healthemptyleft:1481750325151928391>'
+      + '<:Healthemptymiddle:1481750341489004596>'.repeat(6)
+      + '<:healthemptyright:1481750363286667334>';
+  }
+  
+  // Calculate percentage of health remaining
+  const healthPercent = Math.max(0, Math.min(1, current / max));
+  // 6 middle sections, so we have 0-6 filled sections
+  const filledSections = Math.floor(healthPercent * 6);
+  
+  // Build the bar: right-to-left filling
+  const leftIcon = '<:Healthfullleft:1481750264074469437>';
+  const rightIcon = filledSections === 6 ? '<:healthfullright:1481750302679105710>' : '<:healthemptyright:1481750363286667334>';
+  
+  let bar = leftIcon;
+  
+  // Add filled middle sections first (on left side for left-to-right filling)
+  for (let i = 0; i < filledSections; i++) {
+    bar += '<:healthfullmiddle:1481750286795149435>';
+  }
+  
+  // Add empty middle sections after (on right side)
+  for (let i = filledSections; i < 6; i++) {
+    bar += '<:Healthemptymiddle:1481750341489004596>';
+  }
+  
+  bar += rightIcon;
+  return bar;
+}
+
+function getEffectString(card, target) {
+  if (!card.def.effect) return '';
+  if (card.def.effect === 'team_stun') {
+    return ` (${STATUS_EMOJIS.stun} stuns the whole team for **${card.def.effectDuration || 1}** turn(s))`;
+  } else {
+    const effectVerbs = {
+      'stun': 'stuns',
+      'freeze': 'freezes',
+      'cut': 'cuts',
+      'bleed': 'bleeds',
+      'regen': 'regenerates',
+      'confusion': 'confuses',
+      'attackup': 'boosts attack on',
+      'attackdown': 'reduces attack on',
+      'defenseup': 'boosts defense on',
+      'defensedown': 'reduces defense on',
+      'truesight': 'grants truesight to',
+      'undead': 'grants undead to'
+    };
+    const verb = effectVerbs[card.def.effect] || 'affects';
+    const duration = card.def.effectDuration || 1;
+    const targetName = card.def.itself ? card.def.character : (target ? target.def.character : 'target');
+    const icon = STATUS_EMOJIS[card.def.effect] || '';
+    const defaultAmount = 25;
+    const effectAmount = card.def.effectAmount ?? (card.def.effect === 'regen' ? 10 : defaultAmount);
+    const effectChance = card.def.effectChance ?? 30;
+    let details = '';
+    if (card.def.effect === 'regen') details = ` (${effectAmount}%)`;
+    if (card.def.effect === 'confusion') details = ` (${effectChance}%)`;
+    if (['attackup', 'attackdown', 'defenseup', 'defensedown'].includes(card.def.effect)) details = ` (${effectAmount}%)`;
+    return ` (${icon} ${verb} ${targetName}${details} for **${duration}** turn(s))`;
+  }
+}
+
+function addEmbedFieldLines(embed, baseName, lines, inline = false) {
+  const maxLen = 1024;
+  let content = lines.join('\n');
+  if (content.length > maxLen) {
+    content = content.slice(0, maxLen - 1) + '…';
+  }
+  embed.addFields({ name: baseName, value: content, inline });
 }
 
 function energyDisplay(energy) {
@@ -85,8 +155,8 @@ function energyDisplay(energy) {
 }
 
 function buildEmbed(state) {
-  // Embed color: white for current player's turn, black for opponent's
-  const embedColor = state.turn === 'player1' ? '#FFFFFF' : '#000000';
+  // Embed color based on turn: blue for player 1, red for player 2
+  const embedColor = state.turn === 'player1' ? '#0000FF' : '#FF0000';
   const embed = new EmbedBuilder()
     .setColor(embedColor)
     .setTitle('Duel: Interactive Battle')
@@ -95,30 +165,58 @@ function buildEmbed(state) {
   if (state.embedImage) {
     embed.setImage(state.embedImage);
   }
+  const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
+  applyDefaultEmbedStyle(embed, state.discordUser1);
 
-  // Player 1 team - filter out KO, use stacked layout
+  // Bounty indication
+  if (state.isBountyDuel) {
+    const hunter = state.bountyHunter === state.player1Id ? state.discordUser1.username : state.discordUser2.username;
+    const target = state.bountyHunter === state.player1Id ? state.discordUser2.username : state.discordUser1.username;
+    embed.addFields({ name: 'Bounty Duel', value: `${hunter} is hunting ${target}!`, inline: false });
+  }
+
+  // Player 1 team - filter out KO, add each as separate inline field
   const p1Alive = state.player1Cards.filter(c => c.currentHP > 0);
-  const p1Lines = p1Alive.map((c, i) => {
-    const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
-    const prefix = statusEmojis || (c.def.emoji || '');
-    let line = `${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
-    if (state.selected !== null && state.player1Cards.indexOf(c) === state.selected && state.turn === 'player1') line = `**> ${line}**`;
-    return line;
-  });
-  const p1FieldValue = p1Lines.length > 0 ? p1Lines.join('\n') : 'All cards defeated!';
-  embed.addFields({ name: `${state.discordUser1.username}`, value: p1FieldValue });
+  if (p1Alive.length > 0) {
+    for (const c of p1Alive) {
+      const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
+      const prefix = statusEmojis || (c.def.emoji || '');
+      const idx = state.player1Cards.indexOf(c);
+      const isSelected = state.selected !== null && idx === state.selected && state.turn === 'player1';
+      const level = c.userEntry ? c.userEntry.level : 1;
+      const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
+      let value = `${prefix} ${hpBar(c.currentHP, c.maxHP)}`;
+      value += `\n${c.def.character} | Lv. ${level} U${upgradeMatch}`;
+      value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
+      if (isSelected) value = `**> ${value}**`;
+      embed.addFields({ name: c.def.character, value, inline: true });
+    }
+  } else {
+    embed.addFields({ name: `${state.discordUser1.username}`, value: 'All cards defeated!', inline: false });
+  }
 
-  // Player 2 team - filter out KO, use stacked layout
+  // Separator between teams
+  embed.addFields({ name: '\u200B', value: '\u200B' });
+
+  // Player 2 team - filter out KO, add each as separate inline field
   const p2Alive = state.player2Cards.filter(c => c.currentHP > 0);
-  const p2Lines = p2Alive.map((c, i) => {
-    const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
-    const prefix = statusEmojis || (c.def.emoji || '');
-    let line = `${prefix} **${c.def.character}** ${energyDisplay(c.energy)}\n${hpBar(c.currentHP, c.maxHP)} ${c.currentHP}/${c.maxHP}`;
-    if (state.selected !== null && state.player2Cards.indexOf(c) === state.selected && state.turn === 'player2') line = `**> ${line}**`;
-    return line;
-  });
-  const p2FieldValue = p2Lines.length > 0 ? p2Lines.join('\n') : 'All cards defeated!';
-  embed.addFields({ name: `${state.discordUser2.username}`, value: p2FieldValue });
+  if (p2Alive.length > 0) {
+    for (const c of p2Alive) {
+      const statusEmojis = (c.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
+      const prefix = statusEmojis || (c.def.emoji || '');
+      const idx = state.player2Cards.indexOf(c);
+      const isSelected = state.selected !== null && idx === state.selected && state.turn === 'player2';
+      const level = c.userEntry ? c.userEntry.level : 1;
+      const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
+      let value = `${prefix} ${hpBar(c.currentHP, c.maxHP)}`;
+      value += `\n${c.def.character} | Lv. ${level} U${upgradeMatch}`;
+      value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
+      if (isSelected) value = `**> ${value}**`;
+      embed.addFields({ name: c.def.character, value, inline: true });
+    }
+  } else {
+    embed.addFields({ name: `${state.discordUser2.username}`, value: 'All cards defeated!', inline: false });
+  }
 
   // action columns
   if (state.lastP1Action || state.lastP2Action) {
@@ -126,11 +224,6 @@ function buildEmbed(state) {
       { name: `${state.discordUser1.username}'s Action`, value: state.lastP1Action || '—', inline: true },
       { name: `${state.discordUser2.username}'s Action`, value: state.lastP2Action || '—', inline: true }
     );
-  }
-
-  // log
-  if (state.log) {
-    embed.addFields({ name: 'Battle Log', value: state.log });
   }
 
   return embed;
@@ -179,14 +272,6 @@ function makeActionRow(state, isPlayer1Turn) {
         .setCustomId('duel_action:special')
         .setLabel('Special Attack')
         .setStyle(ButtonStyle.Primary)
-    );
-  }
-  if (card.def.type === 'Special') {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId('duel_action:ability')
-        .setLabel('Special Ability')
-        .setStyle(ButtonStyle.Secondary)
     );
   }
   // Rest button - reset energy to 3
@@ -348,16 +433,47 @@ async function finalizeAction(state, msg, timedOut = false) {
       }
     }
     
+    // Handle bounty rewards
+    let xpGain = 0;
+    let beliGain = 0;
+    if (state.isBountyDuel && winnerId === state.bountyHunter) {
+      const targetBounty = loserUser.bounty || 100;
+      xpGain = Math.floor(targetBounty / 10);
+      beliGain = Math.floor(targetBounty / 2);
+      
+      winnerUser.balance = (winnerUser.balance || 0) + beliGain;
+      // Add XP to all owned cards
+      if (winnerUser.ownedCards) {
+        winnerUser.ownedCards.forEach(card => {
+          card.xp = (card.xp || 0) + xpGain;
+        });
+      }
+      winnerUser.activeBountyTarget = null;
+      winnerUser.bountyCooldownUntil = null;
+      await winnerUser.save();
+    } else if (state.isBountyDuel && loserId === state.bountyHunter) {
+      // Hunter lost, reset cooldown but keep target
+      const hunterUser = await User.findOne({ userId: state.bountyHunter });
+      if (hunterUser) {
+        hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        await hunterUser.save();
+      }
+    }
+    
     // Create victory embed with bounty information
     let description = `${winner.username} wins!`;
     if (bountyGain > 0) {
       description += `\n\nBounty Gained: **${bountyGain}**`;
     }
+    if (xpGain > 0 && beliGain > 0) {
+      description += `\n\nBounty Claimed! Earned **${xpGain} XP** and ¥**${beliGain}**!`;
+    }
     
     const victorEmbed = new EmbedBuilder()
-      .setColor('#00AA00')
+      .setColor('#FFFFFF')
       .setTitle('Duel Victory!')
-      .setDescription(description);
+      .setDescription(description)
+      .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
     
     try { await msg.delete(); } catch {}
     await msg.channel.send({ embeds: [victorEmbed] });
@@ -426,13 +542,27 @@ async function finalizeAction(state, msg, timedOut = false) {
       }
       
       const victorEmbed = new EmbedBuilder()
-        .setColor('#00AA00')
+        .setColor('#FFFFFF')
         .setTitle('Duel Victory!')
-        .setDescription(description);
+        .setDescription(description)
+        .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
       
       try { await msg.delete(); } catch {}
       await msg.channel.send({ embeds: [victorEmbed] });
       duelStates.delete(msg.id);
+    }
+  }
+}
+
+function clearUserState(userId) {
+  for (const [msgId, state] of duelStates) {
+    if (state.player1Id === userId || state.player2Id === userId) {
+      duelStates.delete(msgId);
+    }
+  }
+  for (const [msgId, pending] of pendingDuelRequests) {
+    if (pending.player1Id === userId || pending.player2Id === userId) {
+      pendingDuelRequests.delete(msgId);
     }
   }
 }
@@ -443,6 +573,7 @@ module.exports = {
   options: [
     { name: 'opponent', type: 6, description: 'The player to duel', required: true }
   ],
+  clearUserState,
   async execute({ message, interaction, args }) {
     const userId = message ? message.author.id : interaction.user.id;
     let user1 = await User.findOne({ userId });
@@ -576,9 +707,10 @@ module.exports = {
 
     // Send acceptance message
     const acceptEmbed = new EmbedBuilder()
-      .setColor('#3498db')
+      .setColor('#FFFFFF')
       .setTitle('Duel Request')
       .setDescription(`${disc1.username} has challenged ${disc2.username} to a duel!`)
+      .setAuthor({ name: disc1.username, iconURL: disc1.displayAvatarURL() })
       .addFields({ name: 'Do you accept?', value: 'Click Accept to begin or Decline to reject.' });
     
     const acceptRow = new ActionRowBuilder()
@@ -602,14 +734,14 @@ module.exports = {
     
     // Store pending duel request temporarily
     const pendingState = {
-      player1Id: user1Id,
-      player2Id: user2Id,
-      player1Cards: team1,
-      player2Cards: team2,
-      p1Speed: speed1,
-      p2Speed: speed2,
-      discordUser1: disc1,
-      discordUser2: disc2
+      player1Id: userId, // Challenger (who initiated the duel)
+      player2Id: opponentId, // Opponent (who was challenged)
+      player1Cards: p1Team, // Challenger's team
+      player2Cards: p2Team, // Opponent's team
+      p1Speed: p1Speed,
+      p2Speed: p2Speed,
+      discordUser1: discordUser1,
+      discordUser2: discordUser2
     };
     pendingDuelRequests.set(acceptMsg.id, pendingState);
     // Expire after 5 minutes
@@ -624,6 +756,11 @@ module.exports = {
       const pending = pendingDuelRequests.get(msgId);
       if (!pending) {
         return interaction.reply({ content: 'This duel request has expired.', ephemeral: true });
+      }
+      
+      // Check if the challenger is trying to accept their own challenge
+      if (interaction.user.id === pending.player1Id) {
+        return interaction.reply({ content: 'You cannot accept your own challenge. Waiting for your opponent...', ephemeral: true });
       }
       
       // Only the challenged player (player2) can respond
@@ -651,6 +788,19 @@ module.exports = {
           return interaction.reply({ content: 'One or both players are already in an active duel.', ephemeral: true });
         }
         
+        // Check for bounty duel
+        let isBountyDuel = false;
+        let bountyHunter = null;
+        const p1User = await User.findOne({ userId: pending.player1Id });
+        const p2User = await User.findOne({ userId: pending.player2Id });
+        if (p1User && p1User.activeBountyTarget === pending.player2Id) {
+          isBountyDuel = true;
+          bountyHunter = pending.player1Id;
+        } else if (p2User && p2User.activeBountyTarget === pending.player1Id) {
+          isBountyDuel = true;
+          bountyHunter = pending.player2Id;
+        }
+        
         // Start the duel
         const state = {
           player1Id: pending.player1Id,
@@ -670,7 +820,9 @@ module.exports = {
           embedImage: null,
           gifMessageId: null,
           discordUser1: pending.discordUser1,
-          discordUser2: pending.discordUser2
+          discordUser2: pending.discordUser2,
+          isBountyDuel,
+          bountyHunter
         };
         applyGlobalCut(state);
         appendLog(state, `${state.startingPlayer === 'player1' ? state.discordUser1.username : state.discordUser2.username} goes first!`);
@@ -683,11 +835,19 @@ module.exports = {
         duelStates.set(battleMsg.id, state);
         pendingDuelRequests.delete(msgId);
         await setupTimeout(state, battleMsg);
+
+        // 3-minute expiration timeout
+        setTimeout(() => {
+          const expiredEmbed = buildEmbed(state);
+          expiredEmbed.setFooter({ text: 'Expired' });
+          battleMsg.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
+        }, 180000);
         return safeDefer(interaction);
       }
     }
     
     const state = duelStates.get(msgId);
+    const logs = [];
 
     if (!state) {
       return interaction.reply({ content: 'This duel session has expired.', ephemeral: true });
@@ -746,22 +906,50 @@ module.exports = {
         return safeDefer(interaction);
       }
 
+      const target = opponentTeam[targetIdx];
+
+      const confusionStatus = getConfusionChance(card);
+      if (confusionStatus > 0 && randomInt(1, 100) <= confusionStatus) {
+        const actionText = `${card.def.character} is confused and misses the attack! <:energy:1478051414558118052> -1`;
+        if (isPlayer1) state.lastP1Action = actionText;
+        else state.lastP2Action = actionText;
+        state.selected = null;
+        await finalizeAction(state, interaction.message);
+        return safeDefer(interaction);
+      }
+
+      if (hasTruesight(target)) {
+        consumeTruesight(target);
+        const actionText = `${card.def.character} attacks ${target.def.character} but ${target.def.character} dodges with truesight! <:energy:1478051414558118052> -1`;
+        appendLog(state, `${target.def.character} used truesight and avoided the attack!`);
+        if (isPlayer1) state.lastP1Action = actionText;
+        else state.lastP2Action = actionText;
+        state.selected = null;
+        await finalizeAction(state, interaction.message);
+        return safeDefer(interaction);
+      }
+
       if (action === 'attack') {
         if (card.energy < 1) {
           return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         }
         card.energy -= 1;
         card.turnsUntilRecharge = 2;
-        const baseDmg = calculateUserDamage(card, 'attack');
-        const target = opponentTeam[targetIdx];
+
+        let baseDmg = calculateUserDamage(card, 'attack');
         const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
-        const dmg = Math.floor(baseDmg * attrMultiplier);
+        const attackMod = getAttackModifier(card);
+        const defenseMod = getDefenseModifier(target);
+        let dmg = Math.floor(baseDmg * attrMultiplier * attackMod * (1 + defenseMod));
+        dmg = Math.max(0, dmg);
+
         target.currentHP -= dmg;
         if (target.currentHP <= 0) {
           target.currentHP = 0;
-          target.alive = false;
+          const ko = handleKO(target);
+          if (ko) logs.push(ko);
         }
-        // unfreeze the target if frozen
+
         if (target.status) {
           const freezeIdx = target.status.findIndex(st => st.type === 'freeze');
           if (freezeIdx >= 0) {
@@ -769,8 +957,7 @@ module.exports = {
             appendLog(state, `${target.def.character} was unfrozen by the attack!`);
           }
         }
-        const effectLogsD1 = [];
-        effectLogsD1.forEach(l => appendLog(state, l));
+
         const effectiveness = attrMultiplier > 1 ? ' (effective!)' : attrMultiplier < 1 ? ' (weak)' : '';
         const actionText = `${card.def.character} used Attack on ${target.def.character} for ${dmg} damage${effectiveness}! <:energy:1478051414558118052> -1`;
         if (isPlayer1) state.lastP1Action = actionText;
@@ -781,16 +968,21 @@ module.exports = {
         }
         card.energy -= 3;
         card.turnsUntilRecharge = 2;
-        const baseDmg = calculateUserDamage(card, 'special');
-        const target = opponentTeam[targetIdx];
+
+        let baseDmg = calculateUserDamage(card, 'special');
         const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
-        const dmg = Math.floor(baseDmg * attrMultiplier);
+        const attackMod = getAttackModifier(card);
+        const defenseMod = getDefenseModifier(target);
+        let dmg = Math.floor(baseDmg * attrMultiplier * attackMod * (1 + defenseMod));
+        dmg = Math.max(0, dmg);
+
         target.currentHP -= dmg;
         if (target.currentHP <= 0) {
           target.currentHP = 0;
-          target.alive = false;
+          const ko = handleKO(target);
+          if (ko) logs.push(ko);
         }
-        // unfreeze the target if frozen
+
         if (target.status) {
           const freezeIdx = target.status.findIndex(st => st.type === 'freeze');
           if (freezeIdx >= 0) {
@@ -798,7 +990,7 @@ module.exports = {
             appendLog(state, `${target.def.character} was unfrozen by the attack!`);
           }
         }
-        // handle team_stun effect application
+
         let effectLogsD2 = [];
         if (card.def.effect === 'team_stun') {
           const allAlive = opponentTeam.filter(c => c.currentHP > 0);
@@ -807,56 +999,36 @@ module.exports = {
           effectLogsD2 = applyCardEffectShared(card, target);
         }
         effectLogsD2.forEach(l => appendLog(state, l));
-        // Send special attack GIF and set embedImage
+
+        const effectStr = getEffectString(card, target);
+        const actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} for ${dmg} damage${effectStr}! <:energy:1478051414558118052> -3`;
+        if (isPlayer1) state.lastP1Action = actionText;
+        else state.lastP2Action = actionText;
+
         if (card.def.special_attack?.gif) {
           state.embedImage = card.def.special_attack.gif;
           try {
-            // build description with optional effect details
             let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
             if (card.def.effect && card.def.effectDuration) {
               const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration);
               if (effectDesc) desc += `\n*${effectDesc}*`;
             }
             const gifEmbed = new EmbedBuilder()
-              .setColor(state.turn === 'player1' ? '#FFFFFF' : '#000000')
+              .setColor('#FFFFFF')
               .setImage(card.def.special_attack.gif)
-              .setDescription(desc);
+              .setDescription(desc)
+              .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
             const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] });
             state.gifMessageId = gifMsg.id;
           } catch (e) {
             console.error('Failed to send special attack GIF:', e);
           }
         }
-        const actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'}${card.def.effect === 'team_stun' ? ' (team stun)' : ''} for ${dmg} damage! <:energy:1478051414558118052> -3`;
-        if (isPlayer1) state.lastP1Action = actionText;
-        else state.lastP2Action = actionText;
-      } else if (action === 'ability') {
-        card.energy -= 1;
-        card.turnsUntilRecharge = 2;
-        const baseDmg = calculateUserDamage(card, 'ability');
-        const target = opponentTeam[targetIdx];
-        const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
-        const dmg = Math.floor(baseDmg * attrMultiplier);
-        target.currentHP -= dmg;
-        if (target.currentHP <= 0) {
-          target.currentHP = 0;
-          target.alive = false;
-        }
-        // unfreeze the target if frozen
-        if (target.status) {
-          const freezeIdx = target.status.findIndex(st => st.type === 'freeze');
-          if (freezeIdx >= 0) {
-            target.status.splice(freezeIdx, 1);
-            appendLog(state, `${target.def.character} was unfrozen by the attack!`);
-          }
-        }
-        const effectLogsD3 = [];
-        effectLogsD3.forEach(l => appendLog(state, l));
-        const actionText = `${card.def.character} used Special Ability on ${target.def.character} for ${dmg} damage! <:energy:1478051414558118052> -1`;
-        if (isPlayer1) state.lastP1Action = actionText;
-        else state.lastP2Action = actionText;
       }
 
+      if (logs.length > 0) {
+        logs.forEach(l => appendLog(state, l));
+      }
       state.selected = null;
       await finalizeAction(state, interaction.message);
       return safeDefer(interaction);
@@ -895,11 +1067,80 @@ module.exports = {
 
       // handle forfeit immediately before card logic
       if (act === 'forfeit') {
+        state.finished = true;
+        const winnerId = isPlayer1 ? state.player2Id : state.player1Id;
+        const loserId = isPlayer1 ? state.player1Id : state.player2Id;
         const winner = isPlayer1 ? state.discordUser2 : state.discordUser1;
+        const loser = isPlayer1 ? state.discordUser1 : state.discordUser2;
+        
+        // Load user documents and calculate bounty change
+        let winnerUser = await User.findOne({ userId: winnerId });
+        let loserUser = await User.findOne({ userId: loserId });
+        let bountyGain = 0;
+        
+        if (winnerUser && loserUser) {
+          const winnerBounty = winnerUser.bounty || 100;
+          const loserBounty = loserUser.bounty || 100;
+          
+          // Calculate bounty gain based on the rules:
+          // If Winner's Bounty >= Loser's Bounty: 0 Bounty gain
+          // If Loser's Bounty > Winner's Bounty: Winner gains 3% of the Loser's bounty
+          // Cap: If the Loser has > 3x the Winner's bounty, the Winner earns 0 Bounty
+          if (loserBounty > winnerBounty) {
+            if (loserBounty > winnerBounty * 3) {
+              bountyGain = 0; // Cap reached
+            } else {
+              bountyGain = Math.floor(loserBounty * 0.03);
+            }
+          }
+          
+          if (bountyGain > 0) {
+            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+            await winnerUser.save();
+          }
+        }
+        
+        // Handle bounty rewards
+        let xpGain = 0;
+        let beliGain = 0;
+        if (state.isBountyDuel && winnerId === state.bountyHunter) {
+          const targetBounty = loserUser.bounty || 100;
+          xpGain = Math.floor(targetBounty / 10);
+          beliGain = Math.floor(targetBounty / 2);
+          
+          winnerUser.balance = (winnerUser.balance || 0) + beliGain;
+          // Add XP to all owned cards
+          if (winnerUser.ownedCards) {
+            winnerUser.ownedCards.forEach(card => {
+              card.xp = (card.xp || 0) + xpGain;
+            });
+          }
+          winnerUser.activeBountyTarget = null;
+          winnerUser.bountyCooldownUntil = null;
+          await winnerUser.save();
+        } else if (state.isBountyDuel && loserId === state.bountyHunter) {
+          // Hunter lost, reset cooldown but keep target
+          const hunterUser = await User.findOne({ userId: state.bountyHunter });
+          if (hunterUser) {
+            hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            await hunterUser.save();
+          }
+        }
+        
+        // Create victory embed with bounty information
+        let description = `${interaction.user.username} forfeited.\n${winner.username} wins!`;
+        if (bountyGain > 0) {
+          description += `\n\nBounty Gained: **${bountyGain}**`;
+        }
+        if (xpGain > 0 && beliGain > 0) {
+          description += `\n\nBounty Claimed! Earned **${xpGain} XP** and ¥**${beliGain}**!`;
+        }
+        
         const forfeitEmbed = new EmbedBuilder()
-          .setColor('#00AA00')
+          .setColor('#FFFFFF')
           .setTitle('Duel Victory!')
-          .setDescription(`${interaction.user.username} forfeited.\n${winner.username} wins!`);
+          .setDescription(description)
+          .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
         try { await interaction.message.delete(); } catch {}
         await interaction.channel.send({ embeds: [forfeitEmbed] });
         duelStates.delete(msgId);
@@ -917,7 +1158,7 @@ module.exports = {
         return interaction.reply({ content: 'Selected card is unavailable.', ephemeral: true });
       }
 
-      if (act === 'attack' || act === 'special' || act === 'ability') {
+      if (act === 'attack' || act === 'special') {
         // block stunned/frozen cards from initiating an action
         if (hasStatusLock(card)) {
           return interaction.reply({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
@@ -926,31 +1167,13 @@ module.exports = {
         if (aliveOpponents.length === 0) {
           return interaction.reply({ content: 'No valid targets remaining.', ephemeral: true });
         }
-        const aliveTanks = aliveOpponents.filter(c => c.def.type === 'Tank');
         // pick a target index now, default to first alive opponent
         let targetIdx = opponentTeam.findIndex(c => c.currentHP > 0);
-        // if a tank exists, force targeting to tanks only
-        if (aliveTanks.length > 0) {
-          // if multiple tanks (shouldn't happen due to team rule) still prompt
-          if (aliveTanks.length > 1 && !state.awaitingTarget) {
-            state.awaitingTarget = act;
-            await updateDuelMessage(interaction.message, state);
-            return safeDefer(interaction);
-          }
-          // single tank automatically targeted
-          const tankIdx = opponentTeam.findIndex(c => c === aliveTanks[0]);
-          if (tankIdx >= 0) {
-            // no prompt
-            targetIdx = tankIdx;
-          }
-        } else {
-          // prompt for a specific damage target if there are multiple opponents
-          if (aliveOpponents.length > 1 && !state.awaitingTarget) {
-            state.awaitingTarget = act;
-            await updateDuelMessage(interaction.message, state);
-            return safeDefer(interaction);
-          }
-          // if only one opponent alive, targetIdx was already set above
+        // if there are multiple opponents, prompt the player
+        if (aliveOpponents.length > 1 && !state.awaitingTarget) {
+          state.awaitingTarget = act;
+          await updateDuelMessage(interaction.message, state);
+          return safeDefer(interaction);
         }
 
         // Energy checks
@@ -960,42 +1183,34 @@ module.exports = {
         } else if (act === 'special') {
           if (card.energy < 3) return interaction.reply({ content: 'Special attack requires 3 energy.', ephemeral: true });
           card.energy -= 3;
-        } else if (act === 'ability') {
-          if (card.def.type !== 'Special') return interaction.reply({ content: 'That card has no special ability.', ephemeral: true });
-          if (card.energy < 1) return interaction.reply({ content: 'Not enough energy for ability.', ephemeral: true });
-          card.energy -= 1;
         }
 
-        // Bleed effect: apply standardized bleed damage and decrement
-        // duration using shared helper.
-        const energyCost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
-
         card.turnsUntilRecharge = 2;
-        const dmg = calculateUserDamage(card, act === 'ability' ? 'attack' : act, myUser);
+        const baseDmg = calculateUserDamage(card, act, myUser);
         // determine damage target(s) and effect target(s)
         let damageTarget;
         let effectTarget;
         if (act === 'special' && card.def.effect === 'team_stun') {
           // team_stun: damage single target, stun all alive opponents
           damageTarget = opponentTeam[targetIdx];
-          if (damageTarget) {
-            damageTarget.currentHP -= dmg;
-            if (damageTarget.currentHP <= 0) {
-              damageTarget.currentHP = 0;
-              damageTarget.alive = false;
-            }
-          }
           effectTarget = opponentTeam.filter(c => c.currentHP > 0);
         } else {
           const target = opponentTeam[targetIdx];
           damageTarget = target;
           effectTarget = target;
-          if (target) {
-            target.currentHP -= dmg;
-            if (target.currentHP <= 0) {
-              target.currentHP = 0;
-              target.alive = false;
-            }
+        }
+        // calculate final damage with attribute multiplier
+        let attrMultiplier = 1;
+        if (damageTarget) {
+          attrMultiplier = getDamageMultiplier(card.def.attribute, damageTarget.def.attribute);
+        }
+        const dmg = Math.floor(baseDmg * attrMultiplier);
+        if (damageTarget) {
+          damageTarget.currentHP -= dmg;
+          if (damageTarget.currentHP <= 0) {
+            damageTarget.currentHP = 0;
+            const ko = handleKO(damageTarget);
+            if (ko) logs.push(ko);
           }
         }
         // unfreeze the damage target if it was frozen
@@ -1003,7 +1218,6 @@ module.exports = {
           const freezeIdx = damageTarget.status.findIndex(st => st.type === 'freeze');
           if (freezeIdx >= 0) {
             damageTarget.status.splice(freezeIdx, 1);
-            appendLog(state, `${damageTarget.def.character} was unfrozen by the attack!`);
           }
         }
         // apply status effect only for specials
@@ -1037,9 +1251,10 @@ module.exports = {
                 desc += effectSummary;
               }
               const gifEmbed = new EmbedBuilder()
-                .setColor(state.turn === 'player1' ? '#FFFFFF' : '#000000')
+                .setColor('#FFFFFF')
                 .setImage(card.def.special_attack.gif)
-                .setDescription(desc);
+                .setDescription(desc)
+                .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
               const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] });
               state.gifMessageId = gifMsg.id;
             } catch (e) {
@@ -1052,16 +1267,17 @@ module.exports = {
         effectLogs.forEach(l => appendLog(state, l));
 
         const cost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
+        const effectivenessStr = attrMultiplier > 1 ? ' (super effective)' : attrMultiplier < 1 ? ' (not very effective)' : '';
+        const effectMessages = effectLogs.length > 0 ? ` *${effectLogs.join(', ')}*` : '';
         let actionText;
         if (act === 'special') {
           if (card.def.effect === 'team_stun') {
-            actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} on ${damageTarget?.def?.character || 'target'} for ${dmg} damage and stunned the whole team! <:energy:1478051414558118052> -${cost}`;
+            actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} on ${damageTarget?.def?.character || 'target'} for ${dmg} damage!${effectivenessStr} *stunned the whole team*${effectMessages} <:energy:1478051414558118052> -${cost}`;
           } else {
-            actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} for ${dmg} damage! <:energy:1478051414558118052> -${cost}`;
+            actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} for ${dmg} damage!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} <:energy:1478051414558118052> -${cost}`;
           }
         } else {
-          const label = act === 'attack' ? 'Attack' : 'Special Ability';
-          actionText = `${card.def.character} used ${label} on ${damageTarget.def.character} for ${dmg} damage! <:energy:1478051414558118052> -${cost}`;
+          actionText = `${card.def.character} used Attack on ${damageTarget.def.character} for ${dmg} damage!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} <:energy:1478051414558118052> -${cost}`;
         }
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
@@ -1069,24 +1285,13 @@ module.exports = {
         // Rest action: restore card's energy to 3
         card.energy = 3;
         card.turnsUntilRecharge = 2;
-        appendLog(state, `${card.def.character} rested and restored energy!`);
         const actionText = `${card.def.character} took a rest and restored energy!`;
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
-      } else if (act === 'forfeit') {
-        const winner = isPlayer1 ? state.discordUser2 : state.discordUser1;
-        
-        // Create simple forfeit embed
-        const forfeitEmbed = new EmbedBuilder()
-          .setColor('#00AA00')
-          .setTitle('Duel Victory!')
-          .setDescription(`${interaction.user.username} forfeited.\n${winner.username} wins!`);
-        
-        try { await interaction.message.delete(); } catch {}
-        await interaction.channel.send({ embeds: [forfeitEmbed] });
-        duelStates.delete(msgId);
-        return safeDefer(interaction);
       }
+
+      // Clear log after action to prevent accumulation
+      state.log = '';
 
       await finalizeAction(state, interaction.message);
       return safeDefer(interaction);

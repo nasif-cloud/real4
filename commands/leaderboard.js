@@ -56,7 +56,8 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor('#DDDDDD')
         .setTitle('Global Leaderboard - Wealth')
-        .setDescription('Top 10 richest players');
+        .setDescription('Top 10 richest players')
+        .setAuthor({ name: username, iconURL: avatarUrl });
 
       wealthRanked.forEach((user, index) => {
         const name = userMap[user.userId] || user.userId;
@@ -75,7 +76,8 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor('#CCCCCC')
         .setTitle('Global Leaderboard - Bounty')
-        .setDescription('Top 10 most wanted');
+        .setDescription('Top 10 most wanted')
+        .setAuthor({ name: username, iconURL: avatarUrl });
 
       bountyRanked.forEach((user, index) => {
         const name = userMap[user.userId] || user.userId;
@@ -94,7 +96,8 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor('#BBBBBB')
         .setTitle('Global Leaderboard - Dex')
-        .setDescription('Top 10 card collectors');
+        .setDescription('Top 10 card collectors')
+        .setAuthor({ name: username, iconURL: avatarUrl });
 
       dexRanked.forEach((user, index) => {
         const uniqueCards = user.ownedCards?.length || 0;

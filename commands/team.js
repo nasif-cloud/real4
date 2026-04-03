@@ -2,11 +2,6 @@ const { EmbedBuilder } = require('discord.js');
 const { searchCards, findBestOwnedCard } = require('../utils/cards');
 const User = require('../models/User');
 
-const TYPE_EMOJIS = {
-  Combat: '<:combat:1478019288668438528>',
-  Tank: '<:tank:1478019541580648539>',
-  Special: '<:special:1478020172496506932>'
-};
 
 
 module.exports = {
@@ -50,12 +45,12 @@ module.exports = {
         return `${def.emoji || '•'} ${def.character} (${def.rank})`;
       });
       const nameList = lines.length ? lines.join('\n') : 'None';
-      const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
       const embed = new EmbedBuilder()
-        .setColor('#FFFFFF')
         .setTitle(`${message ? message.author.username : interaction.user.username}'s Team`)
-        .setDescription(nameList)
-        .setThumbnail(avatarUrl);
+        .setDescription(nameList);
+      const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
+      const discordUser = message ? message.author : interaction.user;
+      applyDefaultEmbedStyle(embed, discordUser);
       if (message) return message.channel.send({ embeds: [embed] });
       return interaction.reply({ embeds: [embed] });
     }

@@ -30,6 +30,10 @@ module.exports = {
   async execute({ message, interaction, args }) {
     const query = message ? args.join(' ') : interaction.options.getString('query');
     const userId = message ? message.author.id : interaction.user.id;
+    const discordUser = message ? message.author : interaction.user;
+    const username = message ? message.author.username : interaction.user.username;
+    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
+    
     let user = await User.findOne({ userId });
     if (!user) {
       const reply = 'You don\'t have an account to upgrade cards.';
@@ -89,7 +93,8 @@ module.exports = {
         .setColor('#FFFFFF')
         .setTitle(`Cannot Upgrade ${base.character}`)
         .setDescription(`You're missing the following required cards:\n\n${missingNames}`)
-        .setFooter({ text: `Next version: ${next.title || next.character}` });
+        .setFooter({ text: `Next version: ${next.title || next.character}` })
+        .setAuthor({ name: username, iconURL: avatarUrl });
 
       if (message) return message.reply({ embeds: [embed] });
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -103,7 +108,8 @@ module.exports = {
         .setColor('#FFFFFF')
         .setTitle(`Cannot Upgrade ${base.character}`)
         .setDescription(`Your card is not high enough level.\n\n**Required Level:** ${requiredLevel}\n**Your Level:** ${ownedEntry.level || 1}`)
-        .setFooter({ text: `Next version: ${next.title || next.character}` });
+        .setFooter({ text: `Next version: ${next.title || next.character}` })
+        .setAuthor({ name: username, iconURL: avatarUrl });
 
       if (message) return message.reply({ embeds: [embed] });
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -124,7 +130,8 @@ module.exports = {
         .setColor('#FFFFFF')
         .setTitle(`Cannot Upgrade ${base.character}`)
         .setDescription(`You don't have enough currency.\n\nRequired:\n• **Beli:** ${costs.beli} (you have ${userBeli})\n• **Gems:** ${costs.gems} (you have ${userGems})`)
-        .setFooter({ text: `New Version: ${next.title || next.character}` });
+        .setFooter({ text: `New Version: ${next.title || next.character}` })
+        .setAuthor({ name: username, iconURL: avatarUrl });
 
       if (message) return message.reply({ embeds: [embed] });
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -135,6 +142,7 @@ module.exports = {
       .setColor('#FFFFFF')
       .setTitle(`Upgrade ${base.character}?`)
       .setDescription(`**Current:** Mastery ${base.mastery}\n**Next:** Mastery ${next.mastery}\n\nSelect a payment method:`)
+      .setAuthor({ name: username, iconURL: avatarUrl })
       .addFields(
         { name: 'Beli', value: `${costs.beli} Beli ${canAffordBeli ? '✓' : '✗ (insufficient)'}`, inline: true },
         { name: 'Gems', value: `${costs.gems} Gems ${canAffordGems ? '✓' : '✗ (insufficient)'}`, inline: true }
@@ -164,8 +172,17 @@ module.exports = {
         .setStyle(ButtonStyle.Secondary)
     );
 
-    if (message) return message.reply({ embeds: [embed], components: [buttons] });
-    return interaction.reply({ embeds: [embed], components: [buttons], ephemeral: false });
+    let msg;
+    if (message) {
+      msg = await message.reply({ embeds: [embed], components: [buttons] });
+    } else {
+      msg = await interaction.reply({ embeds: [embed], components: [buttons], fetchReply: true });
+    }
+
+    setTimeout(() => {
+      embed.setFooter({ text: 'Expired' });
+      msg.edit({ embeds: [embed], components: [] }).catch(() => {});
+    }, 180000);
   },
   
   // Export button handler for use in main index.js

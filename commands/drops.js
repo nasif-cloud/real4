@@ -32,16 +32,10 @@ async function _spawnDrop() {
 
     if (!card) return;
 
-    // Create embed for the drop
-    const color = card.rank === 'D' ? '#B87333' : card.rank === 'C' ? '#f9a53f' : '#2b2d31';
-    const embed = new EmbedBuilder()
-      .setColor(color)
-      .setTitle('Card Drop!')
-      .setDescription(`A wild **${card.character}** appeared!`)
-      .setImage(card.image_url || null)
-      .setFooter({ text: `Rank: ${card.rank} | Expires in 10 minutes` });
-
+    // Build drop embed using the card's image
     const dropId = `drop_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const dropEmbed = buildPullEmbed(card);
+    
     const claimButton = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`drop_claim:${dropId}`)
@@ -49,7 +43,7 @@ async function _spawnDrop() {
         .setStyle(ButtonStyle.Success)
     );
 
-    const msg = await channel.send({ embeds: [embed], components: [claimButton] });
+    const msg = await channel.send({ embeds: [dropEmbed], components: [claimButton] });
 
     // Store drop info with 10-minute expiration
     const expiresAt = Date.now() + 600000; // 10 minutes
@@ -155,13 +149,8 @@ async function handleDropClaim(interaction, dropId) {
 
       await user.save();
 
-      const dupeEmbed = new EmbedBuilder()
-        .setColor('#FFD700')
-        .setTitle('Card Claimed (Duplicate)')
-        .setDescription(`**${card.character}** was already in your collection.\n\n+100 XP gained${gained ? ` (+${gained} lvl)` : ''}`)
-        .setImage(card.image_url || null);
-
-      return interaction.reply({ embeds: [dupeEmbed], ephemeral: true });
+      const text = `**${card.character}** was already in your collection.\n\n+100 XP gained${gained ? ` (+${gained} lvl)` : ''}`;
+      return interaction.reply({ content: text, ephemeral: true });
     } else {
       // Add new card
       user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
@@ -171,13 +160,8 @@ async function handleDropClaim(interaction, dropId) {
 
       await user.save();
 
-      const newEmbed = new EmbedBuilder()
-        .setColor('#00AA00')
-        .setTitle('Card Claimed!')
-        .setDescription(`You got **${card.character}**!\n\n**Rank:** ${card.rank}\n**Type:** ${card.type}`)
-        .setImage(card.image_url || null);
-
-      return interaction.reply({ embeds: [newEmbed], ephemeral: true });
+      const text = `You got **${card.character}**!\n\nRank: ${card.rank}`;
+      return interaction.reply({ content: text, ephemeral: true });
     }
   } catch (err) {
     console.error('Error claiming drop:', err);

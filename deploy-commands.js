@@ -74,6 +74,10 @@ commands.push({
   description: 'Open a pack to get cards',
   options: [{ name: 'pack', type: 3, description: 'Pack name', required: true }]
 });
+commands.push({ name: 'collection', description: 'View your card collection' });
+
+// timers command
+commands.push({ name: 'timers', description: 'View global stock and pull reset timers' });
 
 const token = process.env.DISCORD_TOKEN || process.env.TOKEN;
 const rest = new REST({ version: '10' }).setToken(token);

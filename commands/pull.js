@@ -2,10 +2,7 @@ const User = require('../models/User');
 const { cards } = require('../data/cards');
 const { PULL_LIMIT, PULL_RESET_HOURS, PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
 const { buildPullEmbed, getAllCardVersions, getCardById } = require('../utils/cards');
-
-function hoursBetween(a, b) {
-  return Math.abs(b - a) / (1000 * 60 * 60);
-}
+const { getTimeUntilNextPullReset } = require('../src/stock');
 
 module.exports = {
   name: 'pull',
@@ -20,19 +17,23 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // Reset logic
+    // Reset logic using global pull timer
     const now = new Date();
-    const hours = hoursBetween(user.lastReset, now);
-    if (hours >= PULL_RESET_HOURS) {
+    if (typeof user.pullsRemaining !== 'number' || isNaN(user.pullsRemaining)) {
       user.pullsRemaining = PULL_LIMIT;
-      user.lastReset = now;
+    }
+    if (!user.lastResetTime) {
+      user.lastResetTime = now;
+    }
+
+    const timeUntilGlobalReset = getTimeUntilNextPullReset();
+    if (timeUntilGlobalReset <= 0) {
+      user.pullsRemaining = PULL_LIMIT;
+      user.lastResetTime = now;
     }
 
     if (user.pullsRemaining <= 0) {
-      // calculate remaining duration until reset
-      const now = new Date();
-      const nextReset = new Date(user.lastReset.getTime() + PULL_RESET_HOURS * 3600 * 1000);
-      const diffMs = nextReset - now;
+      const diffMs = getTimeUntilNextPullReset();
       const hrs = Math.floor(diffMs / (1000 * 60 * 60));
       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
       const secs = Math.floor((diffMs % (1000 * 60)) / 1000);

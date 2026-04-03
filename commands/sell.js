@@ -63,9 +63,9 @@ module.exports = {
     await user.save();
 
     const embed = new EmbedBuilder()
-      .setColor('#00FF00')
+      .setColor('#FFFFFF')
       .setTitle('Card Sold!')
-      .setDescription(`Sold **${card.character}** (${card.rank}) for **${price}** currency`)
+      .setDescription(`Sold **${card.character}** (${card.rank}) for **${price}** ¥`)
       .setThumbnail(card.image_url);
 
     if (message) return message.channel.send({ embeds: [embed] });

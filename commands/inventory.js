@@ -6,7 +6,9 @@ module.exports = {
   description: 'Show your items and packs',
   async execute({ message, interaction }) {
     const userId = message ? message.author.id : interaction.user.id;
+    const discordUser = message ? message.author : interaction.user;
     const username = message ? message.author.username : interaction.user.username;
+    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
 
     let user = await User.findOne({ userId });
     if (!user) {
@@ -21,10 +23,9 @@ module.exports = {
       ? Object.entries(packsObj).map(([name, qty]) => `${name} x${qty}`).join('\n')
       : 'None';
 
-    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
     const embed = new EmbedBuilder()
-      .setTitle(`${username}'s Inventory`)
       .setColor('#FFFFFF')
+      .setTitle(`${username}'s Inventory`)
       .setThumbnail(avatarUrl)
       .addFields(
         { name: 'Items', value: items, inline: false },

@@ -17,24 +17,17 @@ module.exports = {
       .map(e => cards.find(c => c.id === e.cardId))
       .filter(c => c);
 
-    // filter out boost cards
-    let eligibles = ownedDefs.filter(c => c.type !== 'Boost');
-    if (eligibles.length === 0) {
-      const reply = 'You don\'t have any combat/tank/special cards to form a team.';
-      if (message) return message.reply(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
-    }
+    // start with full list of owned definitions (all cards are allowed)
+    let eligibles = ownedDefs.slice();
 
     // sort by raw power descending
     eligibles.sort((a, b) => b.power - a.power);
 
-    // ensure at least one tank if user owns any tanks
-    const tanks = eligibles.filter(c => c.type === 'Tank');
-    if (tanks.length && !eligibles.slice(0, 3).some(c => c.type === 'Tank')) {
-      const bestTank = tanks.sort((a, b) => b.power - a.power)[0];
-      // remove existing instance & push back into slice
-      eligibles = eligibles.filter(c => c.id !== bestTank.id);
-      eligibles.splice(2, 0, bestTank);
+    // if the user has no cards at all we can't form a team
+    if (eligibles.length === 0) {
+      const reply = 'You don\'t have any cards to form a team.';
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
     }
 
     const selected = eligibles.slice(0, 3);

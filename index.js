@@ -20,6 +20,7 @@ const userCmd = require('./commands/user');
 const leaderboardCmd = require('./commands/leaderboard');
 const stockCmd = require('./commands/stock');
 const openCmd = require('./commands/open');
+const timersCmd = require('./commands/timers');
 const User = require('./models/User');
 
 async function main() {
@@ -61,6 +62,13 @@ async function main() {
         processingInteractions.add(interaction.user.id);
       }
 
+      if (interaction.isStringSelectMenu()) {
+        const [action] = interaction.customId.split(':');
+        if (action === 'collection_sort_select') {
+          return require('./commands/collection').handleButton(interaction, interaction.customId);
+        }
+      }
+
       if (interaction.isChatInputCommand()) {
         const { commandName } = interaction;
         if (commandName === 'start') return startCmd.execute({ interaction });
@@ -78,6 +86,7 @@ async function main() {
         if (commandName === 'leaderboard') return leaderboardCmd.execute({ interaction });
         if (commandName === 'stock') return stockCmd.execute({ interaction });
         if (commandName === 'open') return openCmd.execute({ interaction });
+        if (commandName === 'timers') return timersCmd.execute({ interaction });
         if (commandName === 'info') return require('./commands/info').execute({ interaction });
         if (commandName === 'upgrade') return require('./commands/upgrade').execute({ interaction });
         if (commandName === 'balance') return require('./commands/balance').execute({ interaction });
@@ -148,6 +157,16 @@ async function main() {
           return openCmd.handleButton(interaction, interaction.customId);
         }
 
+        // handle stock page navigation
+        if (action === 'stock_page') {
+          return stockCmd.handleButton(interaction, cardId);
+        }
+
+        // handle collection navigation
+        if (action && (action.startsWith('collection_next') || action.startsWith('collection_prev') || action === 'collection_sort' || action === 'collection_sort_select')) {
+          return require('./commands/collection').handleButton(interaction, interaction.customId);
+        }
+
         // handle upgrade payment interactions
         if (action && action.startsWith('upgrade_')) {
           return require('./commands/upgrade').handleUpgradeButton(interaction);
@@ -157,6 +176,16 @@ async function main() {
         if (action && action.startsWith('drop_claim')) {
           const dropId = interaction.customId.split(':')[1];
           return require('./commands/drops').handleDropClaim(interaction, dropId);
+        }
+
+        // handle balance interactions
+        if (action === 'balance') {
+          return require('./commands/balance').handleButton(interaction, cardId);
+        }
+
+        // handle bounty interactions
+        if (action === 'bounty') {
+          return require('./commands/bounty').handleButton(interaction, cardId);
         }
       }
     } catch (err) {
@@ -198,6 +227,8 @@ async function main() {
     // alias shortcuts
     if (cmd === 'opp') cmd = 'pull';
     if (cmd === 'inv') cmd = 'inventory';
+    if (cmd === 't') cmd = 'timers';
+    if (cmd === 'col') cmd = 'collection';
     try {
       if (cmd === 'start') return await startCmd.execute({ message });
       if (cmd === 'pull') return await pullCmd.execute({ message });
@@ -214,6 +245,8 @@ async function main() {
       if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });
+      if (cmd === 'timers') return await timersCmd.execute({ message });
+      if (cmd === 'collection') return await require('./commands/collection').execute({ message });
       if (cmd === 'info') return await require('./commands/info').execute({ message, args });
       if (cmd === 'upgrade') return await require('./commands/upgrade').execute({ message, args });
       if (cmd === 'isail') return await require('./commands/isail').execute({ message });

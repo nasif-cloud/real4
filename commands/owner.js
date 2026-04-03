@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { cards } = require('../data/cards');
 const { OWNER_ID } = require('../config');
+const duelCmd = require('./duel');
 
 function parseMention(mention) {
   if (!mention) return null;
@@ -126,6 +127,10 @@ async function execute({ message, args }) {
     if (!targetId) return message.reply('Usage: op owner resetdata <@user>');
 
     await User.deleteOne({ userId: targetId });
+    // Clear any in-memory duel state for this user (pending/active duels)
+    if (duelCmd && typeof duelCmd.clearUserState === 'function') {
+      duelCmd.clearUserState(targetId);
+    }
     return message.reply(`Deleted data for <@${targetId}>`);
   }
 

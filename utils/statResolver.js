@@ -21,7 +21,8 @@ function resolveStats(userCard, ownedCards) {
   if (Array.isArray(ownedCards)) {
     ownedCards.forEach(entry => {
       const bdef = cardDefs.find(c => c.id === entry.cardId);
-      if (bdef && bdef.type === 'Boost' && bdef.boost) {
+      // any card with a `boost` property counts as a boost source
+      if (bdef && bdef.boost) {
         const regex = new RegExp(`${def.character.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\\s*\\((\\d+)%\\)`, 'i');
         const m = bdef.boost.match(regex);
         if (m) boostPct += parseInt(m[1], 10);

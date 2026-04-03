@@ -134,6 +134,20 @@ function simulatePull(pityCount, faculty = null) {
     }
   }
 
+  if (pool.length === 0) {
+    // global fallback to any pullable base version to prevent pulling U2+ directly
+    pool = cards.filter(c => c.pullable && c.mastery === 1);
+  }
+
+  if (pool.length === 0) {
+    // fallback hard: if no base cards available somehow, use any pullable card
+    pool = cards.filter(c => c.pullable);
+  }
+
+  if (pool.length === 0) {
+    return null;
+  }
+
   const card = pool[Math.floor(Math.random() * pool.length)];
   return card;
 }
@@ -159,9 +173,9 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
   // Calculate attack value for display
   const attackVal = `${card.attack_min} - ${card.attack_max}`;
   
-  // Build stats field - exclude attack for Boost cards
+  // Build stats field - exclude attack for cards that are pure boosts
   let statsText = `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}`;
-  if (card.type !== 'Boost') {
+  if (!card.boost) {
     statsText += `\n**Attack:** ${attackVal}`;
   }
   
@@ -213,7 +227,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   // move most metadata into description so only stats use a dedicated field
   let desc = cardDef.title || '';
   // order: Attribute, Faculty, Source (only shown if owned), Level (only shown if owned)
-  desc += `\n**Attribute:** ${cardDef.attribute || cardDef.type || 'unknown'}`;
+  desc += `\n**Attribute:** ${cardDef.attribute || 'unknown'}`;
   // always show the bare faculty name in the description – the emoji is used
   // only for the author icon above the embed.
   desc += `\n**Faculty:** ${cardDef.faculty || 'none'}`;
@@ -262,7 +276,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       // Check if this boost card receives boosts from other boost cards
       user.ownedCards.forEach(entry => {
         const def = cards.find(c => c.id === entry.cardId);
-        if (def && def.type === 'Boost' && def.boost && entry.cardId !== boostCardId) {
+        if (def && def.boost && entry.cardId !== boostCardId) {
           const boostCard = cards.find(c => c.id === boostCardId);
           if (boostCard) {
             // Check if this boost targets the boost card
@@ -280,7 +294,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     
     user.ownedCards.forEach(entry => {
       const def = cards.find(c => c.id === entry.cardId);
-      if (def && def.type === 'Boost' && def.boost) {
+      if (def && def.boost) {
         let appliedBoost = false;
         let boostAmount = 0;
         
@@ -328,7 +342,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
   // only the stats should be a field heading; boost cards get a custom line
   let statsValue;
-  if (cardDef.type === 'Boost') {
+  if (cardDef.boost) {
     statsValue =
       `**Health:** ${scaled.health}\n` +
       `**Power:** ${scaled.power}\n` +
@@ -355,7 +369,15 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       // bleed triggers when the affected card spends energy
       // (attack/special/ability); duration counts the number of uses
       'bleed': `Bleeds the opponent for ${duration} energy use${duration > 1 ? 's' : ''}`,
-      'team_stun': `Stuns all opponents for ${duration} turn${duration > 1 ? 's' : ''}`
+      'team_stun': `Stuns all opponents for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'regen': `Regenerates HP each turn for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'confusion': `Gives ${duration} turn${duration > 1 ? 's' : ''} of chance to miss attacks`,
+      'attackup': `Boosts attack for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'attackdown': `Reduces attack for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'defenseup': `Reduces incoming damage for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'defensedown': `Increases incoming damage for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'truesight': `Grants dodge immunity for ${duration} turn${duration > 1 ? 's' : ''}`,
+      'undead': `Keeps the target alive at 0 HP until the effect ends`
     };
     return effectDescriptions[effectType] || null;
   };
@@ -363,24 +385,28 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   // if the card has a special attack defined, show it as its own field with
   // the scaled values (level/boost already applied above)
   if (cardDef.special_attack && scaled.special_attack) {
-    const sa = cardDef.special_attack;
-    let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)`;
-    
-    // If the special attack applies a status effect, include it
-    if (cardDef.effect && cardDef.effectDuration) {
-      const effectDesc = getEffectDescription(cardDef.effect, cardDef.effectDuration);
-      if (effectDesc) {
-        specialAttackValue += ` - *${effectDesc}*`;
+      const sa = cardDef.special_attack;
+      let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)`;
+      
+      // If the special attack applies a status effect, include it
+      if (cardDef.effect && cardDef.effectDuration) {
+        const effectDesc = getEffectDescription(cardDef.effect, cardDef.effectDuration);
+        if (effectDesc) {
+          const amountLabel = ['regen', 'attackup', 'attackdown', 'defenseup', 'defensedown'].includes(cardDef.effect)
+            ? ` (${cardDef.effectAmount ?? (cardDef.effect === 'regen' ? 10 : 25)}%)`
+            : cardDef.effect === 'confusion'
+            ? ` (${cardDef.effectChance ?? 30}%)`
+            : '';
+          specialAttackValue += ` - *${effectDesc}${amountLabel}*`;
+        }
       }
+      
+      embed.addFields({
+        name: 'Special Attack',
+        value: specialAttackValue,
+        inline: false
+      });
     }
-    
-    embed.addFields({
-      name: 'Special Attack',
-      value: specialAttackValue,
-      inline: false
-    });
-  }
-
   // if the card received any percentage boosts from owned Boost cards, display them
   // only show on cards the user owns
   if (isOwned && boostEntries && boostEntries.length) {
@@ -439,6 +465,14 @@ function calculateFinalStats(cardDef, level, boostPct = 0) {
 // expose helper for other modules to describe status effects on attacks
 function getEffectDescription(effectType, duration) {
   const effectDescriptions = {
+    'regen': `Regenerates HP each turn for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'confusion': `Gives ${duration} turn${duration > 1 ? 's' : ''} of chance to miss attacks`,
+    'attackup': `Boosts attack for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'attackdown': `Reduces attack for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'defenseup': `Reduces incoming damage for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'defensedown': `Increases incoming damage for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'truesight': `Grants dodge immunity for ${duration} turn${duration > 1 ? 's' : ''}`,
+    'undead': `Keeps the target alive at 0 HP until the effect ends`,
     'stun': `Stuns the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
     'freeze': `Freezes the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
     'cut': `Cuts the opponent for ${duration} turn${duration > 1 ? 's' : ''}`,
