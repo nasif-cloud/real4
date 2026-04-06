@@ -13,7 +13,7 @@ module.exports = {
     let user = await User.findOne({ userId });
     if (user) {
       const reply = 'You already have an account.';
-      if (message) return message.reply(reply);
+      if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
@@ -36,11 +36,15 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setTitle('Account Created!')
       .setDescription(
-        `You received **${starter.character}** as a starter.\n\nYou also received ${basicRod.emoji} **${basicRod.name}** for fishing!`
+        `You received the following rewards:` +
+        `\n• **${starter.character}** (starter card)` +
+        `\n• ${basicRod.emoji} **${basicRod.name}** (fishing rod)` +
+        `\n• ¥ **500** Beli` +
+        `\n• <:reset:1483825882341703692> **5** Reset Tokens`
       );
     applyDefaultEmbedStyle(embed, discordUser);
 
-    if (message) return message.reply({ embeds: [embed] });
+    if (message) return message.channel.send({ embeds: [embed] });
     return interaction.reply({ embeds: [embed] });
   }
 };

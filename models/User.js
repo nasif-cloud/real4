@@ -30,6 +30,8 @@ const UserSchema = new Schema({
   packs: { type: [{ packType: String, quantity: Number }], default: [] },
   // active team (up to 3 cardIds)
   team: { type: [String], default: [] },
+  // custom team background image URL
+  teamBackgroundUrl: { type: String, default: null },
   // pack inventory for global stock system
   packInventory: { type: Object, default: {} },
   // daily rewards

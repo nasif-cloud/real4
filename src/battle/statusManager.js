@@ -41,10 +41,10 @@ function _handleKO(entity) {
   if (entity.currentHP <= 0) {
     const undeadActive = entity.status?.some(st => st.type === 'undead' && st.remaining > 0);
     if (undeadActive) {
-      entity.currentHP = 0;
+      entity.currentHP = 1;
       entity.alive = true;
       entity.energy = 0;
-      return `${entity.def?.character || entity.rank || 'Entity'} is undead and remains alive at 0 HP!`;
+      return `${entity.def?.character || entity.rank || 'Entity'} is undead and remains alive at 1 HP!`;
     }
     entity.currentHP = 0;
     entity.alive = false;
@@ -199,29 +199,29 @@ function applyCardEffect(attacker, target) {
       logs.push(`${statusTargetName(applyTo)} gains regen (${def.effectAmount || 10}%)${statusMessage()}!`);
       break;
     case 'confusion':
-      addStatus(applyTo, 'confusion', dur, { chance: def.effectChance || 30 });
-      logs.push(`${statusTargetName(applyTo)} is confused (${def.effectChance || 30}% miss chance)${statusMessage()}!`);
+      addStatus(applyTo, 'confusion', dur, { chance: def.effectChance || 50 });
+      logs.push(`${statusTargetName(applyTo)} is confused (${def.effectChance || 50}% miss chance)${statusMessage()}!`);
       break;
     case 'attackup': {
-      const amount = def.effectAmount ?? 25;
+      const amount = def.effectAmount ?? 12;
       addStatus(applyTo, 'attackup', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s attack is boosted (${amount}%)${statusMessage()}!`);
       break;
     }
     case 'attackdown': {
-      const amount = def.effectAmount ?? 25;
+      const amount = def.effectAmount ?? 12;
       addStatus(applyTo, 'attackdown', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s attack is reduced (${amount}%)${statusMessage()}!`);
       break;
     }
     case 'defenseup': {
-      const amount = def.effectAmount ?? 25;
+      const amount = def.effectAmount ?? 12;
       addStatus(applyTo, 'defenseup', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s defense is boosted (${amount}%)${statusMessage()}!`);
       break;
     }
     case 'defensedown': {
-      const amount = def.effectAmount ?? 25;
+      const amount = def.effectAmount ?? 12;
       addStatus(applyTo, 'defensedown', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s defense is reduced (${amount}%)${statusMessage()}!`);
       break;
@@ -232,7 +232,13 @@ function applyCardEffect(attacker, target) {
       break;
     case 'undead':
       addStatus(applyTo, 'undead', dur);
-      logs.push(`${statusTargetName(applyTo)} becomes undead${statusMessage()}!`);
+      if ((applyTo.currentHP || 0) <= 0) {
+        applyTo.currentHP = 1;
+        applyTo.alive = true;
+        logs.push(`${statusTargetName(applyTo)} becomes undead and returns at 1 HP${statusMessage()}!`);
+      } else {
+        logs.push(`${statusTargetName(applyTo)} becomes undead${statusMessage()}!`);
+      }
       break;
   }
   return logs;
@@ -249,15 +255,15 @@ function getAttackModifier(entity) {
   return Math.max(0, 1 + (up - down) / 100);
 }
 
-function getDefenseModifier(entity) {
-  if (!entity || !entity.status) return 0;
-  const up = entity.status
+function getDefenseMultiplier(attacker, defender) {
+  if (!defender || !defender.status) return 1;
+  const up = defender.status
     .filter(st => st.type === 'defenseup')
-    .reduce((sum, st) => sum + (st.amount || 0), 0);
-  const down = entity.status
+    .reduce((sum, st) => sum + (st.amount || 12), 0);
+  const down = defender.status
     .filter(st => st.type === 'defensedown')
-    .reduce((sum, st) => sum + (st.amount || 0), 0);
-  return Math.max(-0.9, (down - up) / 100); // -0.9 == 90% damage reduction cap
+    .reduce((sum, st) => sum + (st.amount || 12), 0);
+  return 1 + (down - up) / 100; // down boosts attack by %, up reduces by %
 }
 
 function getConfusionChance(entity) {
@@ -339,7 +345,7 @@ module.exports = {
   applyCardEffect,
   calculateUserDamage,
   getAttackModifier,
-  getDefenseModifier,
+  getDefenseMultiplier,
   getConfusionChance,
   hasTruesight,
   consumeTruesight,

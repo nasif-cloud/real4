@@ -28,7 +28,7 @@ const {
   applyCardEffect: applyCardEffectShared,
   calculateUserDamage: calculateUserDamageShared,
   getAttackModifier,
-  getDefenseModifier,
+  getDefenseMultiplier,
   getConfusionChance,
   hasTruesight,
   consumeTruesight,
@@ -40,7 +40,6 @@ function randomInt(min, max) {
 }
 
 const calculateUserDamage = calculateUserDamageShared;
-
 
 // Map to track pending duel requests (messageId => pendingState)
 const pendingDuelRequests = new Map();
@@ -109,7 +108,11 @@ function hpBar(current, max) {
 function getEffectString(card, target) {
   if (!card.def.effect) return '';
   if (card.def.effect === 'team_stun') {
-    return ` (${STATUS_EMOJIS.stun} stuns the whole team for **${card.def.effectDuration || 1}** turn(s))`;
+    const duration = card.def.effectDuration || 1;
+    if (duration === -1) {
+      return ` (${STATUS_EMOJIS.stun} stuns the whole team permanently)`;
+    }
+    return ` (${STATUS_EMOJIS.stun} stuns the whole team for **${duration}** turn(s))`;
   } else {
     const effectVerbs = {
       'stun': 'stuns',
@@ -129,14 +132,43 @@ function getEffectString(card, target) {
     const duration = card.def.effectDuration || 1;
     const targetName = card.def.itself ? card.def.character : (target ? target.def.character : 'target');
     const icon = STATUS_EMOJIS[card.def.effect] || '';
-    const defaultAmount = 25;
+    const defaultAmount = 12; // Updated default
     const effectAmount = card.def.effectAmount ?? (card.def.effect === 'regen' ? 10 : defaultAmount);
-    const effectChance = card.def.effectChance ?? 30;
+    const effectChance = card.def.effectChance ?? 50; // Updated default
     let details = '';
     if (card.def.effect === 'regen') details = ` (${effectAmount}%)`;
     if (card.def.effect === 'confusion') details = ` (${effectChance}%)`;
     if (['attackup', 'attackdown', 'defenseup', 'defensedown'].includes(card.def.effect)) details = ` (${effectAmount}%)`;
-    return ` (${icon} ${verb} ${targetName}${details} for **${duration}** turn(s))`;
+    
+    if (duration === -1) {
+      // Permanent effects
+      const permanentVerbs = {
+        'stun': 'permanently stuns',
+        'freeze': 'permanently freezes',
+        'cut': 'permanently cuts',
+        'bleed': 'permanently bleeds',
+        'regen': 'permanently regenerates',
+        'confusion': 'permanently confuses',
+        'attackup': 'Permanently boosts attack by',
+        'attackdown': 'Permanently reduces attack by',
+        'defenseup': 'Permanently boosts defense by',
+        'defensedown': 'Permanently reduces defense by',
+        'truesight': 'permanently grants truesight to',
+        'undead': 'permanently grants undead to'
+      };
+      const permVerb = permanentVerbs[card.def.effect] || 'permanently affects';
+      if (['attackup', 'attackdown', 'defenseup', 'defensedown'].includes(card.def.effect)) {
+        return ` (${icon} ${permVerb} ${effectAmount}%)`;
+      } else if (card.def.effect === 'confusion') {
+        return ` (${icon} ${permVerb} ${targetName} (${effectChance}% miss chance))`;
+      } else if (card.def.effect === 'regen') {
+        return ` (${icon} ${permVerb} ${targetName} (${effectAmount}%))`;
+      } else {
+        return ` (${icon} ${permVerb} ${targetName})`;
+      }
+    } else {
+      return ` (${icon} ${verb} ${targetName}${details} for **${duration}** turn(s))`;
+    }
   }
 }
 
@@ -260,6 +292,7 @@ function makeActionRow(state, isPlayer1Turn) {
   if (state.selected === null || state.awaitingTarget) return null;
   const card = isPlayer1Turn ? state.player1Cards[state.selected] : state.player2Cards[state.selected];
   if (!card) return null;
+  const isUndead = card.status && card.status.some(st => st.type === 'undead');
   
   const row = new ActionRowBuilder();
   row.addComponents(
@@ -267,6 +300,7 @@ function makeActionRow(state, isPlayer1Turn) {
       .setCustomId('duel_action:attack')
       .setLabel('Attack')
       .setStyle(ButtonStyle.Primary)
+      .setDisabled(isUndead)
   );
   if (card.def.special_attack && card.energy >= 3) {
     row.addComponents(
@@ -274,6 +308,7 @@ function makeActionRow(state, isPlayer1Turn) {
         .setCustomId('duel_action:special')
         .setLabel('Special Attack')
         .setStyle(ButtonStyle.Primary)
+        .setDisabled(isUndead)
     );
   }
   // Rest button - reset energy to 3
@@ -948,8 +983,8 @@ module.exports = {
         let baseDmg = calculateUserDamage(card, 'attack');
         const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
         const attackMod = getAttackModifier(card);
-        const defenseMod = getDefenseModifier(target);
-        let dmg = Math.floor(baseDmg * attrMultiplier * attackMod * (1 + defenseMod));
+        const defenseMultiplier = getDefenseMultiplier(card, target);
+        let dmg = Math.floor(baseDmg * attrMultiplier * attackMod * defenseMultiplier);
         dmg = Math.max(0, dmg);
 
         target.currentHP -= dmg;
@@ -966,7 +1001,7 @@ module.exports = {
             appendLog(state, `${target.def.character} was unfrozen by the attack!`);
           }
         }        const effectiveness = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
-        const actionText = `${card.def.character} used Attack on ${target.def.character} for ${dmg}${effectiveness} damage! <:energy:1478051414558118052> -1`;
+        const actionText = `${card.def.emoji} **${card.def.character}** attacked ${target.def.emoji} **${target.def.character}** for **${dmg} DMG**${effectiveness}! **<:energy:1478051414558118052> -1**`;
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
       } else if (action === 'special') {
@@ -979,8 +1014,8 @@ module.exports = {
         let baseDmg = calculateUserDamage(card, 'special');
         const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
         const attackMod = getAttackModifier(card);
-        const defenseMod = getDefenseModifier(target);
-        let dmg = Math.floor(baseDmg * attrMultiplier * attackMod * (1 + defenseMod));
+        const defenseMultiplier = getDefenseMultiplier(card, target);
+        let dmg = Math.floor(baseDmg * attrMultiplier * attackMod * defenseMultiplier);
         dmg = Math.max(0, dmg);
 
         target.currentHP -= dmg;
@@ -1009,7 +1044,7 @@ module.exports = {
 
         const effectStr = getEffectString(card, target);
         const effectiveness = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
-        const actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} for ${dmg}${effectiveness} damage${effectStr}! <:energy:1478051414558118052> -3`;
+        const actionText = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack?.name || 'Special Attack'} for **${dmg} DMG**${effectiveness}${effectStr}! **<:energy:1478051414558118052> -3**`;
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
 
@@ -1280,12 +1315,12 @@ module.exports = {
         let actionText;
         if (act === 'special') {
           if (card.def.effect === 'team_stun') {
-            actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} on ${damageTarget?.def?.character || 'target'} for ${dmg} damage!${effectivenessStr} *stunned the whole team*${effectMessages} <:energy:1478051414558118052> -${cost}`;
+            actionText = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack?.name || 'Special Attack'} on ${damageTarget?.def?.emoji || '⚔️'} **${damageTarget?.def?.character || 'target'}** for **${dmg} DMG**!${effectivenessStr} *stunned the whole team*${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           } else {
-            actionText = `${card.def.character} used ${card.def.special_attack?.name || 'Special Attack'} for ${dmg} damage!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} <:energy:1478051414558118052> -${cost}`;
+            actionText = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack?.name || 'Special Attack'} for **${dmg} DMG**!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           }
         } else {
-          actionText = `${card.def.character} used Attack on ${damageTarget.def.character} for ${dmg} damage!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} <:energy:1478051414558118052> -${cost}`;
+          actionText = `${card.def.emoji} **${card.def.character}** attacked ${damageTarget.def.emoji} **${damageTarget.def.character}** for **${dmg} DMG**!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
         }
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;

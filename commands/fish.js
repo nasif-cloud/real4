@@ -4,6 +4,32 @@ const { levelers } = require('../data/levelers');
 const { cards } = require('../data/cards');
 const { rods } = require('../data/rods');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
+const { simulatePull } = require('../utils/cards');
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getLevelerWeight(leveler) {
+  if (leveler.id.startsWith('all_')) return 3;
+  if (leveler.name.toLowerCase().includes('crab')) return 2;
+  return 1;
+}
+
+function chooseLeveler(levelers, qualityModifier) {
+  const weighted = levelers.map(leveler => {
+    let weight = getLevelerWeight(leveler);
+    if (weight > 1) weight *= qualityModifier;
+    return { leveler, weight };
+  });
+  const totalWeight = weighted.reduce((sum, entry) => sum + entry.weight, 0);
+  let pick = Math.random() * totalWeight;
+  for (const entry of weighted) {
+    pick -= entry.weight;
+    if (pick <= 0) return entry.leveler;
+  }
+  return weighted[weighted.length - 1].leveler;
+}
 
 // Map to store fishing state per user
 const fishingStates = new Map();
@@ -53,19 +79,20 @@ module.exports = {
       // Check if still valid
       if (!message && !interaction.replied) return;
 
-      // Start the progress bar
+      // Start the progress bar with a random target position
       let position = 0;
       const barLength = 8;
+      const targetIndex = randomInt(1, barLength - 2);
       const updateBar = () => {
         const bar = Array(barLength).fill('□');
         bar[position] = '■';
-        bar[3] = position === 3 ? '◉' : '◯'; // Mark center filled when matched
+        bar[targetIndex] = position === targetIndex ? '◉' : '◯';
         return bar.join('');
       };
 
       const embed2 = new EmbedBuilder()
         .setTitle(null)
-        .setDescription(`**Catch it!**\n\nProgress: ${updateBar()}\n\nAim for the center (◉)! Click the button when the ■ is on the ◉ for the best catch!`);
+        .setDescription(`**Catch it!**\n\nProgress: ${updateBar()}\n\nAim for the target (◉)! Click the button when the ■ is on the ◉ for the best catch!`);
       
       // Get user's rod and set thumbnail
       const currentRodData2 = rods.find(r => r.id === user.currentRod);
@@ -92,8 +119,8 @@ module.exports = {
         position = (position + 1) % barLength;
         const newBar = Array(barLength).fill('□');
         newBar[position] = '■';
-        newBar[3] = position === 3 ? '◉' : '◯'; // Mark center filled when matched
-        embed2.setDescription(`Progress: ${newBar.join('')}\n\nAim for the center (◉)! Click the button when the ■ is on the ◉ for the best catch!`);
+        newBar[targetIndex] = position === targetIndex ? '◉' : '◯';
+        embed2.setDescription(`Progress: ${newBar.join('')}\n\nAim for the target (◉)! Click the button when the ■ is on the ◉ for the best catch!`);
         try {
           if (message) {
             await replyMsg.edit({ embeds: [embed2], components: [row] });
@@ -111,6 +138,7 @@ module.exports = {
       fishingStates.set(userId, { 
         interval, 
         position: () => position, 
+        targetIndex,
         clear: () => clearInterval(interval),
         message: replyMsg,
         interaction: interaction
@@ -130,13 +158,12 @@ module.exports = {
     const user = await User.findOne({ userId });
 
     const position = state.position();
-    const distance = Math.abs(position - 3); // Center is 3 for 8 positions
+    const targetIndex = state.targetIndex ?? 3;
+    const distance = Math.abs(position - targetIndex);
 
     let outcome;
-    let luckModifier = 1;
     if (distance === 0) {
       outcome = 'Perfect catch!';
-      luckModifier = 1.3;
     } else if (distance === 1) {
       outcome = 'Good catch!';
     } else {
@@ -162,13 +189,14 @@ module.exports = {
 
     // Determine number of items based on rod and catch quality
     let itemCount = 1;
-    const currentRodId = user.currentRod;
-    if (currentRodId === 'gold_rod') {
+    const rodMultiplier = currentRodData?.betterRankMultiplier || 1;
+    const qualityPenalty = distance === 1 ? 0.75 : 1;
+    if (currentRodData && currentRodData.id === 'gold_rod') {
       // Gold rod: 50% of 2 items, 10% of 3 items
       const rand = Math.random();
       if (rand < 0.1) itemCount = 3;
       else if (rand < 0.6) itemCount = 2;
-    } else if (currentRodId === 'white_rod') {
+    } else if (currentRodData && currentRodData.id === 'white_rod') {
       // White rod: 100% of 2 items, 30% of 3 items
       const rand = Math.random();
       if (rand < 0.3) itemCount = 3;
@@ -178,39 +206,27 @@ module.exports = {
     // Determine loot
     const isCard = Math.random() < 0.1; // 10% chance for card
     const lootLines = [];
+    const cardRankModifier = rodMultiplier * qualityPenalty;
+    const levelerQualityModifier = rodMultiplier * qualityPenalty;
 
     if (isCard) {
-      // Pull only U1 cards
-      const cardKeys = Object.keys(cards).filter(key => {
-        const card = cards[key];
-        return card.mastery === 1; // Only U1 cards
-      });
-      
-      if (cardKeys.length > 0) {
-        const randomKey = cardKeys[Math.floor(Math.random() * cardKeys.length)];
-        const card = cards[randomKey];
-        
-        // Check if user owns U2 or U3
-        let targetCardId = randomKey;
+      const card = simulatePull(0, null, { rodMultiplier: cardRankModifier, mastery: 1 });
+      if (card) {
+        // Check if user owns U2 or U3/U4
+        let targetCardId = card.id;
         let targetMastery = 1;
-        
-        // Look for higher mastery versions
         for (let i = 2; i <= 4; i++) {
-          const higherCard = Object.keys(cards).find(k => {
-            const c = cards[k];
-            return c.character === card.character && c.mastery === i;
-          });
-          if (higherCard && user.ownedCards.some(oc => oc.cardId === higherCard)) {
-            targetCardId = higherCard;
+          const higherCard = cards.find(c => c.character === card.character && c.mastery === i);
+          if (higherCard && user.ownedCards.some(oc => oc.cardId === higherCard.id)) {
+            targetCardId = higherCard.id;
             targetMastery = i;
           }
         }
-        
-        const targetCard = cards[targetCardId];
+
+        const targetCard = cards.find(c => c.id === targetCardId);
         const emoji = targetCard.emoji || '🃏';
         lootLines.push(`${emoji} ${targetCard.character} (U${targetMastery})`);
-        
-        // Add to ownedCards or update existing
+
         const existing = user.ownedCards.find(c => c.cardId === targetCardId);
         if (existing) {
           existing.level = Math.max(existing.level, 1);
@@ -219,12 +235,11 @@ module.exports = {
         }
       }
     } else {
-      // Add multiple levelers based on rod
+      // Add multiple levelers based on rod quality
       for (let i = 0; i < itemCount; i++) {
-        const randomLeveler = levelers[Math.floor(Math.random() * levelers.length)];
+        const randomLeveler = chooseLeveler(levelers, levelerQualityModifier);
         lootLines.push(`${randomLeveler.emoji} ${randomLeveler.name}`);
-        
-        // Add to items
+
         const existingItem = user.items.find(it => it.itemId === randomLeveler.id);
         if (existingItem) {
           existingItem.quantity += 1;

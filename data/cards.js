@@ -248,7 +248,7 @@ const consolidatedCardData = [
         max_atk: 40,
         gif: 'https://files.catbox.moe/1x0eu8.gif'
       },
-        effect: 'undead',
+        effect: 'truesight',
     effectDuration: 3,
     itself: true,
       upgradeRequirements: ['JA1'],
@@ -367,6 +367,8 @@ const consolidatedCardData = [
       max_atk: 7,
       gif: 'https://files.catbox.moe/yheddw.gif'
     },
+    effect: 'stun',
+    effectDuration: 1,
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/aUSfoWu.png',
     secondupgrade: {
       title: 'Cyborg',
@@ -383,6 +385,8 @@ const consolidatedCardData = [
         max_atk: 9,
         gif: 'https://files.catbox.moe/ue4qr2.gif'
       },
+      effect: 'stun',
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/bMH4EWP.png'
     },
     thirdupgrade: {
@@ -401,7 +405,7 @@ const consolidatedCardData = [
         gif: 'https://files.catbox.moe/79q64r.gif'
       },
       effect: 'stun',
-      effectDuration: 1,
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/ODzjNp3'
     }
   },
@@ -491,6 +495,8 @@ const consolidatedCardData = [
         max_atk: 15,
         gif: 'https://files.catbox.moe/x6f0pl.gif'
       },
+      effect: 'defensedown',
+      effectDuration: 3,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/cEvfr7F.png'
     },
     thirdupgrade: {
@@ -508,8 +514,8 @@ const consolidatedCardData = [
         max_atk: 21,
         gif: 'https://files.catbox.moe/zkymnw.gif'
       },
-      effect: 'cut',
-      effectDuration: 3,
+      effect: 'defensedown',
+      effectDuration: -1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/kLga5EL'
     }
   },
@@ -597,8 +603,8 @@ const consolidatedCardData = [
         max_atk: 13,
         gif: 'https://files.catbox.moe/recrph.gif'
       },
-      effect: 'stun',
-      effectDuration: 1,
+      effect: 'attackdown',
+      effectDuration: -1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/7tRPjue'
     }
   },
@@ -652,8 +658,8 @@ const consolidatedCardData = [
         max_atk: 19,
         gif: 'https://files.catbox.moe/nst9sc.gif'
       },
-      effect: 'team_stun',
-      effectDuration: 1,
+      effect: 'stun',
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/p5LTjdh'
     }
   },
@@ -689,7 +695,7 @@ const consolidatedCardData = [
         gif: 'https://files.catbox.moe/oikxve.gif'
       },
       effect: 'freeze',
-      effectDuration: 2,
+      effectDuration: 1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/q6WvmnM.png'
     },
     thirdupgrade: {
@@ -727,6 +733,9 @@ const consolidatedCardData = [
     speed: 5,
     attack_min: 3,
     attack_max: 5,
+    effect: 'defenseup',
+    effectDuration: -1,
+    itself: true,
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/KDhnqgL.png',
     secondupgrade: {
       title: 'Pilot of the Strawhat Pirates',
@@ -743,6 +752,9 @@ const consolidatedCardData = [
         max_atk: 15,
         gif: 'https://files.catbox.moe/1gvgyc.gif'
       },
+      effect: 'defenseup',
+      effectDuration: -1,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/YBCTiWq.png'
     },
     thirdupgrade: {
@@ -760,6 +772,9 @@ const consolidatedCardData = [
         max_atk: 17,
         gif: 'https://files.catbox.moe/mwl2r5.gif'
       },
+      effect: 'defenseup',
+      effectDuration: -1,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/4NFb31i'
     }
   },
@@ -880,6 +895,8 @@ const consolidatedCardData = [
         max_atk: 9,
         gif: 'https://files.catbox.moe/7igapl.gif'
       },
+      effect: 'confusion',
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/onGEdMW.png'
     },
     thirdupgrade: {
@@ -897,6 +914,8 @@ const consolidatedCardData = [
         max_atk: 15,
         gif: 'https://files.catbox.moe/7igapl.gif'
       },
+      effect: 'confusion',
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/hXkq04a'
     }
   },
@@ -931,7 +950,7 @@ const consolidatedCardData = [
         max_atk: 12,
         gif: 'https://files.catbox.moe/b09ymh.gif'
       },
-      effect: 'stun',
+      effect: 'confusion',
       effectDuration: 1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/KeZHoqt.png'
     },
@@ -950,8 +969,8 @@ const consolidatedCardData = [
         max_atk: 15,
         gif: 'https://files.catbox.moe/b09ymh.gif'
       },
-      effect: 'stun',
-      effectDuration: 1,
+      effect: 'confusion',
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/ztgxNN8.png'
     }
   },
@@ -986,6 +1005,8 @@ const consolidatedCardData = [
         max_atk: 15,
         gif: 'https://files.catbox.moe/iyrysp.gif'
       },
+      effect: 'stun',
+      effectDuration: 1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/ycjwoCK.png'
     },
     thirdupgrade: {
@@ -1003,6 +1024,8 @@ const consolidatedCardData = [
         max_atk: 23,
         gif: 'https://files.catbox.moe/qq8pss.gif',
       },
+      effect: 'confusion',
+      effectDuration: 2,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/N8RUyMn'
     }
   },
@@ -1027,6 +1050,9 @@ const consolidatedCardData = [
       max_atk: 40,
       gif: 'https://files.catbox.moe/1ljlku.gif'
     },
+    effect: 'attackup',
+    effectDuration: -1,
+    itself: true,
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/KcnD5km',
     secondupgrade: {
       title: 'Strongest Swordsman in the World',
@@ -1043,6 +1069,9 @@ const consolidatedCardData = [
         max_atk: 44,
         gif: 'https://files.catbox.moe/wdhzq2.gif'
       },
+      effect: 'attackup',
+      effectDuration: -1,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/fiLOArn'
     }
   },
@@ -1078,6 +1107,9 @@ const consolidatedCardData = [
         max_atk: 11,
         gif: 'https://files.catbox.moe/n35b0k.gif'
       },
+      effect: 'defenseup',
+      effectDuration: 3,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/rLv6C7O.png'
     },
     thirdupgrade: {
@@ -1095,6 +1127,9 @@ const consolidatedCardData = [
         max_atk: 13,
         gif: 'https://files.catbox.moe/n35b0k.gif'
       },
+      effect: 'defenseup',
+      effectDuration: -1,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/Ut0pOgP'
     }
   },
@@ -1200,9 +1235,9 @@ const consolidatedCardData = [
         max_atk: 21,
         gif: 'https://files.catbox.moe/7r5w8q.gif'
       },
-      effect: 'stun',
-      effectDuration: 2,
-      effectAmount: 8,
+      effect: 'attackup',
+      effectDuration: -1,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/SN2HBvv.png'
     }
   },
@@ -1221,7 +1256,7 @@ const consolidatedCardData = [
     speed: 5,
     attack_min: 3,
     attack_max: 6,
-    boost: 'Red hair Pirates HP by 10%',
+    boost: 'Red-Haired Pirates, Health (10%)',
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/5KQjg68.png',
     secondupgrade: {
       title: 'Cook of the Red haired Pirates',
@@ -1232,7 +1267,7 @@ const consolidatedCardData = [
       speed: 8,
       attack_min: 6,
       attack_max: 9,
-      boost: 'Red hair pirates HP by 15%',
+      boost: 'Red-Haired Pirates, Health (15%)',
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/JtIr9Tj.png'
     }
   },
@@ -1267,9 +1302,8 @@ const consolidatedCardData = [
         max_atk: 19,
         gif: null
       },
-      effect: 'cut',
-      effectDuration: 2,
-      effectAmount: 7,
+      effect: 'confusion',
+      effectDuration: 1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/gxHvNqR.png'
     }
   },
@@ -1305,6 +1339,7 @@ const consolidatedCardData = [
     speed: 3,
     attack_min: 2,
     attack_max: 4,
+    boost: 'Red-Haired Pirates, Attack (10%)',
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/yV6NZda.png'
   },
   {
@@ -1322,6 +1357,7 @@ const consolidatedCardData = [
     speed: 4,
     attack_min: 2,
     attack_max: 4,
+    boost: 'Bonk Punch (30%)',
     image_url: 'https://static.wikia.nocookie.net/onepiece/images/9/93/Monster_Anime_Infobox.png/revision/latest?cb=20240714020813'
   },
   {
@@ -1356,7 +1392,7 @@ const consolidatedCardData = [
     speed: 4,
     attack_min: 3,
     attack_max: 5,
-    boost: 'Red hair Pirates HP by 10%',
+    boost: 'Red-Haired Pirates, Health (5%)',
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/dLJioEQ.png'
   },
   {
@@ -1485,8 +1521,9 @@ const consolidatedCardData = [
         max_atk: 26,
         gif: 'https://files.catbox.moe/gcpyu0.gif'
       },
-      effect: 'stun',
-      effectDuration: 2,
+      effect: 'undead',
+      effectDuration: 3,
+      itself: true,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/1ALsLtN.png'
     },
     thirdupgrade: {
@@ -1550,8 +1587,9 @@ const consolidatedCardData = [
         max_atk: 22,
         gif: 'https://files.catbox.moe/lje0e7.gif'
       },
-      effect: 'stun',
-      effectDuration: 2,
+      effect: 'defensedown',
+    effectDuration: 3,
+    effectAmount: 15,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/x27DEWi.png'
     }
   },
@@ -1586,8 +1624,8 @@ const consolidatedCardData = [
         max_atk: 22,
         gif: null
       },
-      effect: 'freeze',
-      effectDuration: 3,
+      effect: 'confusion',
+      effectDuration: 1,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/OC0LqOQ'
     }
   },
@@ -1623,7 +1661,7 @@ const consolidatedCardData = [
         gif: 'https://files.catbox.moe/olejop.gif'
       },
       effect: 'confusion',
-      effectDuration: 3,
+      effectDuration: 1,
       effectChance: 30,
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/TkwRsgd'
     }
@@ -1716,7 +1754,7 @@ const consolidatedCardData = [
         name: 'Titan Toss',
         min_atk: 14,
         max_atk: 19,
-        gif: null
+        gif: 'https://files.catbox.moe/drsgmw.gif'
       },
       effect: 'defensedown',
       effectDuration: 3,
@@ -1774,7 +1812,7 @@ const consolidatedCardData = [
     speed: 4,
     attack_min: 3,
     attack_max: 5,
-    boost: 'Blackbeard Pirates HP +10%',
+    boost: 'Blackbeard Pirates, Health (10%)',
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/9Qb1QFf.png',
     secondupgrade: {
       title: 'Death God - Doctor of the Blackbeard Pirates',
@@ -1785,12 +1823,12 @@ const consolidatedCardData = [
       speed: 7,
       attack_min: 5,
       attack_max: 8,
-      boost: 'Blackbeard Pirates HP +15%',
+      boost: 'Blackbeard Pirates, Health (15%)',
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/czoHE4M'
     }
   },
   {
-    character: 'Type A creature',
+    character: 'Stronger',
     alias: ['type a creature', 'stronger'],
     upgradeTotal: 1,
     pullable: true,
@@ -1804,7 +1842,7 @@ const consolidatedCardData = [
     speed: 2,
     attack_min: 0,
     attack_max: 0,
-    boost: 'Doc Q ATK +30%',
+    boost: 'Doc Q (30%)',
     image_url: 'https://static.wikia.nocookie.net/onepiece/images/d/d3/Stronger_Anime_Infobox.png/revision/latest?cb=20231222225633'
   },
   {

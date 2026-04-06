@@ -16,7 +16,7 @@ module.exports = {
     }
 
     if (user.resetTokens <= 0) {
-      const reply = 'You don\'t have any reset tokens. You can only have 5 reset tokens maximum.';
+      const reply = 'You don\'t have any **reset tokens**.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

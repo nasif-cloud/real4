@@ -46,6 +46,19 @@ const {
 
 const calculateUserDamage = calculateUserDamageShared;
 
+// Function to get attribute from emoji name
+function getAttributeFromEmoji(emoji) {
+  const match = emoji.match(/:([A-Z]{3})[^:]*:/);
+  return match ? match[1] : 'STR'; // default to STR if not found
+}
+
+// Calculate damage with attribute multiplier
+function calculateDamageWithAttribute(card, type, defenderAttribute) {
+  const baseDamage = calculateUserDamage(card, type);
+  const multiplier = getDamageMultiplier(card.def.attribute, defenderAttribute);
+  return Math.floor(baseDamage * multiplier);
+}
+
 
 // key: message.id -> state object
 const battleStates = new Map();
@@ -155,8 +168,9 @@ async function refreshBattleMessage(oldMsg, state, user, discordUser) {
       const nextIsailRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('isail_next')
-          .setLabel('Next Isail')
-          .setStyle(ButtonStyle.Success)
+          .setLabel('Next Level')
+          .setEmoji('<:nextsail:1490397191125209119>')
+          .setStyle(ButtonStyle.Secondary)
       );
       components.push(nextIsailRow);
     }
@@ -208,7 +222,12 @@ function getMarinesForLevel(stage, prevRanks = []) {
       const c = marines[idx];
       const cost = costFor(idx);
       if (cost > remaining) continue;
-      group.push({ rank: c.rank, speed: c.speed, atk: c.atk, maxHP: c.hp, currentHP: c.hp, status: [] });
+      const rank = c.rank;
+      const pool = c.pool || [];
+      const poolEntry = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : { emoji: '', attribute: 'STR' };
+      const emoji = poolEntry.emoji;
+      const attribute = poolEntry.attribute;
+      group.push({ rank, speed: c.speed, atk: c.atk, maxHP: c.hp, currentHP: c.hp, status: [], emoji, attribute });
       remaining -= cost;
     }
     if (!group.length) continue;
@@ -261,7 +280,7 @@ function buildEmbed(state, user, discordUser) {
     for (const m of aliveMarines) {
       const statusEmojis = (m.status || []).map(st => STATUS_EMOJIS[st.type] || '').join('');
       const value = `${statusEmojis} ${hpBar(m.currentHP, m.maxHP)}\n${m.currentHP}/${m.maxHP}`;
-      embed.addFields({ name: m.rank, value, inline: true });
+      embed.addFields({ name: `${m.emoji} ${m.rank}`, value, inline: true });
     }
   } else {
     embed.addFields({ name: 'Enemy Marines', value: 'All marines defeated!', inline: false });
@@ -330,6 +349,7 @@ function makeSelectionRow(state) {
 function makeActionRow(state) {
   if (state.selected === null || state.awaitingTarget) return null;
   const card = state.cards[state.selected];
+  const isUndead = card.status && card.status.some(st => st.type === 'undead');
   const row = new ActionRowBuilder();
   // Attack
   row.addComponents(
@@ -337,6 +357,7 @@ function makeActionRow(state) {
       .setCustomId('isail_action:attack')
       .setLabel('Attack')
       .setStyle(ButtonStyle.Primary)
+      .setDisabled(isUndead)
   );
   // Special Attack (only if definition provides one and energy is available)
   if (card.def.special_attack && card.energy >= 3) {
@@ -345,6 +366,7 @@ function makeActionRow(state) {
         .setCustomId('isail_action:special')
         .setLabel('Special Attack')
         .setStyle(ButtonStyle.Primary)
+        .setDisabled(isUndead)
     );
   }
   // Rest button - reset energy to 3
@@ -375,8 +397,9 @@ async function updateBattleMessage(msg, state, user, discordUser) {
       const nextIsailRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('isail_next')
-          .setLabel('Next Isail')
-          .setStyle(ButtonStyle.Success)
+          .setLabel('Next Level')
+          .setEmoji('<:nextsail:1490397191125209119>')
+          .setStyle(ButtonStyle.Secondary)
       );
       components.push(nextIsailRow);
     }
@@ -397,14 +420,19 @@ function checkForDefeat(state) {
 function makeTargetRow(state) {
   if (!state.awaitingTarget) return null;
   const row = new ActionRowBuilder();
+  const attacker = state.cards[state.selected];
   // All live marines can be targeted (no tank restriction)
   state.marines.forEach((m, i) => {
     const disabled = m.currentHP <= 0;
+    const multiplier = getDamageMultiplier(attacker.def.attribute, m.attribute);
+    let style = ButtonStyle.Secondary; // Grey for neutral
+    if (multiplier > 1) style = ButtonStyle.Success; // Green for effective
+    else if (multiplier < 1) style = ButtonStyle.Danger; // Red for resisted
     row.addComponents(
       new ButtonBuilder()
         .setCustomId(`isail_target:${i}`)
         .setLabel(`Enemy ${i + 1}`)
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(style)
         .setDisabled(disabled)
     );
   });
@@ -465,12 +493,9 @@ function marineAttack(state) {
       }
     }
     
-    // Log attribute advantage/disadvantage
-    if (marineAttrMultiplier !== 1) {
-      logs.push(getAttributeDescription(marine.attribute, target.def.attribute));
-    }
-    
-    logs.push(`${marine.rank} attacked ${target.def.character} for ${finalMarineDmg} damage!`);
+    // Log attribute advantage/disadvantage in the attack message
+    const marineEffectivenessStr = marineAttrMultiplier > 1 ? ` (Effective!)` : marineAttrMultiplier < 1 ? ` (Weak)` : '';
+    logs.push(`${marine.emoji} **${marine.rank}** attacked ${target.def?.emoji || '⚔️'} **${target.def.character}** for **${finalMarineDmg} DMG**${marineEffectivenessStr}!`);
   });
   state.lastMarineAction = logs.join('\n');
   state.turn = 'user';
@@ -638,21 +663,10 @@ async function handleVictory(state, msg, user, discordUser) {
 
   await user.save();
   // Create a simple victory embed
-  let victoryText = `Victory! You earned **${belis}** Beli.`;
-  if (bountyGain > 0) {
-    victoryText += `\nYou gained **${bountyGain}** Bounty!`;
-  }
-  victoryText += `\nAll team members gained **${xpGain} XP**!`;
-  // notify about level progression
-  victoryText += `\nProgressed to **Level ${user.isailProgress}**!`;
-  if (levelUpLines.length) {
-    victoryText += '\n' + levelUpLines.join('\n');
-  }
-  
   const victoryEmbed = new EmbedBuilder()
     .setColor('#FFFFFF')
     .setTitle('Victory!')
-    .setDescription(victoryText);
+    .setDescription(`• Earned ${belis} ¥\n• gained ${bountyGain} Bounty\n• All team members gained ${xpGain}xp`);
   if (discordUser) {
     victoryEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   }
@@ -661,8 +675,9 @@ async function handleVictory(state, msg, user, discordUser) {
     .addComponents(
       new ButtonBuilder()
         .setCustomId('isail_next')
-        .setLabel('Next Sail')
-        .setStyle(ButtonStyle.Primary)
+        .setLabel('Next Level')
+        .setEmoji('<:nextsail:1490397191125209119>')
+        .setStyle(ButtonStyle.Secondary)
     );
   
   try { await msg.delete(); } catch {}
@@ -686,8 +701,9 @@ async function handleDefeat(state, msg, user, discordUser) {
     .addComponents(
       new ButtonBuilder()
         .setCustomId('isail_next')
-        .setLabel('Next Sail')
-        .setStyle(ButtonStyle.Primary)
+        .setLabel('Next Level')
+        .setEmoji('<:nextsail:1490397191125209119>')
+        .setStyle(ButtonStyle.Secondary)
     );
   
   try { await msg.delete(); } catch {}
@@ -1001,8 +1017,8 @@ module.exports = {
         const effectLogs1 = [];
         effectLogs1.forEach(l => appendLog(state, l));
         
-        const effectivenessStr = attrMultiplier > 1 ? ' (effective!)' : attrMultiplier < 1 ? ' (weak)' : '';
-        state.lastUserAction = `${card.def.character} used Attack on ${m.rank} for ${finalDmg} damage${effectivenessStr}! <:energy:1478051414558118052> -1`;
+        const effectivenessStr = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
+        state.lastUserAction = `${card.def.emoji} **${card.def.character}** attacked ${m.emoji} **${m.rank}** for **${finalDmg} DMG**${effectivenessStr}! **<:energy:1478051414558118052> -1**`;
       } else if (action === 'special') {
         if (card.energy < 3) {
           return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
@@ -1070,7 +1086,8 @@ module.exports = {
           state.embedImage = null;
         }
         const effectStr = getEffectString(card, m);
-        state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${finalDmg} damage**${effectStr}! <:energy:1478051414558118052> -3`;
+        const effectivenessStr = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
+        state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${finalDmg} DMG**${effectivenessStr}${effectStr}! **<:energy:1478051414558118052> -3**`;
       }
 
       state.selected = null;
@@ -1227,12 +1244,12 @@ module.exports = {
         const effectMessages = effectLogs.length > 0 ? ` *${effectLogs.join(', ')}*` : '';
         if (act === 'special') {
           if (card.def.effect === 'team_stun') {
-            state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${damageTarget.rank} for ${dmg} damage!${effectivenessStr} *stunned the whole crew*${effectMessages} <:energy:1478051414558118052> -${cost}`;
+            state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${damageTarget.emoji} **${damageTarget.rank}** for **${dmg} DMG**!${effectivenessStr} *stunned the whole crew*${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           } else {
-            state.lastUserAction = `${card.def.character} used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for ${dmg} damage!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} <:energy:1478051414558118052> -${cost}`;
+            state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${dmg} DMG**!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           }
         } else {
-          state.lastUserAction = `${card.def.character} used Attack on ${damageTarget.rank} for ${dmg} damage!${effectivenessStr}${effectMessages} <:energy:1478051414558118052> -${cost}`;
+          state.lastUserAction = `${card.def.emoji} **${card.def.character}** attacked ${damageTarget.emoji} **${damageTarget.rank}** for **${dmg} DMG**!${effectivenessStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
         }
       } else if (act === 'rest') {
         // Rest action: restore card's energy to 3

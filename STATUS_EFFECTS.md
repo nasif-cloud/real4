@@ -32,42 +32,42 @@ This document lists all status effects available in the battle system, their mec
 - **Icon**: <:regen:1485292289827016734>
 - **Mechanics**: Restores a percentage of max HP (rounded up) at the start of each turn.
 - **Parameters**: `effectAmount` (default 10%) - percentage of HP to regenerate.
-- **Duration**: Specified in turns.
+- **Duration**: Specified in turns (use -1 for permanent).
 - **Application**: Can be applied to self or target based on "itself" flag.
 
 ### Confusion
 - **Icon**: <:confused:1485292931597209811>
 - **Mechanics**: Chance to miss attacks during the duration.
-- **Parameters**: `effectChance` (default 30%) - percentage chance to miss.
-- **Duration**: Specified in turns.
+- **Parameters**: `effectChance` (default 50%) - percentage chance to miss.
+- **Duration**: Specified in turns (use -1 for permanent).
 - **Application**: Can be applied to self or target based on "itself" flag.
 
 ### Attack Up
 - **Icon**: <:atkup:1485295694053900328>
 - **Mechanics**: Increases attack damage by a percentage.
-- **Parameters**: `effectAmount` (default 25%) - percentage increase.
-- **Duration**: Specified in turns.
+- **Parameters**: `effectAmount` (default 12%) - percentage increase.
+- **Duration**: Specified in turns (use -1 for permanent).
 - **Application**: Can be applied to self or target based on "itself" flag.
 
 ### Attack Down
 - **Icon**: <:attackdown:1485296830295314492>
 - **Mechanics**: Decreases attack damage by a percentage.
-- **Parameters**: `effectAmount` (default 25%) - percentage decrease.
-- **Duration**: Specified in turns.
+- **Parameters**: `effectAmount` (default 12%) - percentage decrease.
+- **Duration**: Specified in turns (use -1 for permanent).
 - **Application**: Can be applied to self or target based on "itself" flag.
 
 ### Defense Up
 - **Icon**: <:defenseup:1485297398942269510>
-- **Mechanics**: Increases defense (reduces incoming damage) by a percentage.
-- **Parameters**: `effectAmount` (default 25%) - percentage increase.
-- **Duration**: Specified in turns.
+- **Mechanics**: Reduces the attack damage of attackers by a percentage.
+- **Parameters**: `effectAmount` (default 12%) - percentage reduction in incoming attack.
+- **Duration**: Specified in turns (use -1 for permanent).
 - **Application**: Can be applied to self or target based on "itself" flag.
 
 ### Defense Down
 - **Icon**: <:defensedown:1485297768535949524>
-- **Mechanics**: Decreases defense (increases incoming damage) by a percentage.
-- **Parameters**: `effectAmount` (default 25%) - percentage decrease.
-- **Duration**: Specified in turns.
+- **Mechanics**: Increases the attack damage of attackers by a percentage.
+- **Parameters**: `effectAmount` (default 12%) - percentage increase in incoming attack.
+- **Duration**: Specified in turns (use -1 for permanent).
 - **Application**: Can be applied to self or target based on "itself" flag.
 
 ### Truesight
@@ -87,9 +87,9 @@ This document lists all status effects available in the battle system, their mec
 
 Status effects are defined in card data with the following properties:
 - `effect`: The effect type (string)
-- `effectDuration`: Number of turns (optional, default 1)
-- `effectAmount`: Percentage for regen/attack/defense modifiers (optional, default 10 for regen, 25 for attack/defense)
-- `effectChance`: Percentage for confusion miss chance (optional, default 30)
+- `effectDuration`: Number of turns (optional, default 1; use -1 for permanent)
+- `effectAmount`: Percentage for regen/attack/defense modifiers (optional, default 10 for regen, 12 for attack/defense)
+- `effectChance`: Percentage for confusion miss chance (optional, default 50)
 - `itself`: Boolean flag - if true, applies to the attacker; if false or missing, applies to the target
 
 Example:

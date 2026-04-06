@@ -19,21 +19,25 @@ commands.push({
 });
 
 // balance command
-commands.push({ name: 'balance', description: "Show your current Beli and reset tokens" });
+commands.push({
+  name: 'balance',
+  description: "Show your current Beli and reset tokens",
+  options: [{ name: 'target', type: 6, description: 'User to view (optional)', required: false }]
+});
 
 // team management (view/add/remove) - active team limited to 3 cards
 commands.push({
   name: 'team',
   description: 'Manage your active team',
   options: [
-    { name: 'view', type: 1, description: 'View your current team' },
+    { name: 'view', type: 1, description: 'View your current team', options: [{ name: 'target', type: 6, description: 'User to view (optional)', required: false }] },
     { name: 'add', type: 1, description: 'Add a card to your team', options: [{ name: 'query', type: 3, description: 'Card name', required: true }] },
     { name: 'remove', type: 1, description: 'Remove a card from your team', options: [{ name: 'query', type: 3, description: 'Card name', required: true }] }
   ]
 });
 
 // inventory lookup
-commands.push({ name: 'inventory', description: 'Show your items and packs' });
+commands.push({ name: 'inventory', description: 'Show your items and packs', options: [{ name: 'target', type: 6, description: 'User to view (optional)', required: false }] });
 
 // autoteam command
 commands.push({ name: 'autoteam', description: 'Automatically set your team to top 3 cards' });
@@ -65,7 +69,37 @@ commands.push({
   description: 'View a user\'s profile',
   options: [{ name: 'target', type: 6, description: 'User to view (optional)', required: false }]
 });
-commands.push({ name: 'leaderboard', description: 'View global leaderboards' });
+commands.push({
+  name: 'leaderboard',
+  description: 'View global leaderboards',
+  options: [
+    {
+      name: 'category',
+      type: 3,
+      description: 'Leaderboard category',
+      required: false,
+      choices: [
+        { name: 'Wealth', value: 'wealth' },
+        { name: 'Bounty', value: 'bounty' },
+        { name: 'Dex', value: 'dex' }
+      ]
+    }
+  ]
+});
+commands.push({
+  name: 'teambackground',
+  description: 'Set your custom team background image',
+  options: [
+    {
+      name: 'add',
+      type: 1,
+      description: 'Add or update your team background URL',
+      options: [
+        { name: 'url', type: 3, description: 'Image URL for your team background', required: true }
+      ]
+    }
+  ]
+});
 commands.push({ name: 'daily', description: 'Claim your OP daily rewards' });
 
 // pack system

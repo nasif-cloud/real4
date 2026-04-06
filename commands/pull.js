@@ -13,7 +13,7 @@ module.exports = {
     let user = await User.findOne({ userId });
     if (!user) {
       const reply = 'You don\'t have an account. Run `op start` or /start to register.';
-      if (message) return message.reply(reply);
+      if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
@@ -26,10 +26,23 @@ module.exports = {
       user.lastResetTime = now;
     }
 
+    // Always check if the reset time has passed and restore pulls if so
     const timeUntilGlobalReset = getTimeUntilNextPullReset();
     if (timeUntilGlobalReset <= 0) {
       user.pullsRemaining = PULL_LIMIT;
       user.lastResetTime = now;
+      await user.save(); // Save immediately to avoid race conditions
+    }
+
+    // Recalculate after possible reset
+    if (user.pullsRemaining <= 0) {
+      // Double check if a reset is due (in case of missed update)
+      const timeUntilGlobalReset2 = getTimeUntilNextPullReset();
+      if (timeUntilGlobalReset2 <= 0) {
+        user.pullsRemaining = PULL_LIMIT;
+        user.lastResetTime = new Date();
+        await user.save();
+      }
     }
 
     if (user.pullsRemaining <= 0) {
@@ -39,14 +52,15 @@ module.exports = {
       const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
       const timeStr = `${hrs}h ${mins}m ${secs}s`;
       const reply = `you've used all ${PULL_LIMIT} pulls. Next reset in \`${timeStr}\``;
-      if (message) return message.reply(reply);
+      if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // determine rank with pity logic
+    // determine rank with pity logic (only for prefix pulls)
     let rank;
-    if (user.pityCount >= PITY_TARGET) {
-      // pity guaranteed
+    let pityTriggered = false;
+    if (message && user.pityCount >= PITY_TARGET) {
+      // pity guaranteed for prefix pulls
       const r = Math.random() * 100;
       let running = 0;
       for (const [rk, pct] of Object.entries(PITY_DISTRIBUTION)) {
@@ -57,6 +71,7 @@ module.exports = {
         }
       }
       user.pityCount = 0;
+      pityTriggered = true;
     } else {
       const r = Math.random() * 100;
       let running = 0;
@@ -67,10 +82,12 @@ module.exports = {
           break;
         }
       }
-      user.pityCount += 1;
+      if (message) {
+        user.pityCount += 1;
+      }
     }
 
-    const pityProgress = `Guaranteed S+ in ${Math.max(PITY_TARGET - user.pityCount,0)}/${PITY_TARGET}`;
+    const pityProgress = message ? `Pity: ${user.pityCount}/${PITY_TARGET}` : '';
 
     // select card
     const pullable = cards.filter(c => c.pullable);

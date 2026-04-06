@@ -2,26 +2,60 @@ const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { getCardById, getAllCardVersions, searchCards, findBestOwnedCard } = require('../utils/cards');
 const { cards } = require('../data/cards');
+const { levelers } = require('../data/levelers');
 
-// Upgrade requirements: cardId -> array of required card IDs
-// Characters from main cards.js can have requirements; morecards.js only have currency costs
-const UPGRADE_REQUIREMENTS = {
-  'luffy-u2': ['zoro-u1', 'nami-u1', 'usopp-u1', 'sanji-u1'],
-  'luffy-u3': ['chopper-u1', 'robin-u1', 'franky-u1', 'brook-u1'],
-  'luffy-u4': ['jinbe-u1'],
-  // Add more as needed
+const LEVELER_REQUIREMENT_MAP = {
+  C: { count: 5, rank: 'C' },
+  B: { count: 5, rank: 'B' },
+  A: { count: 5, rank: 'A' },
+  S: { count: 5, rank: 'S' },
+  SS: { count: 10, rank: 'S' },
+  UR: { count: 20, rank: 'S' }
 };
 
-// Upgrade costs
-const UPGRADE_COSTS = {
-  'D': { beli: 50, gems: 0 },
-  'C': { beli: 100, gems: 1 },
-  'B': { beli: 500, gems: 3 },
-  'A': { beli: 1125, gems: 5 },
-  'S': { beli: 2015, gems: 8 },
-  'SS': { beli: 3700, gems: 15 },
-  'UR': { beli: 5000, gems: 27 }
-};
+function getRequiredLevelerInfo(nextRank) {
+  return LEVELER_REQUIREMENT_MAP[nextRank] || null;
+}
+
+function getEligibleLevelers(attribute, requiredRank) {
+  return levelers.filter(l => (l.attribute === attribute || l.attribute === 'ALL') && l.rank === requiredRank);
+}
+
+function getUserLevelerCount(user, eligibleIds) {
+  return (user.items || []).reduce((sum, item) => {
+    if (eligibleIds.includes(item.itemId)) return sum + item.quantity;
+    return sum;
+  }, 0);
+}
+
+function consumeLevelers(user, eligibleIds, amountNeeded) {
+  let remaining = amountNeeded;
+  // Prefer matching attribute-specific levelers before wildcards
+  const orderedIds = eligibleIds.slice();
+  const items = user.items || [];
+  items.sort((a, b) => {
+    const aLeveler = levelers.find(l => l.id === a.itemId);
+    const bLeveler = levelers.find(l => l.id === b.itemId);
+    if (!aLeveler || !bLeveler) return 0;
+    if (aLeveler.attribute === 'ALL' && bLeveler.attribute !== 'ALL') return 1;
+    if (bLeveler.attribute === 'ALL' && aLeveler.attribute !== 'ALL') return -1;
+    return 0;
+  });
+
+  const consumed = [];
+  for (const item of items) {
+    if (remaining <= 0) break;
+    if (!eligibleIds.includes(item.itemId)) continue;
+    const used = Math.min(item.quantity, remaining);
+    if (used <= 0) continue;
+    item.quantity -= used;
+    remaining -= used;
+    const leveler = levelers.find(l => l.id === item.itemId);
+    if (leveler) consumed.push({ emoji: leveler.emoji, name: leveler.name, quantity: used });
+  }
+  user.items = (user.items || []).filter(i => i.quantity > 0);
+  return { remaining, consumed };
+}
 
 module.exports = {
   name: 'upgrade',
@@ -69,37 +103,6 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // Check if requirements are enabled
-    const requirementsEnabled = !user.upgradeRequirementsDisabled; // true by default
-
-    // Check requirements if enabled - read from card's upgradeRequirements field if it exists
-    let missingRequirements = [];
-    if (requirementsEnabled) {
-      // First check if card has upgradeRequirements field
-      const cardRequirements = next.upgradeRequirements || UPGRADE_REQUIREMENTS[next.id];
-      if (cardRequirements) {
-        missingRequirements = cardRequirements.filter(cardId =>
-          !user.ownedCards.some(e => e.cardId === cardId)
-        );
-      }
-    }
-
-    if (missingRequirements.length > 0) {
-      const missingNames = missingRequirements.map(id => {
-        const card = cards.find(c => c.id === id);
-        return card ? card.character : id;
-      }).join(', ');
-      const embed = new EmbedBuilder()
-        .setColor('#FFFFFF')
-        .setTitle(`Cannot Upgrade ${base.character}`)
-        .setDescription(`You're missing the following required cards:\n\n${missingNames}`)
-        .setFooter({ text: `Next version: ${next.title || next.character}` })
-        .setAuthor({ name: username, iconURL: avatarUrl });
-
-      if (message) return message.reply({ embeds: [embed] });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
-    }
-
     // Check level requirement based on target rank
     const LEVEL_REQUIREMENTS = { C: 5, B: 10, A: 25, S: 30, SS: 50, UR: 75 };
     const requiredLevel = LEVEL_REQUIREMENTS[next.rank] || 1;
@@ -115,53 +118,44 @@ module.exports = {
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
-    // Get upgrade costs
-    const nextRank = next.rank;
-    const costs = UPGRADE_COSTS[nextRank] || { beli: 1000, gems: 5 };
-
-    // Check currency - user.balance is beli, user.gems is gems
-    const userBeli = user.balance || 0;
-    const userGems = user.gems || 0;
-    const canAffordBeli = userBeli >= costs.beli;
-    const canAffordGems = userGems >= costs.gems;
-
-    if (!canAffordBeli && !canAffordGems) {
-      const embed = new EmbedBuilder()
-        .setColor('#FFFFFF')
-        .setTitle(`Cannot Upgrade ${base.character}`)
-        .setDescription(`You don't have enough currency.\n\nRequired:\n• **Beli:** ${costs.beli} (you have ${userBeli})\n• **Gems:** ${costs.gems} (you have ${userGems})`)
-        .setFooter({ text: `New Version: ${next.title || next.character}` })
-        .setAuthor({ name: username, iconURL: avatarUrl });
-
-      if (message) return message.reply({ embeds: [embed] });
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+    const requiredInfo = getRequiredLevelerInfo(next.rank);
+    if (!requiredInfo) {
+      const reply = `Upgrade requirements not defined for ${next.rank} mastery.`;
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // Show upgrade confirmation with payment options
+    const eligibleLevelers = getEligibleLevelers(base.attribute, requiredInfo.rank);
+    const eligibleIds = eligibleLevelers.map(l => l.id);
+    const userCount = getUserLevelerCount(user, eligibleIds);
+    const remaining = Math.max(0, requiredInfo.count - userCount);
+
+    const eligibleList = eligibleLevelers.map(l => `${l.emoji} ${l.name}`).join('\n') || 'None';
+    const ownedLines = (user.items || [])
+      .filter(item => eligibleIds.includes(item.itemId))
+      .map(item => {
+        const leveler = eligibleLevelers.find(l => l.id === item.itemId);
+        return leveler ? `${leveler.emoji} ${leveler.name} x${item.quantity}` : null;
+      })
+      .filter(Boolean);
+
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setTitle(`Upgrade ${base.character}?`)
-      .setDescription(`**Current:** Mastery ${base.mastery}\n**Next:** Mastery ${next.mastery}\n\nSelect a payment method:`)
+      .setTitle(`Upgrade ${base.character}`)
+      .setDescription(`**Current:** Mastery ${base.mastery}\n**Next:** Mastery ${next.mastery}\n\nYou need levelers matching the card's attribute to upgrade.`)
       .setAuthor({ name: username, iconURL: avatarUrl })
       .addFields(
-        { name: 'Beli', value: `${costs.beli} Beli ${canAffordBeli ? '✓' : '✗ (insufficient)'}`, inline: true },
-        { name: 'Gems', value: `${costs.gems} Gems ${canAffordGems ? '✓' : '✗ (insufficient)'}`, inline: true }
+        { name: 'Requirement', value: `• ${requiredInfo.count}x ${requiredInfo.rank} rank ${base.attribute} levelers\n• Rainbow levelers count as any attribute`, inline: false },
+        { name: 'Eligible Levelers', value: eligibleList, inline: false },
+        { name: 'Your Available Levelers', value: ownedLines.length ? ownedLines.join('\n') : 'None', inline: false }
       );
 
     const buttons = new ActionRowBuilder();
-    if (canAffordBeli) {
+    if (remaining === 0) {
       buttons.addComponents(
         new ButtonBuilder()
-          .setCustomId(`upgrade_beli_${base.id}_${next.id}`)
-          .setLabel(`Pay with Beli (${costs.beli})`)
-          .setStyle(ButtonStyle.Primary)
-      );
-    }
-    if (canAffordGems) {
-      buttons.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`upgrade_gems_${base.id}_${next.id}`)
-          .setLabel(`Pay with Gems (${costs.gems})`)
+          .setCustomId(`upgrade_confirm_${base.id}_${next.id}`)
+          .setLabel('Confirm Upgrade')
           .setStyle(ButtonStyle.Success)
       );
     }
@@ -171,6 +165,10 @@ module.exports = {
         .setLabel('Cancel')
         .setStyle(ButtonStyle.Secondary)
     );
+
+    if (remaining > 0) {
+      embed.addFields({ name: 'Missing', value: `You need ${remaining} more eligible leveler(s) to upgrade.`, inline: false });
+    }
 
     let msg;
     if (message) {
@@ -187,13 +185,14 @@ module.exports = {
   
   // Export button handler for use in main index.js
   handleUpgradeButton: async (interaction) => {
-    const [action, paymentType, currentCardId, nextCardId] = interaction.customId.split('_');
-
-    if (action !== 'upgrade') return;
-
-    if (paymentType === 'cancel') {
+    if (interaction.customId === 'upgrade_cancel') {
       return interaction.update({ content: 'Upgrade cancelled.', embeds: [], components: [] });
     }
+
+    const match = interaction.customId.match(/^upgrade_confirm_(.+)_(.+)$/);
+    if (!match) return;
+
+    const [, currentCardId, nextCardId] = match;
 
     const userId = interaction.user.id;
     let user = await User.findOne({ userId });
@@ -210,36 +209,33 @@ module.exports = {
       return interaction.update({ content: 'Card not found in inventory.', embeds: [], components: [] });
     }
 
-    // Get upgrade costs
-    const costs = UPGRADE_COSTS[nextCard.rank] || { beli: 1000, gems: 5 };
-    const userBeli = user.balance || 0;
-    const userGems = user.gems || 0;
-
-    // Process payment
-    if (paymentType === 'beli') {
-      if (userBeli < costs.beli) {
-        return interaction.update({
-          content: `Insufficient Beli. You have ${userBeli}, need ${costs.beli}.`,
-          embeds: [],
-          components: []
-        });
-      }
-      user.balance = (user.balance || 0) - costs.beli;
-    } else if (paymentType === 'gems') {
-      if (userGems < costs.gems) {
-        return interaction.update({
-          content: `Insufficient Gems. You have ${userGems}, need ${costs.gems}.`,
-          embeds: [],
-          components: []
-        });
-      }
-      user.gems = (user.gems || 0) - costs.gems;
-    } else {
-      return;
+    const requiredInfo = getRequiredLevelerInfo(nextCard.rank);
+    if (!requiredInfo) {
+      return interaction.update({ content: `Upgrade requirements not defined for ${nextCard.rank} mastery.`, embeds: [], components: [] });
     }
 
-    // Add new card version to inventory or update existing
-    // First, remove the old card version to prevent duplicates
+    const eligibleLevelers = getEligibleLevelers(currentCard.attribute, requiredInfo.rank);
+    const eligibleIds = eligibleLevelers.map(l => l.id);
+    const userCount = getUserLevelerCount(user, eligibleIds);
+
+    if (userCount < requiredInfo.count) {
+      return interaction.update({
+        content: `You do not have enough eligible levelers to upgrade. Required ${requiredInfo.count}, found ${userCount}.`,
+        embeds: [],
+        components: []
+      });
+    }
+
+    const { remaining, consumed } = consumeLevelers(user, eligibleIds, requiredInfo.count);
+    if (remaining > 0) {
+      return interaction.update({
+        content: `Unable to consume enough levelers for the upgrade. ${remaining} remaining.`,
+        embeds: [],
+        components: []
+      });
+    }
+
+    // Remove the old card version to prevent duplicates
     user.ownedCards = user.ownedCards.filter(e => e.cardId !== currentCardId);
     
     const existingEntry = user.ownedCards.find(e => e.cardId === nextCardId);
@@ -250,7 +246,6 @@ module.exports = {
       user.ownedCards.push({ cardId: nextCardId, level: 1, xp: 0 });
     }
 
-    // Add to history if not already there
     if (!user.history.includes(nextCardId)) user.history.push(nextCardId);
 
     await user.save();
@@ -260,7 +255,7 @@ module.exports = {
       .setTitle('Upgrade Complete!')
       .setDescription(`**${currentCard.character}** upgraded to mastery ${nextCard.mastery}`)
       .addFields(
-        { name: 'Payment', value: `${paymentType === 'beli' ? costs.beli + ' Beli' : costs.gems + ' Gems'}` },
+        { name: 'Consumed Levelers', value: consumed.map(c => `${c.emoji} ${c.name} x${c.quantity}`).join('\n') || 'None' },
         { name: 'New Stats', value: `Health: ${nextCard.health}, Power: ${nextCard.power}, Speed: ${nextCard.speed}` }
       )
       .setImage(nextCard.image_url || null);

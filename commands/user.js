@@ -2,13 +2,33 @@ const { EmbedBuilder } = require('discord.js');
 const User = require('../models/User');
 const { cards: cardDefs } = require('../data/cards');
 
+function parseTargetIdFromArgs(message, args) {
+  if (!message || !args || args.length === 0) return null;
+  const first = args[0];
+  const mentionMatch = first.match(/^<@!?(\d+)>$/);
+  if (mentionMatch) return mentionMatch[1];
+  if (/^\d{17,19}$/.test(first)) return first;
+  return null;
+}
+
 module.exports = {
   name: 'user',
   description: 'View a user\'s profile',
   options: [{ name: 'target', type: 6, description: 'User to view (optional)', required: false }],
-  async execute({ message, interaction }) {
-    const targetId = message ? (message.mentions.users.first()?.id || message.author.id) : (interaction.options.getUser('target')?.id || interaction.user.id);
-    const targetUser = message ? (message.mentions.users.first() || message.author) : (interaction.options.getUser('target') || interaction.user);
+  async execute({ message, interaction, args }) {
+    const defaultUserId = message ? message.author.id : interaction.user.id;
+    let targetId = defaultUserId;
+    let targetUser = message ? message.author : interaction.user;
+    if (message) {
+      const parsedId = parseTargetIdFromArgs(message, args);
+      if (parsedId) {
+        targetId = parsedId;
+        targetUser = message.mentions.users.first() || await message.client.users.fetch(parsedId).catch(() => message.author) || message.author;
+      }
+    } else {
+      targetId = interaction.options.getUser('target')?.id || defaultUserId;
+      targetUser = interaction.options.getUser('target') || interaction.user;
+    }
     const username = targetUser.username;
     const avatarUrl = targetUser.displayAvatarURL();
 

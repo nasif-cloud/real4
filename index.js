@@ -9,7 +9,9 @@ const startCmd = require('./commands/start');
 const pullCmd = require('./commands/pull');
 const resetCmd = require('./commands/reset');
 const teamCmd = require('./commands/team');
+const teamBackgroundCmd = require('./commands/teambackground');
 const inventoryCmd = require('./commands/inventory');
+const balanceCmd = require('./commands/balance');
 const autoTeamCmd = require('./commands/autoteam');
 const duelCmd = require('./commands/duel');
 const sellCmd = require('./commands/sell');
@@ -77,6 +79,7 @@ async function main() {
         if (commandName === 'reset') return resetCmd.execute({ interaction });
         if (commandName === 'autoteam') return autoTeamCmd.execute({ interaction });
         if (commandName === 'team') return teamCmd.execute({ interaction });
+        if (commandName === 'teambackground') return teamBackgroundCmd.execute({ interaction });
         if (commandName === 'inventory') return inventoryCmd.execute({ interaction });
         if (commandName === 'duel') return duelCmd.execute({ interaction });
         if (commandName === 'sell') return sellCmd.execute({ interaction });
@@ -165,6 +168,11 @@ async function main() {
           return openCmd.handleButton(interaction, interaction.customId);
         }
 
+        // handle stock button purchases
+        if (action === 'stock_buy') {
+          return stockCmd.handleButton(interaction, cardId);
+        }
+
         // handle stock page navigation
         if (action === 'stock_page') {
           return stockCmd.handleButton(interaction, cardId);
@@ -173,6 +181,16 @@ async function main() {
         // handle collection navigation
         if (action && (action.startsWith('collection_next') || action.startsWith('collection_prev') || action === 'collection_sort' || action === 'collection_sort_select')) {
           return require('./commands/collection').handleButton(interaction, interaction.customId);
+        }
+
+        // handle info card navigation
+        if (action && action.startsWith('info_')) {
+          return require('./commands/info').handleButton(interaction, action, cardId);
+        }
+
+        // handle inventory pagination
+        if (action && (action.startsWith('inv_prev') || action.startsWith('inv_next'))) {
+          return require('./commands/inventory').handleButton(interaction, interaction.customId);
         }
 
         // handle upgrade payment interactions
@@ -247,15 +265,17 @@ async function main() {
       if (cmd === 'pull') return await pullCmd.execute({ message });
       if (cmd === 'reset') return await resetCmd.execute({ message });
       if (cmd === 'team') return await teamCmd.execute({ message, args });
+      if (cmd === 'teambg' || cmd === 'teambackground') return await teamBackgroundCmd.execute({ message, args });
       if (cmd === 'autoteam') return await require('./commands/autoteam').execute({ message });
-      if (cmd === 'inventory') return await inventoryCmd.execute({ message });
+      if (cmd === 'inventory') return await inventoryCmd.execute({ message, args });
+      if (cmd === 'balance' || cmd === 'bal') return await balanceCmd.execute({ message, args });
       if (cmd === 'duel') return await duelCmd.execute({ message, args });
       if (cmd === 'sell') return await sellCmd.execute({ message, args });
       if (cmd === 'shop') return await shopCmd.execute({ message });
       if (cmd === 'buy') return await buyCmd.execute({ message, args });
       if (cmd === 'bounty') return await bountyCmd.execute({ message });
       if (cmd === 'user') return await userCmd.execute({ message, args });
-      if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message });
+      if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message, args });
       if (cmd === 'daily') return await dailyCmd.execute({ message });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });
@@ -264,7 +284,6 @@ async function main() {
       if (cmd === 'info') return await require('./commands/info').execute({ message, args });
       if (cmd === 'upgrade') return await require('./commands/upgrade').execute({ message, args });
       if (cmd === 'isail') return await require('./commands/isail').execute({ message });
-      if (cmd === 'bal' || cmd === 'balance') return await require('./commands/balance').execute({ message });
       if (cmd === 'fish') return await require('./commands/fish').execute({ message });
       if (cmd === 'feed') return await require('./commands/feed').execute({ message, args });
       if (cmd === 'ownerlist') return await require('./commands/owner').list({ message });

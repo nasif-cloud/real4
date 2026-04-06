@@ -198,5 +198,6 @@ module.exports = {
     session.currentIndex = nextIndex;
 
     return renderCard(interaction, await User.findOne({ userId: interaction.user.id }), session, nextIndex);
-  }
+  },
+  sortedOwnedCards
 };

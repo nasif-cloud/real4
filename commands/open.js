@@ -45,12 +45,9 @@ module.exports = {
     for (let i = 0; i < 5; i++) {
       let card = simulatePull(user.pityCount, matchedPack);
       if (!card) continue;
-      // On 5th pull, small chance for U2 upgrade (never U3/U4 directly from this chance)
-      if (i === 4 && card.mastery === 1 && Math.random() < 0.08) {
-        const versionIds = getAllCardVersions(card.character);
-        const upgradeCard = versionIds
-          .map(id => getCardById(id))
-          .find(c => c && c.mastery === 2);
+      // On 5th pull, 20% chance for a mastery 2 card instead, using the same rank probability system for M2s.
+      if (i === 4 && Math.random() < 0.2) {
+        const upgradeCard = simulatePull(user.pityCount, matchedPack, { mastery: 2 });
         if (upgradeCard) card = upgradeCard;
       }
       // compute duplicate text same as pull.js logic

@@ -77,7 +77,7 @@ module.exports = {
       const remainingMs = 24 * 60 * 60 * 1000 - timeSinceLast;
       const hours = Math.floor(remainingMs / (1000 * 60 * 60));
       const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-      const reply = `You can claim your daily reward in ${hours}h ${minutes}m.`;
+      const reply = `You can claim your daily reward in \`${hours}h ${minutes}m\`.`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -122,18 +122,35 @@ module.exports = {
     user.markModified('packInventory');
     await user.save();
 
-    // Build embed
+    // Emoji constants
+    const nextEmoji = '<:next:1489374606916714706>';
+    const beliIcon = '<:beli:1482371237991239681>';
+    const gemIcon = '<:gem:1482371241231239682>';
+    // Find a pack emoji for each pack (use crew icon)
+    let packLines = [];
+    if (packRewards.length > 0) {
+      for (const packName of packRewards) {
+        const crew = crews.find(c => c.name === packName);
+        const packEmoji = crew && crew.icon ? crew.icon : '';
+        packLines.push(`${nextEmoji} 1 ${packEmoji} ${packName}`);
+      }
+    }
+    // Compose lines
+    const lines = [
+      '**Daily rewards claimed!**',
+      `${nextEmoji} ${beliReward} beli ${beliIcon}`,
+      `${nextEmoji} ${gemsReward} gems ${gemIcon}`
+    ];
+    if (packLines.length > 0) {
+      lines.push(...packLines);
+    }
+    lines.push(`\n**Streak**: ${getStreakString(newStreak)}`);
+    lines.push(`-# come back in \`${hours}h ${minutes}m\` for more rewards.`);
+
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setTitle('Daily Reward Claimed!')
-      .setDescription(`Streak: ${getStreakString(newStreak)}`)
-      .addFields(
-        { name: 'Beli', value: `+${beliReward}`, inline: true },
-        { name: 'Gems', value: `+${gemsReward}`, inline: true },
-        { name: 'Packs', value: packRewards.length > 0 ? packRewards.join(', ') : 'None', inline: true }
-      )
-      .setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() })
-      .setFooter({ text: 'Come back tomorrow for more rewards!' });
+      .setDescription(lines.join('\n'))
+      .setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
 
     if (message) return message.channel.send({ embeds: [embed] });
     return interaction.reply({ embeds: [embed] });

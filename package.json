@@ -16,6 +16,8 @@
     "discord.js": "^14.16.0",
     "dotenv": "^16.3.1",
     "fuse.js": "^7.3.0",
-    "mongoose": "^7.6.1"
+    "jimp": "^0.22.10",
+    "mongoose": "^7.6.1",
+    "@napi-rs/canvas": "^0.1.17"
   }
 }
