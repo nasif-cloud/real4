@@ -121,6 +121,9 @@ commands.push({
   description: 'Open a pack to get cards',
   options: [{ name: 'pack', type: 3, description: 'Pack name', required: true }]
 });
+commands.push({ name: 'loot', description: 'Attempt to loot a random guild ship for Beli and packs' });
+commands.push({ name: 'rob', description: 'Attempt to rob a user', options: [{ name: 'target', type: 6, description: 'User to rob', required: true }] });
+commands.push({ name: 'stoprob', description: 'Stop an active robbery against you' });
 commands.push({ name: 'collection', description: 'View your card collection' });
 
 // timers command

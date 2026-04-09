@@ -23,7 +23,10 @@ const leaderboardCmd = require('./commands/leaderboard');
 const dailyCmd = require('./commands/daily');
 const stockCmd = require('./commands/stock');
 const openCmd = require('./commands/open');
+const robCmd = require('./commands/rob');
+const stopRobCmd = require('./commands/stoprob');
 const timersCmd = require('./commands/timers');
+const lootCmd = require('./commands/loot');
 const User = require('./models/User');
 
 async function main() {
@@ -94,6 +97,9 @@ async function main() {
         if (commandName === 'daily') return dailyCmd.execute({ interaction });
         if (commandName === 'stock') return stockCmd.execute({ interaction });
         if (commandName === 'open') return openCmd.execute({ interaction });
+        if (commandName === 'rob') return robCmd.execute({ interaction });
+        if (commandName === 'stoprob') return stopRobCmd.execute({ interaction });
+        if (commandName === 'loot') return lootCmd.execute({ interaction });
         if (commandName === 'timers') return timersCmd.execute({ interaction });
         if (commandName === 'info') return require('./commands/info').execute({ interaction });
         if (commandName === 'card') return require('./commands/card').execute({ interaction });
@@ -291,6 +297,9 @@ async function main() {
       if (cmd === 'daily') return await dailyCmd.execute({ message });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });
+      if (cmd === 'rob') return await robCmd.execute({ message, args });
+      if (cmd === 'stoprob') return await stopRobCmd.execute({ message });
+      if (cmd === 'loot') return await lootCmd.execute({ message });
       if (cmd === 'timers') return await timersCmd.execute({ message });
       if (cmd === 'collection') return await require('./commands/collection').execute({ message });
       if (cmd === 'info') return await require('./commands/info').execute({ message, args });

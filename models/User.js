@@ -20,6 +20,8 @@ const UserSchema = new Schema({
   bounty: { type: Number, default: 100 },
   activeBountyTarget: { type: String, default: null },
   bountyCooldownUntil: { type: Date, default: null },
+  robCooldownUntil: { type: Date, default: null },
+  lootCooldownUntil: { type: Date, default: null },
   isailProgress: { type: Number, default: 1 },
   lastIsailFail: { type: Date, default: null },
   lastIsailEnemies: { type: [String], default: [] },

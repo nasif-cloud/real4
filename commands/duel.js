@@ -39,6 +39,14 @@ function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function formatAmount(value) {
+  const absValue = Math.abs(value);
+  const str = absValue.toString();
+  if (str.length < 5) return value.toString();
+  const formatted = str.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return value < 0 ? `-${formatted}` : formatted;
+}
+
 const calculateUserDamage = calculateUserDamageShared;
 
 // Map to track pending duel requests (messageId => pendingState)
@@ -487,16 +495,10 @@ async function finalizeAction(state, msg, timedOut = false) {
     let beliGain = 0;
     if (state.isBountyDuel && winnerId === state.bountyHunter) {
       const targetBounty = loserUser.bounty || 100;
-      xpGain = Math.floor(targetBounty / 10);
-      beliGain = Math.floor(targetBounty / 2);
+      xpGain = 0;
+      beliGain = Math.floor(targetBounty / 12);
       
       winnerUser.balance = (winnerUser.balance || 0) + beliGain;
-      // Add XP to all owned cards
-      if (winnerUser.ownedCards) {
-        winnerUser.ownedCards.forEach(card => {
-          card.xp = (card.xp || 0) + xpGain;
-        });
-      }
       winnerUser.activeBountyTarget = null;
       winnerUser.bountyCooldownUntil = null;
       await winnerUser.save();
@@ -512,10 +514,10 @@ async function finalizeAction(state, msg, timedOut = false) {
     // Create victory embed with bounty information
     let description = `${winner.username} wins!`;
     if (bountyGain > 0) {
-      description += `\n\nBounty Gained: **${bountyGain}**`;
+      description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
     }
-    if (xpGain > 0 && beliGain > 0) {
-      description += `\n\nBounty Claimed! Earned **${xpGain} XP** and ¥**${beliGain}**!`;
+    if (beliGain > 0) {
+      description += `\n\nBounty Claimed! Earned ¥**${formatAmount(beliGain)}**!`;
     }
     
     const victorEmbed = new EmbedBuilder()
@@ -1154,16 +1156,10 @@ module.exports = {
         let beliGain = 0;
         if (state.isBountyDuel && winnerId === state.bountyHunter) {
           const targetBounty = loserUser.bounty || 100;
-          xpGain = Math.floor(targetBounty / 10);
-          beliGain = Math.floor(targetBounty / 2);
+          xpGain = 0;
+          beliGain = Math.floor(targetBounty / 12);
           
           winnerUser.balance = (winnerUser.balance || 0) + beliGain;
-          // Add XP to all owned cards
-          if (winnerUser.ownedCards) {
-            winnerUser.ownedCards.forEach(card => {
-              card.xp = (card.xp || 0) + xpGain;
-            });
-          }
           winnerUser.activeBountyTarget = null;
           winnerUser.bountyCooldownUntil = null;
           await winnerUser.save();
@@ -1179,10 +1175,10 @@ module.exports = {
         // Create victory embed with bounty information
         let description = `${interaction.user.username} forfeited.\n${winner.username} wins!`;
         if (bountyGain > 0) {
-          description += `\n\nBounty Gained: **${bountyGain}**`;
+          description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
         }
-        if (xpGain > 0 && beliGain > 0) {
-          description += `\n\nBounty Claimed! Earned **${xpGain} XP** and ¥**${beliGain}**!`;
+        if (beliGain > 0) {
+          description += `\n\nBounty Claimed! Earned ¥**${formatAmount(beliGain)}**!`;
         }
         
         const forfeitEmbed = new EmbedBuilder()

@@ -17,6 +17,14 @@ function formatRelativeTime(futureDate) {
   return `${minutes}m`;
 }
 
+function formatAmount(value) {
+  const absValue = Math.abs(value);
+  const str = absValue.toString();
+  if (str.length < 5) return value.toString();
+  const formatted = str.replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+  return value < 0 ? `-${formatted}` : formatted;
+}
+
 module.exports = {
   name: 'bounty',
   description: 'Claim a bounty on a random player',
@@ -73,7 +81,7 @@ module.exports = {
     });
 
     if (candidates.length === 0) {
-      const reply = `No suitable bounty targets found. Targets must have bounty between **${minBounty}** and **${maxBounty}**.`;
+      const reply = `No suitable bounty targets found. Targets must have bounty between **${formatAmount(minBounty)}** and **${formatAmount(maxBounty)}**.`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -91,10 +99,10 @@ module.exports = {
     requester.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     await requester.save();
 
-    // Reward preview (based on target bounty)
+    // Reward preview (based on relative bounty)
     const targetBounty = opponent.bounty || 100;
-    const rewardXP = Math.floor(targetBounty / 10);
-    const rewardBeli = Math.floor(targetBounty / 2);
+    const rewardXP = 0;
+    const rewardBeli = requesterBounty > targetBounty ? 1000 : 300;
 
     // Create bounty embed (matches provided screenshot style)
     const embed = new EmbedBuilder()
@@ -102,7 +110,7 @@ module.exports = {
       .setTitle('Bounty Challenge')
       .setDescription(`Defeat **${opponentName}** in a duel to claim 2x the reward!`)
       .addFields(
-        { name: 'Rewards', value: `• Bounty: <:bounty:1490738541448400976>${targetBounty}\n• Beli: <:beri:1490738445319016651>${rewardBeli}\n• XP: ${rewardXP}`, inline: false }
+        { name: 'Rewards', value: `• Bounty: <:bounty:1490738541448400976>${formatAmount(targetBounty)}\n• Beli: <:beri:1490738445319016651>${formatAmount(rewardBeli)}`, inline: false }
       )
       .setImage('https://i.pinimg.com/1200x/65/7c/06/657c066ce2b36625b6d56398128150fb.jpg')
       .setFooter({ text: 'Expires in a day' })
