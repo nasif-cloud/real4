@@ -56,11 +56,17 @@ module.exports = {
 
     // Check if user has active bounty or cooldown
     if (requester.activeBountyTarget) {
-      const targetDiscord = await (message ? message.client.users.fetch(requester.activeBountyTarget) : interaction.client.users.fetch(requester.activeBountyTarget)).catch(() => null);
-      const targetName = targetDiscord ? targetDiscord.username : 'Unknown';
-      const reply = `You can not claim a new bounty until you defeat **${targetName}**.`;
-      if (message) return message.channel.send(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
+      const targetId = String(requester.activeBountyTarget).trim();
+      if (!targetId || targetId === userId) {
+        requester.activeBountyTarget = null;
+        await requester.save();
+      } else {
+        const targetDiscord = await (message ? message.client.users.fetch(targetId) : interaction.client.users.fetch(targetId)).catch(() => null);
+        const targetName = targetDiscord ? targetDiscord.username : 'Unknown';
+        const reply = `You can not claim a new bounty until you defeat **${targetName}**.`;
+        if (message) return message.channel.send(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
     }
     if (requester.bountyCooldownUntil && requester.bountyCooldownUntil > new Date()) {
       const timeLeft = formatRelativeTime(requester.bountyCooldownUntil);

@@ -6,6 +6,7 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const { PREFIX } = require('./config');
 
 const startCmd = require('./commands/start');
+const { normalizeAllUserRods } = require('./utils/inventoryHelper');
 const pullCmd = require('./commands/pull');
 const resetCmd = require('./commands/reset');
 const teamCmd = require('./commands/team');
@@ -43,6 +44,14 @@ async function main() {
   // Initialize stock system
   const { initStockSystem } = require('./src/stock');
   initStockSystem();
+
+  // Normalize old rod inventory entries to remove duplicate/outdated rods
+  try {
+    const normalizedCount = await normalizeAllUserRods();
+    console.log(`Rod normalization complete. Updated ${normalizedCount} user${normalizedCount === 1 ? '' : 's'}.`);
+  } catch (err) {
+    console.error('Error normalizing rod inventory:', err);
+  }
 
   // Initialize drops system
   const dropsModule = require('./commands/drops');

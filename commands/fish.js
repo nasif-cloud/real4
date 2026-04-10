@@ -5,6 +5,7 @@ const { cards } = require('../data/cards');
 const { rods } = require('../data/rods');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 const { simulatePull } = require('../utils/cards');
+const { sanitizeUserRods } = require('../utils/inventoryHelper');
 
 function getRodColor(rodId) {
   switch (rodId) {
@@ -56,26 +57,45 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // Ensure current rod exists in inventory
-    const currentRodItem = user.items?.find(it => it.itemId === user.currentRod);
+    if (sanitizeUserRods(user)) {
+      await user.save();
+    }
+
+    const rodIds = rods.map(r => r.id);
+    let currentRodItem = user.items?.find(
+      it => it.itemId === user.currentRod && it.durability !== undefined && it.durability > 0
+    );
+    if (fishingStates.has(userId)) {
+      const reply = 'You already have an active fishing session in progress!';
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
     if (!currentRodItem) {
-      // Set to basic rod if available
-      const basicRodItem = user.items?.find(it => it.itemId === 'basic_rod');
-      if (basicRodItem) {
-        user.currentRod = 'basic_rod';
-      } else {
-        // Add basic rod
-        const basicRodData = rods.find(r => r.id === 'basic_rod');
-        user.items.push({ itemId: 'basic_rod', quantity: 1, durability: basicRodData.durability });
-        user.currentRod = 'basic_rod';
+      currentRodItem = user.items?.find(
+        it => rodIds.includes(it.itemId) && it.durability !== undefined && it.durability > 0
+      );
+      if (currentRodItem) {
+        user.currentRod = currentRodItem.itemId;
         await user.save();
       }
     }
+    if (!currentRodItem) {
+      const reply = "You don't have a **fishing rod** to fish with! Buy one in the shop with `op buy <rodname>` or `buy`";
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    const formatDuration = seconds => {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}m ${secs.toString().padStart(2, '0')}s`;
+    };
 
     // Check cooldown
-    if (user.lastFishFail && Date.now() - user.lastFishFail.getTime() < 10000) {
-      const remaining = Math.ceil((10000 - (Date.now() - user.lastFishFail.getTime())) / 1000);
-      const reply = `You scared the fish away! Wait ${remaining} seconds before fishing again.`;
+    if (user.lastFishFail && Date.now() - user.lastFishFail.getTime() < 120000) {
+      const remainingSeconds = Math.ceil((120000 - (Date.now() - user.lastFishFail.getTime())) / 1000);
+      const reply = `You scared the fish away... Wait another \`${formatDuration(remainingSeconds)}\` before fishing again`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -227,6 +247,11 @@ module.exports = {
 
     // Fetch user once for the whole function
     const user = await User.findOne({ userId });
+    const discordUser = interaction.user;
+    const rodIds = rods.map(r => r.id);
+    const currentRodItem = user.items?.find(
+      it => it.itemId === user.currentRod && rodIds.includes(it.itemId) && it.durability !== undefined && it.durability > 0
+    );
 
     const position = state.position();
     const targetIndex = state.targetIndex ?? 3;
@@ -326,23 +351,33 @@ module.exports = {
     }
 
     // Decrement rod durability
-    const currentRodItem = user.items.find(it => it.itemId === user.currentRod);
     if (currentRodItem && currentRodItem.durability !== undefined) {
       currentRodItem.durability -= 1;
       if (currentRodItem.durability <= 0) {
+        const brokenRodData = rods.find(r => r.id === currentRodItem.itemId);
+        const brokenRodName = brokenRodData?.name || 'fishing rod';
+        const brokenRodEmoji = brokenRodData?.emoji || '';
+
         // Remove broken rod from inventory
-        user.items = user.items.filter(it => it.itemId !== user.currentRod);
-        // Set current rod to basic_rod if available, otherwise keep current
-        const basicRodItem = user.items.find(it => it.itemId === 'basic_rod');
-        if (basicRodItem) {
-          user.currentRod = 'basic_rod';
+        user.items = user.items.filter(it => it.itemId !== currentRodItem.itemId);
+
+        // Switch to any remaining valid rod or clear currentRod
+        const nextRodItem = user.items.find(
+          it => rodIds.includes(it.itemId) && it.durability !== undefined && it.durability > 0
+        );
+        if (nextRodItem) {
+          user.currentRod = nextRodItem.itemId;
         } else {
-          // If no basic rod, add one
-          const basicRodData = rods.find(r => r.id === 'basic_rod');
-          user.items.push({ itemId: 'basic_rod', quantity: 1, durability: basicRodData.durability });
-          user.currentRod = 'basic_rod';
+          user.currentRod = null;
         }
-        lootLines.push(`\n⚠️ Your ${currentRodData.name} broke!`);
+
+        const breakEmbed = new EmbedBuilder()
+          .setDescription(
+            `** <a:rodbroke:1491957963248767017> Your fishing rod broke..**\n` +
+            `Your fishing rod, **${brokenRodEmoji} ${brokenRodName}** Broke and can no longer be used. to keep fishing, buy a new rod from the shop with \`op buy <rodname>\` or \`/buy\`!`
+          )
+          .setColor('#ffffff');
+        await discordUser.send({ embeds: [breakEmbed] }).catch(() => null);
       }
     }
 

@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { rods } = require('../data/rods');
 
 /**
  * Add (or subtract) an item from a user's inventory.
@@ -30,4 +31,54 @@ async function addItem(userId, itemId, amount) {
   await user.save();
 }
 
-module.exports = { addItem };
+function sanitizeUserRods(user) {
+  if (!user || !Array.isArray(user.items)) return false;
+
+  const rodIds = rods.map(r => r.id);
+  const otherItems = user.items.filter(it => !rodIds.includes(it.itemId));
+  let rodChanged = false;
+
+  const rodEntries = user.items.filter(
+    it => rodIds.includes(it.itemId) && typeof it.durability === 'number' && it.durability > 0
+  );
+  let currentRodEntry = rodEntries.find(it => it.itemId === user.currentRod);
+
+  if (!currentRodEntry && rodEntries.length > 0) {
+    currentRodEntry = rodEntries.sort((a, b) => b.durability - a.durability)[0];
+    user.currentRod = currentRodEntry.itemId;
+    rodChanged = true;
+  }
+
+  if (currentRodEntry) {
+    if (currentRodEntry.quantity !== 1) {
+      currentRodEntry.quantity = 1;
+      rodChanged = true;
+    }
+    otherItems.push(currentRodEntry);
+    if (rodEntries.length > 1) {
+      rodChanged = true;
+    }
+  }
+
+  user.items = otherItems;
+
+  if (!currentRodEntry) {
+    user.currentRod = null;
+  }
+
+  return rodChanged;
+}
+
+async function normalizeAllUserRods() {
+  const users = await User.find({ 'items.itemId': { $in: rods.map(r => r.id) } });
+  let updatedCount = 0;
+  for (const user of users) {
+    if (sanitizeUserRods(user)) {
+      await user.save();
+      updatedCount += 1;
+    }
+  }
+  return updatedCount;
+}
+
+module.exports = { addItem, sanitizeUserRods, normalizeAllUserRods };

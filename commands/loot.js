@@ -38,7 +38,8 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    const crew = crews[Math.floor(Math.random() * crews.length)];
+    const lootableCrews = crews.filter(c => c.name !== 'Marines');
+    const crew = lootableCrews[Math.floor(Math.random() * lootableCrews.length)];
     const caught = Math.random() < 0.1;
     const amount = randomInt(10, 300);
 

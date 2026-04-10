@@ -4,6 +4,7 @@ const { getCurrentStock, getPricing, decrementStock } = require('../src/stock');
 const crews = require('../data/crews');
 const { rods } = require('../data/rods');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
+const { sanitizeUserRods } = require('../utils/inventoryHelper');
 
 // Simple fuzzy matching function
 function fuzzyMatch(query, candidates) {
@@ -91,6 +92,10 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    if (sanitizeUserRods(user)) {
+      await user.save();
+    }
+
     // Check for rods first
     let rodItem = null;
     const rodNames = Object.keys(shopRods);
@@ -127,7 +132,7 @@ module.exports = {
       const available = Object.keys(SHOP_ITEMS).concat(rodNames).concat(getCurrentStock().map(c => c.name));
       const suggested = fuzzyMatch(itemQuery, available);
       const suggestionText = suggested ? ` Did you mean **${getSuggestionEmoji(suggested)}${suggested}**?` : '';
-      const reply = `**${itemQuery}**is not a valid item. ${suggestionText}`;
+      const reply = `**${itemQuery}** is not a valid item. ${suggestionText}`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

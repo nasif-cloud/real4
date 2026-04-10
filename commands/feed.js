@@ -124,15 +124,12 @@ module.exports = {
       return interaction.reply({ content: reply, flags: 64 });
     }
 
-    // Calculate XP
+    // Calculate XP from the leveler exactly as defined in data/levelers.js
     let xpGain = 0;
     if (typeof leveler.xp === 'object') {
       xpGain = (leveler.xp[card.attribute] || 0) * amount;
     } else {
       xpGain = Number(leveler.xp || 0) * amount;
-      if (leveler.attribute === card.attribute) {
-        xpGain *= 1.5;
-      }
     }
 
     // Add XP

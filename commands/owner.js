@@ -20,7 +20,7 @@ async function list({ message }) {
     .setColor(0xFF0000)
     .setDescription('Available prefix commands for the bot owner/developer')
     .addFields(
-      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>', inline: false },
+      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack, memerod\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
       { name: 'op owner setdrops <#channel>', value: 'Enable card drops in a channel (spawns every 5 min, expires in 10 min)', inline: false },
       { name: 'op owner unsetdrops', value: 'Disable card drops globally', inline: false },
@@ -71,6 +71,26 @@ async function execute({ message, args }) {
         target.markModified('packInventory');
         await target.save();
         return message.reply(`Given ${amt} ${crewName} pack(s) to <@${targetId}>`);
+      }
+
+      if (type === 'memerod') {
+        const mention = args[2];
+        targetId = parseMention(mention);
+        if (!targetId) {
+          return message.reply('Usage: op owner give memerod <@user>');
+        }
+        const targetUser = await User.findOne({ userId: targetId });
+        if (!targetUser) {
+          return message.reply('Target user does not have an account.');
+        }
+        if (!Array.isArray(targetUser.items)) targetUser.items = [];
+        if (targetUser.items.some(i => i.itemId === 'meme_rod')) {
+          return message.reply('Target user already has the Meme Rod.');
+        }
+        targetUser.items.push({ itemId: 'meme_rod', quantity: 1, durability: 3 });
+        targetUser.currentRod = 'meme_rod';
+        await targetUser.save();
+        return message.reply(`Given Meme Rod to <@${targetId}>`);
       }
 
       // fallback for simple two-arg give

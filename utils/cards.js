@@ -37,6 +37,31 @@ function getRankFromDistribution(rates) {
   return Object.keys(rates)[Object.keys(rates).length - 1];
 }
 
+function getRankFromDistributionWithFilter(rates, allowedRanks) {
+  const filteredRates = {};
+  let total = 0;
+  for (const [rk, pct] of Object.entries(rates)) {
+    if (allowedRanks.has(rk)) {
+      filteredRates[rk] = pct;
+      total += pct;
+    }
+  }
+  if (total === 0) return null;
+  const factor = 100 / total;
+  for (const rk of Object.keys(filteredRates)) {
+    filteredRates[rk] = filteredRates[rk] * factor;
+  }
+  return getRankFromDistribution(filteredRates);
+}
+
+function getFacultyCharacters(faculty) {
+  const characters = new Set();
+  cards.forEach(c => {
+    if (c.faculty === faculty) characters.add(c.character);
+  });
+  return characters;
+}
+
 // Get a card definition by its ID
 function getCardById(cardId) {
   return cards.find(c => c.id === cardId);
@@ -212,25 +237,36 @@ function simulatePull(pityCount, faculty = null, options = {}) {
   const effectiveRates = getModifiedRates(rateSource, rodMultiplier);
   const rank = getRankFromDistribution(effectiveRates);
 
-  let pool = cards.filter(c => c.mastery === mastery && c.rank === rank);
-  if (mastery === 1) pool = pool.filter(c => c.pullable);
+  let candidateCards = cards.filter(c => c.mastery === mastery && c.rank === rank);
+  if (mastery === 1) candidateCards = candidateCards.filter(c => c.pullable);
 
   if (faculty) {
-    const facultyPool = pool.filter(c => c.faculty === faculty);
-    if (facultyPool.length > 0) {
-      pool = facultyPool;
-    } else {
-      // If no cards of this rank/mastery for this faculty, fall back to any rank for this faculty
-      const alt = cards.filter(c => c.mastery === mastery && c.faculty === faculty);
-      if (alt.length > 0) {
-        pool = alt;
-      } else {
-        // If still no cards, fall back to any mastery for this faculty
-        pool = cards.filter(c => c.faculty === faculty);
-      }
+    const facultyCharacters = getFacultyCharacters(faculty);
+    if (facultyCharacters.size === 0) {
+      return null;
     }
+
+    let eligibleCards = cards.filter(c => c.mastery === mastery && facultyCharacters.has(c.character));
+    if (mastery === 1) {
+      eligibleCards = eligibleCards.filter(c => c.pullable);
+    }
+
+    if (eligibleCards.length === 0) {
+      return null;
+    }
+
+    const allowedRanks = new Set(eligibleCards.map(c => c.rank));
+    let selectedRank = getRankFromDistributionWithFilter(effectiveRates, allowedRanks);
+    if (!selectedRank && rateSource === PITY_DISTRIBUTION) {
+      selectedRank = getRankFromDistributionWithFilter(PULL_RATES, allowedRanks);
+    }
+    if (!selectedRank) return null;
+    const pool = eligibleCards.filter(c => c.rank === selectedRank);
+    if (pool.length === 0) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
+  let pool = candidateCards;
   if (pool.length === 0) {
     pool = cards.filter(c => c.mastery === mastery);
     if (mastery === 1) pool = pool.filter(c => c.pullable);
@@ -294,13 +330,16 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(`${card.character}`)
-    .setAuthor(author)
     .setDescription(descLines.join('\n'))
     .addFields(
       { name: 'Stats', value: statsText, inline: false }
     )
     .setImage(card.image_url || null)
     .setFooter({ text: `${username} pulled this card | ${pityText}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
+
+  if (author.name || author.iconURL) {
+    embed.setAuthor(author);
+  }
 
   // Use card emoji as thumbnail (like card embeds), with fallback to rank badge
   const emojiThumbnail = getEmojiImageUrl(card.emoji);

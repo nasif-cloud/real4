@@ -2,7 +2,9 @@ const User = require('../models/User');
 const { cards } = require('../data/cards');
 const { PULL_LIMIT, PULL_RESET_HOURS, PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
 const { buildPullEmbed, getAllCardVersions, getCardById } = require('../utils/cards');
-const { getTimeUntilNextPullReset } = require('../src/stock');
+const stockUtils = require('../src/stock');
+const getPreviousPullResetDate = stockUtils.getPreviousPullResetDate;
+const getTimeUntilNextPullReset = stockUtils.getTimeUntilNextPullReset;
 
 module.exports = {
   name: 'pull',
@@ -22,27 +24,15 @@ module.exports = {
     if (typeof user.pullsRemaining !== 'number' || isNaN(user.pullsRemaining)) {
       user.pullsRemaining = PULL_LIMIT;
     }
-    if (!user.lastResetTime) {
-      user.lastResetTime = now;
+    if (!user.lastReset || !(user.lastReset instanceof Date)) {
+      user.lastReset = now;
     }
 
-    // Always check if the reset time has passed and restore pulls if so
-    const timeUntilGlobalReset = getTimeUntilNextPullReset();
-    if (timeUntilGlobalReset <= 0) {
+    const lastResetBoundary = getPreviousPullResetDate();
+    if (user.lastReset < lastResetBoundary) {
       user.pullsRemaining = PULL_LIMIT;
-      user.lastResetTime = now;
+      user.lastReset = lastResetBoundary;
       await user.save(); // Save immediately to avoid race conditions
-    }
-
-    // Recalculate after possible reset
-    if (user.pullsRemaining <= 0) {
-      // Double check if a reset is due (in case of missed update)
-      const timeUntilGlobalReset2 = getTimeUntilNextPullReset();
-      if (timeUntilGlobalReset2 <= 0) {
-        user.pullsRemaining = PULL_LIMIT;
-        user.lastResetTime = new Date();
-        await user.save();
-      }
     }
 
     if (user.pullsRemaining <= 0) {

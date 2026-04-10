@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "deploy": "node deploy-commands.js"
+    "deploy": "node deploy-commands.js",
+    "normalize-rods": "node scripts/normalize-rods.js"
   },
   "engines": {
     "node": ">=18"

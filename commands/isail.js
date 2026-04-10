@@ -213,7 +213,30 @@ function getMarinesForLevel(stage, prevRanks = []) {
   else targetHP = 150;
 
   // allow higher rank pool as stage increases
-  const rankMaxIdx = Math.min(maxIdx, Math.floor(stage / 2) + 1);
+  const rearIdx = marines.findIndex(m => m.rank === 'Rear admiral');
+  const viceIdx = marines.findIndex(m => m.rank === 'Vice admiral');
+  const admiralIdx = marines.findIndex(m => m.rank === 'Admiral');
+  const fleetIdx = marines.findIndex(m => m.rank === 'Fleet Admiral');
+  let rankMinIdx = 0;
+  let rankMaxIdx = Math.min(maxIdx, Math.floor(stage / 2) + 1);
+
+  if (stage >= 42 && fleetIdx !== -1) {
+    rankMinIdx = fleetIdx;
+    rankMaxIdx = fleetIdx;
+    minCount = maxCount = 3;
+  } else if (stage >= 38 && admiralIdx !== -1) {
+    rankMinIdx = admiralIdx;
+    rankMaxIdx = admiralIdx;
+    minCount = maxCount = 3;
+  } else if (stage >= 34 && viceIdx !== -1) {
+    rankMinIdx = viceIdx;
+    rankMaxIdx = viceIdx;
+    minCount = maxCount = 3;
+  } else if (stage >= 30 && rearIdx !== -1) {
+    rankMinIdx = rearIdx;
+    rankMaxIdx = rearIdx;
+    minCount = maxCount = 3;
+  }
 
   // point budget system: stage * 5 points to "buy" marines
   const budget = Math.max(1, Math.floor(stage * 5));
@@ -229,7 +252,7 @@ function getMarinesForLevel(stage, prevRanks = []) {
     let attempts = 0;
     while (group.length < count && attempts < 30) {
       attempts++;
-      const idx = randomInt(0, rankMaxIdx);
+      const idx = randomInt(rankMinIdx, rankMaxIdx);
       const c = marines[idx];
       const cost = costFor(idx);
       if (cost > remaining) continue;
@@ -646,6 +669,10 @@ async function handleVictory(state, msg, user, discordUser) {
       user.resetTokens = (user.resetTokens || 0) + 1;
       appendLog(state, 'You also found a **Reset Token**!');
     }
+  } else if (lvl <= 40) {
+    belis = randomInt(80, 400) + Math.floor((lvl - 30) * 10);
+  } else {
+    belis = randomInt(120, 500) + Math.floor((lvl - 40) * 15);
   }
   
   // Calculate bounty from defeated marines

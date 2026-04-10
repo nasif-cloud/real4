@@ -41,11 +41,23 @@ module.exports = {
     }
 
     // Open pack: pull 5 cards along with duplicate info
+    // Detect if this pack has any available cards for the pack's faculty.
+    const packCheck = simulatePull(user.pityCount, matchedPack);
+    if (!packCheck) {
+      const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
     const pulledCards = [];
     for (let i = 0; i < 5; i++) {
       let card = simulatePull(user.pityCount, matchedPack);
-      if (!card) continue;
-      // On 5th pull, 20% chance for a mastery 2 card instead, using the same rank probability system for M2s.
+      if (!card) {
+        const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+      // On 5th pull, 1% chance for a mastery 2 card instead, using the same faculty-aware pool selection.
       if (i === 4 && Math.random() < 0.01) {
         const upgradeCard = simulatePull(user.pityCount, matchedPack, { mastery: 2 });
         if (upgradeCard) card = upgradeCard;

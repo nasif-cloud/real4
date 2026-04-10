@@ -133,6 +133,21 @@ function getNextPullResetDate() {
   return nextReset;
 }
 
+function getPreviousPullResetDate() {
+  const now = new Date();
+  const anchor = new Date(now);
+  anchor.setHours(6, 0, 0, 0);
+
+  if (now < anchor) {
+    anchor.setDate(anchor.getDate() - 1);
+  }
+
+  const elapsed = now - anchor;
+  const eightHours = 8 * 60 * 60 * 1000;
+  const step = Math.floor(elapsed / eightHours);
+  return new Date(anchor.getTime() + step * eightHours);
+}
+
 function getTimeUntilNextPullReset() {
   const now = Date.now();
   const nextReset = getNextPullResetDate();
@@ -225,6 +240,7 @@ module.exports = {
   getStockCountdownString,
   getPullCountdownString,
   getNextStockResetDate,
+  getPreviousPullResetDate,
   getTimeUntilNextPullReset,
   ensureStockUpToDate,
   resetStock,

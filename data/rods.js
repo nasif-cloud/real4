@@ -28,6 +28,16 @@ const rods = [
     multiplier: 1.5,
     thumbnail: 'https://files.catbox.moe/d5qvci.webp',
     durability: 300
+  },
+  {
+    id: 'meme_rod',
+    name: 'Meme Rod',
+    emoji: '🎣',
+    cost: 0,
+    luckBonus: 0,
+    multiplier: 1,
+    thumbnail: 'https://files.catbox.moe/ck8x40.webp',
+    durability: 3
   }
 ];
 

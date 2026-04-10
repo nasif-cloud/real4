@@ -3,8 +3,9 @@ const User = require('../models/User');
 const { levelers } = require('../data/levelers');
 const { rods } = require('../data/rods');
 const crews = require('../data/crews');
+const { sanitizeUserRods } = require('../utils/inventoryHelper');
 
-const ITEMS_PER_PAGE = 25;
+const ITEMS_PER_PAGE = 20;
 
 function parseTargetIdFromArgs(args) {
   if (!args || args.length === 0) return null;
@@ -41,7 +42,6 @@ function splitFieldValue(value, maxLength = 1024) {
 }
 
 function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
-  // Get current rod for items display
   const currentRod = rods.find(r => r.id === user.currentRod);
   const rodItem = user.items?.find(it => it.itemId === user.currentRod);
   let rodDisplay = '❓ Unknown Rod';
@@ -51,64 +51,148 @@ function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
       rodDisplay += ` (${rodItem.durability}/${currentRod.durability})`;
     }
   }
-  
-  // Build items list with rod at top
-  let itemsList = rodDisplay;
-  const levelerItems = (user.items || []).map(i => {
-    const leveler = levelers.find(l => l.id === i.itemId);
-    if (leveler) {
+
+  const itemLines = [];
+  if (rodDisplay) {
+    itemLines.push(rodDisplay);
+  }
+  (user.items || [])
+    .filter(it => it.itemId !== user.currentRod)
+    .forEach(i => {
+      const leveler = levelers.find(l => l.id === i.itemId);
+      if (!leveler) {
+        let display = `${i.itemId} x${i.quantity}`;
+        if (i.durability !== undefined) {
+          display += ` (${i.durability})`;
+        }
+        itemLines.push(display);
+      }
+    });
+
+  const levelerLines = (user.items || [])
+    .filter(i => levelers.some(l => l.id === i.itemId))
+    .map(i => {
+      const leveler = levelers.find(l => l.id === i.itemId);
       let display = `${leveler.emoji} ${leveler.name} x${i.quantity}`;
       if (i.durability !== undefined) {
-        display += ` (${i.durability})`; // For future durability on other items
+        display += ` (${i.durability})`;
       }
       return display;
-    } else {
-      return `${i.itemId} x${i.quantity}`;
-    }
-  });
-  
-  // Combine all items (rod + levelers)
-  const allItems = (itemsList ? [itemsList] : []).concat(levelerItems);
-  
-  // Pagination for items
-  const totalItems = allItems.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const clampedPage = Math.min(pageIndex, Math.max(0, totalPages - 1));
-  
-  const startIdx = clampedPage * ITEMS_PER_PAGE;
-  const endIdx = startIdx + ITEMS_PER_PAGE;
-  const pageItems = allItems.slice(startIdx, endIdx).join('\n') || 'None';
-  
-  // Packs display
-  const packsObj = user.packInventory || {};
-  const packs = Object.keys(packsObj).length
-    ? Object.entries(packsObj).map(([name, qty]) => {
-        const crew = crews.find(c => c.name === name);
-        const emoji = crew && crew.packEmoji ? crew.packEmoji + ' ' : '';
-        return `${emoji}${name} x${qty}`;
-      }).join('\n')
-    : 'None';
+    });
 
-  const itemChunks = splitFieldValue(pageItems);
-  const packChunks = splitFieldValue(packs);
+  const packObj = user.packInventory || {};
+  const packLines = Object.keys(packObj).length
+    ? Object.entries(packObj).map(([name, qty]) => {
+        const crew = crews.find(c => c.name === name);
+        const emoji = crew && crew.packEmoji ? `${crew.packEmoji} ` : '';
+        return `${emoji}${name} x${qty}`;
+      })
+    : [];
+
+  const inventoryLines = [];
+  itemLines.forEach(line => inventoryLines.push({ section: 'Items', text: line }));
+  levelerLines.forEach(line => inventoryLines.push({ section: 'Levelers', text: line }));
+  packLines.forEach(line => inventoryLines.push({ section: 'Packs', text: line }));
+
+  const sectionHasItems = {
+    Items: itemLines.length > 0,
+    Levelers: levelerLines.length > 0,
+    Packs: packLines.length > 0
+  };
+
+  function paginateInventoryLines(lines) {
+    const pages = [];
+
+    const makePage = () => ({
+      sectionLines: {
+        Items: [],
+        Levelers: [],
+        Packs: []
+      },
+      sectionLengths: {
+        Items: 0,
+        Levelers: 0,
+        Packs: 0
+      },
+      lineCount: 0
+    });
+
+    let page = makePage();
+
+    for (const entry of lines) {
+      const section = entry.section;
+      const text = entry.text;
+      const currentLength = page.sectionLengths[section];
+      const nextLength = currentLength > 0 ? currentLength + 1 + text.length : text.length;
+
+      if (page.lineCount >= ITEMS_PER_PAGE || (currentLength > 0 && nextLength > 1024)) {
+        pages.push(page);
+        page = makePage();
+      }
+
+      page.sectionLines[section].push(text);
+      page.sectionLengths[section] = page.sectionLengths[section] > 0
+        ? page.sectionLengths[section] + 1 + text.length
+        : text.length;
+      page.lineCount += 1;
+    }
+
+    if (page.lineCount > 0 || pages.length === 0) {
+      pages.push(page);
+    }
+
+    return pages;
+  }
+
+  const pages = paginateInventoryLines(inventoryLines);
+  const totalPages = Math.max(1, pages.length);
+  const clampedPage = Math.min(pageIndex, Math.max(0, totalPages - 1));
+  const page = pages[clampedPage] || { sectionLines: { Items: [], Levelers: [], Packs: [] } };
+
   const embed = new EmbedBuilder()
     .setColor('#FFFFFF')
     .setTitle(`${username}'s Inventory`)
     .setThumbnail(avatarUrl);
 
-  const fields = [];
-  itemChunks.forEach((chunk, index) => {
-    fields.push({ name: index === 0 ? 'Items' : 'Items cont.', value: chunk, inline: false });
-  });
-  packChunks.forEach((chunk, index) => {
-    fields.push({ name: index === 0 ? 'Packs' : 'Packs cont.', value: chunk, inline: false });
-  });
-  embed.addFields(fields);
-  
+  const addSectionFields = (sectionName, lines, hasAny) => {
+    if (lines.length === 0) {
+      if (!hasAny && pageIndex === 0) {
+        embed.addFields({ name: sectionName, value: `No ${sectionName.toLowerCase()}`, inline: false });
+      }
+      return;
+    }
+
+    const sectionText = lines.join('\n');
+    if (sectionText.length <= 1024) {
+      embed.addFields({ name: sectionName, value: sectionText, inline: false });
+      return;
+    }
+
+    let current = '';
+    let isFirstField = true;
+    for (const line of lines) {
+      const nextValue = current ? `${current}\n${line}` : line;
+      if (nextValue.length > 1024) {
+        embed.addFields({ name: isFirstField ? sectionName : '\u200b', value: current, inline: false });
+        current = line;
+        isFirstField = false;
+      } else {
+        current = nextValue;
+      }
+    }
+    if (current) {
+      embed.addFields({ name: isFirstField ? sectionName : '\u200b', value: current, inline: false });
+    }
+  };
+
+  addSectionFields('Items', page.sectionLines.Items, sectionHasItems.Items);
+  addSectionFields('Levelers', page.sectionLines.Levelers, sectionHasItems.Levelers);
+  addSectionFields('Packs', page.sectionLines.Packs, sectionHasItems.Packs);
+
   if (totalPages > 1) {
     embed.setFooter({ text: `Page ${clampedPage + 1}/${totalPages}` });
   }
-  
+
   return { embed, totalPages, currentPage: clampedPage };
 }
 
@@ -141,7 +225,9 @@ module.exports = {
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
-
+    if (sanitizeUserRods(user)) {
+      await user.save();
+    }
     const { embed, totalPages } = buildInventoryEmbed(user, username, avatarUrl, 0);
     
     if (totalPages <= 1) {
@@ -153,12 +239,12 @@ module.exports = {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`inv_prev_${message ? message.author.id : interaction.user.id}_${targetId}`)
-        .setLabel('◀')
+        .setLabel('Previous')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(true),
       new ButtonBuilder()
         .setCustomId(`inv_next_${message ? message.author.id : interaction.user.id}_${targetId}`)
-        .setLabel('▶')
+        .setLabel('Next')
         .setStyle(ButtonStyle.Secondary)
     );
     
@@ -204,12 +290,12 @@ module.exports = {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`inv_prev_${viewerId}_${targetId}`)
-        .setLabel('◀')
+        .setLabel('Previous')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(newPage === 0),
       new ButtonBuilder()
         .setCustomId(`inv_next_${viewerId}_${targetId}`)
-        .setLabel('▶')
+        .setLabel('Next')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(newPage === totalPages - 1)
     );

@@ -7,7 +7,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'C',
     xp: 25,
-    beli: 100
+    beli: 10
   },
   {
     id: 'purple_robber_penguin',
@@ -16,7 +16,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'C',
     xp: 20,
-    beli: 80
+    beli: 8
   },
   {
     id: 'purple_lobster',
@@ -25,7 +25,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'B',
     xp: 60,
-    beli: 180
+    beli: 18
   },
   {
     id: 'purple_dragon',
@@ -34,7 +34,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'A',
     xp: 100,
-    beli: 250
+    beli: 25
   },
 
   // QCK
@@ -45,7 +45,7 @@ const levelers = [
     attribute: 'QCK',
     rank: 'C',
     xp: 25,
-    beli: 100
+    beli: 10
   },
   {
     id: 'blue_robber_penguin',
@@ -54,7 +54,7 @@ const levelers = [
     attribute: 'QCK',
     rank: 'C',
     xp: 20,
-    beli: 80
+    beli: 8
   },
   {
     id: 'blue_lobster',
@@ -63,7 +63,7 @@ const levelers = [
     attribute: 'QCK',
     rank: 'B',
     xp: 60,
-    beli: 180
+    beli: 18
   },
   {
     id: 'blue_dragon',
@@ -72,7 +72,7 @@ const levelers = [
     attribute: 'QCK',
     rank: 'A',
     xp: 100,
-    beli: 250
+    beli: 25
   },
 
   // DEX
@@ -83,7 +83,7 @@ const levelers = [
     attribute: 'DEX',
     rank: 'C',
     xp: 25,
-    beli: 100
+    beli: 10
   },
   {
     id: 'green_robber_penguin',
@@ -92,7 +92,7 @@ const levelers = [
     attribute: 'DEX',
     rank: 'C',
     xp: 20,
-    beli: 80
+    beli: 8
   },
   {
     id: 'green_lobster',
@@ -101,7 +101,7 @@ const levelers = [
     attribute: 'DEX',
     rank: 'B',
     xp: 60,
-    beli: 180
+    beli: 18
   },
   {
     id: 'dex_dragon',
@@ -110,7 +110,7 @@ const levelers = [
     attribute: 'DEX',
     rank: 'A',
     xp: 100,
-    beli: 250
+    beli: 25
   },
 
   // Rainbow
@@ -121,7 +121,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'A',
     xp: { INT: 100, QCK: 25, DEX: 25, STR: 25, PSY: 25 },
-    beli: 100
+    beli: 10
   },
   {
     id: 'rainbow_robber_penguin',
@@ -130,7 +130,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'A',
     xp: { INT: 100, QCK: 20, DEX: 20, STR: 20, PSY: 20 },
-    beli: 100
+    beli: 10
   },
   {
     id: 'rainbow_dragon',
@@ -139,7 +139,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'SS',
     xp: { INT: 300, QCK: 100, DEX: 100, STR: 100, PSY: 100 },
-    beli: 200
+    beli: 20
   },
 
   // STR
@@ -150,7 +150,7 @@ const levelers = [
     attribute: 'STR',
     rank: 'C',
     xp: 25,
-    beli: 100
+    beli: 10
   },
   {
     id: 'red_robber_penguin',
@@ -159,7 +159,7 @@ const levelers = [
     attribute: 'STR',
     rank: 'C',
     xp: 20,
-    beli: 80
+    beli: 8
   },
   {
     id: 'red_lobster',
@@ -168,7 +168,7 @@ const levelers = [
     attribute: 'STR',
     rank: 'B',
     xp: 25,
-    beli: 120
+    beli: 12
   },
   {
     id: 'red_dragon',
@@ -177,7 +177,7 @@ const levelers = [
     attribute: 'STR',
     rank: 'A',
     xp: 100,
-    beli: 250
+    beli: 25
   },
 
   // PSY
@@ -188,7 +188,7 @@ const levelers = [
     attribute: 'PSY',
     rank: 'C',
     xp: 20,
-    beli: 80
+    beli: 8
   },
   {
     id: 'sea_colt',
@@ -197,7 +197,7 @@ const levelers = [
     attribute: 'PSY',
     rank: 'B',
     xp: 50,
-    beli: 150
+    beli: 15
   },
   {
     id: 'sea_horse',
@@ -206,7 +206,7 @@ const levelers = [
     attribute: 'PSY',
     rank: 'A',
     xp: 100,
-    beli: 250
+    beli: 25
   },
   {
     id: 'sea_stallion',
@@ -215,7 +215,7 @@ const levelers = [
     attribute: 'PSY',
     rank: 'S',
     xp: 150,
-    beli: 350
+    beli: 35
   },
   {
     id: 'purple_armoured_crab',
@@ -224,7 +224,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'B',
     xp: 50,
-    beli: 50
+    beli: 5
   },
   {
     id: 'blue_armoured_crab',
@@ -233,7 +233,7 @@ const levelers = [
     attribute: 'QCK',
     rank: 'B',
     xp: 50,
-    beli: 50
+    beli: 5
   },
   {
     id: 'green_armoured_crab',
@@ -242,7 +242,7 @@ const levelers = [
     attribute: 'DEX',
     rank: 'B',
     xp: 50,
-    beli: 50
+    beli: 5
   },
     {
     id: 'red_armoured_crab',
@@ -251,7 +251,7 @@ const levelers = [
     attribute: 'STR',
     rank: 'B',
     xp: 50,
-    beli: 50
+    beli: 5
   },
     {
     id: 'yellow_armoured_crab',
@@ -260,7 +260,7 @@ const levelers = [
     attribute: 'PSY',
     rank: 'B',
     xp: 50,
-    beli: 50
+    beli: 5
   },
   {
     id: 'rainbow_armoured_crab',
@@ -269,7 +269,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'A',
     xp: { INT: 130, QCK: 50, DEX: 50, STR: 50, PSY: 50 },
-    beli: 130
+    beli: 13
   },
   {
     id: 'purple_pirate_penguin',
@@ -278,7 +278,7 @@ const levelers = [
     attribute: 'INT',
     rank: 'C',
     xp: 30,
-    beli: 30
+    beli: 3
   },
   {
     id: 'blue_pirate_penguin',
@@ -287,7 +287,7 @@ const levelers = [
     attribute: 'QCK',
     rank: 'C',
     xp: 30,
-    beli: 30
+    beli: 3
   },
   {
    id: 'green_pirate_penguin',
@@ -296,7 +296,7 @@ const levelers = [
    attribute: 'DEX',
    rank: 'C',
    xp: 30,
-   beli: 30
+   beli: 3
   },
   {
    id: 'red_pirate_penguin',
@@ -305,7 +305,7 @@ const levelers = [
    attribute: 'STR',
    rank: 'C',
    xp: 30,
-   beli: 30
+   beli: 3
   },
   {
    id: 'yellow_pirate_penguin',
@@ -314,7 +314,7 @@ const levelers = [
    attribute: 'PSY',
    rank: 'C',
    xp: 30,
-   beli: 30
+   beli: 3
   },
   {
    id: 'rainbow_pirate_penguin',
@@ -323,7 +323,7 @@ const levelers = [
    attribute: 'PSY',
    rank: 'A',
    xp: { INT: 80, QCK: 30, DEX: 30, STR: 30, PSY: 30 },
-   beli: 80
+   beli: 8
   },
 ];
 

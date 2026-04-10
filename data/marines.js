@@ -4,7 +4,7 @@
 
 const marines = [
   { 
-    rank: 'Choreboy', 
+    rank: 'Choreboy', // appears from isail 1
     hp: 1, 
     atk: 1, 
     speed: 1, 
@@ -18,7 +18,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Seaman Recruit', 
+    rank: 'Seaman Recruit', // appears from isail 1
     hp: 2, 
     atk: 1, 
     speed: 1, 
@@ -29,7 +29,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Seaman Apprentice', 
+    rank: 'Seaman Apprentice', // appears from isail 2
     hp: 5, 
     atk: 2, 
     speed: 2, 
@@ -41,7 +41,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Seaman First Class', 
+    rank: 'Seaman First Class', // appears from isail 4
     hp: 7, 
     atk: 3, 
     speed: 2, 
@@ -53,7 +53,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Petty Officer', 
+    rank: 'Petty Officer', // appears from isail 6
     hp: 10, 
     atk: 3, 
     speed: 3, 
@@ -65,7 +65,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Chief Petty Officer', 
+    rank: 'Chief Petty Officer', // appears from isail 8
     hp: 15, 
     atk: 4, 
     speed: 3, 
@@ -76,7 +76,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Master Chief Petty Officer', 
+    rank: 'Master Chief Petty Officer', // appears from isail 10
     hp: 20, 
     atk: 4, 
     speed: 3, 
@@ -87,7 +87,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Warrant Officer', 
+    rank: 'Warrant Officer', // appears from isail 12
     hp: 25, 
     atk: 5, 
     speed: 4, 
@@ -99,7 +99,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Ensign', 
+    rank: 'Ensign', // appears from isail 14
     hp: 30, 
     atk: 6, 
     speed: 4, 
@@ -113,7 +113,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Lieutenant Junior Grade', 
+    rank: 'Lieutenant Junior Grade', // appears from isail 16
     hp: 35, 
     atk: 7, 
     speed: 5, 
@@ -127,7 +127,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Lieutenant', 
+    rank: 'Lieutenant', // appears from isail 18
     hp: 40, 
     atk: 8, 
     speed: 5, 
@@ -141,7 +141,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Lieutenant Commander', 
+    rank: 'Lieutenant Commander', // appears from isail 20
     hp: 45, 
     atk: 10, 
     speed: 6, 
@@ -153,7 +153,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Captain', 
+    rank: 'Captain', // appears from isail 22
     hp: 50, 
     atk: 12, 
     speed: 6, 
@@ -167,7 +167,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Commodore', 
+    rank: 'Commodore', // appears from isail 24
     hp: 55, 
     atk: 13, 
     speed: 6, 
@@ -178,7 +178,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Rear admiral', 
+    rank: 'Rear admiral', // appears from isail 26
     hp: 60, 
     atk: 15, 
     speed: 7, 
@@ -190,7 +190,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Vice admiral', 
+    rank: 'Vice admiral', // appears from isail 34
     hp: 70, 
     atk: 18, 
     speed: 10, 
@@ -211,7 +211,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Admiral', 
+    rank: 'Admiral', // appears from isail 38
     hp: 80, 
     atk: 20, 
     speed: 11, 
@@ -224,7 +224,7 @@ const marines = [
     ]
   },
   { 
-    rank: 'Fleet Admiral', 
+    rank: 'Fleet Admiral', // appears from isail 42
     hp: 100, 
     atk: 25, 
     speed: 15, 

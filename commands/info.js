@@ -176,6 +176,11 @@ function buildDurabilityBar(current, max) {
 }
 
 function buildRodEmbed(rodDef, discordUser, user) {
+  const rodItem = user && user.items?.find(it => it.itemId === rodDef.id);
+  const durabilityLabel = rodItem && rodItem.durability !== undefined
+    ? `\`${rodItem.durability}/${rodDef.durability}\` uses`
+    : `\`${rodDef.durability}\` uses`;
+
   const embed = new EmbedBuilder()
     .setTitle(rodDef.name)
     .setColor(getRodColor(rodDef.id))
@@ -186,17 +191,13 @@ function buildRodEmbed(rodDef, discordUser, user) {
       { name: 'Fishing speed', value: `\`${rodDef.multiplier}x\` faster nibble wait`, inline: true },
       { name: 'Rarity bonus', value: `\`${rodDef.multiplier}x\` reward and rarity scaling`, inline: false },
       { name: 'Luck bonus', value: `\`${Math.round((rodDef.luckBonus || 0) * 100)}%\``, inline: true },
-      { name: 'Durability', value: `${rodDef.durability} uses`, inline: true },
+      { name: 'Durability', value: durabilityLabel, inline: true },
       { name: 'Cost', value: `${rodDef.cost.toLocaleString()} <:beri:1490738445319016651>`, inline: true }
     );
   
-  // Add durability bar if user owns this rod
-  if (user) {
-    const rodItem = user.items?.find(it => it.itemId === rodDef.id);
-    if (rodItem && rodItem.durability !== undefined) {
-      const durabilityBar = buildDurabilityBar(rodItem.durability, rodDef.durability);
-      embed.addFields({ name: 'Durability Bar', value: `${durabilityBar}`, inline: false });
-    }
+  if (rodItem && rodItem.durability !== undefined) {
+    const durabilityBar = buildDurabilityBar(rodItem.durability, rodDef.durability);
+    embed.addFields({ name: 'Durability Bar', value: `${durabilityBar} (${rodItem.durability}/${rodDef.durability})`, inline: false });
   }
   
   if (discordUser) embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
