@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { findBestOwnedCard, buildCardEmbed, getCardFinalStats, getAttributeEmoji } = require('../utils/cards');
+const { searchCards, buildCardEmbed, getCardFinalStats, getAttributeEmoji, updateShipBalance } = require('../utils/cards');
 const { sortedOwnedCards } = require('./collection');
 const User = require('../models/User');
 const { cards } = require('../data/cards');
@@ -8,25 +8,10 @@ const { levelers } = require('../data/levelers');
 const crews = require('../data/crews');
 
 function makeInfoRow(index, total, cardDef, isOwned) {
-  const prevDisabled = index <= 0;
-  const nextDisabled = index >= total - 1;
-  const components = [
-    new ButtonBuilder()
-      .setCustomId(`info_prev:${index}`)
-      .setLabel('Previous')
-      .setEmoji({ id: '1489374714379112449' })
-      .setStyle(prevDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
-      .setDisabled(prevDisabled),
-    new ButtonBuilder()
-      .setCustomId(`info_next:${index}`)
-      .setLabel('Next')
-      .setEmoji({ id: '1489374606916714706' })
-      .setStyle(nextDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
-      .setDisabled(nextDisabled)
-  ];
+  const components = [];
   
-  // Only add boost button if card is owned
-  if (isOwned) {
+  // Only add boost button if card is owned and not a ship
+  if (isOwned && !cardDef.ship) {
     components.push(
       new ButtonBuilder()
         .setCustomId(`info_boost:boost`)
@@ -36,7 +21,35 @@ function makeInfoRow(index, total, cardDef, isOwned) {
     );
   }
   
-  return new ActionRowBuilder().addComponents(...components);
+  return components.length ? new ActionRowBuilder().addComponents(...components) : null;
+}
+
+function makeInfoNavRow(userId, index, total) {
+  if (total <= 1) return null;
+  const prevDisabled = index <= 0;
+  const nextDisabled = index >= total - 1;
+
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`info_prev:${userId}:${index}`)
+      .setLabel('Previous')
+      .setStyle(prevDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
+      .setDisabled(prevDisabled),
+    new ButtonBuilder()
+      .setCustomId(`info_next:${userId}:${index}`)
+      .setLabel('Next')
+      .setStyle(nextDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
+      .setDisabled(nextDisabled)
+  );
+}
+
+function makeInfoRows(userId, index, total, cardDef, isOwned) {
+  const rows = [];
+  const navRow = makeInfoNavRow(userId, index, total);
+  const boostRow = makeInfoRow(index, total, cardDef, isOwned);
+  if (navRow) rows.push(navRow);
+  if (boostRow) rows.push(boostRow);
+  return rows;
 }
 
 function buildBoostEmbed(cardDef, userEntry, user) {
@@ -101,15 +114,22 @@ async function renderInfoCard(interaction, session, user, index) {
   const avatarUrl = interaction.user.displayAvatarURL();
   const embed = buildCardEmbed(cardDef, userEntry, avatarUrl, user);
   const isOwned = userEntry !== null;
-  const row = makeInfoRow(index, session.cards.length, cardDef, isOwned);
+  const rows = makeInfoRows(interaction.user.id, index, session.cards.length, cardDef, isOwned);
   session.currentIndex = index;
-  return interaction.update({ embeds: [embed], components: [row] });
+  return interaction.update({ embeds: [embed], components: rows.length ? rows : [] });
+}
+
+function normalizeCrewName(name) {
+  return name ? name.toLowerCase().replace(/[- ]+/g, '') : '';
 }
 
 function getCrewByName(query) {
   if (!query) return null;
-  const queryLower = query.toLowerCase().trim();
-  return crews.find(crew => crew.name.toLowerCase() === queryLower);
+  const normalizedQuery = normalizeCrewName(query);
+  return crews.find(crew => {
+    const normalizedCrewName = normalizeCrewName(crew.name);
+    return normalizedCrewName === normalizedQuery || `${normalizedCrewName}pack` === normalizedQuery || normalizedQuery.includes(normalizedCrewName);
+  });
 }
 
 function parseEmojiUrl(emoji) {
@@ -228,13 +248,15 @@ function buildLevelerEmbed(levelerDef, discordUser, user) {
 }
 
 function buildPackEmbed(crewDef, discordUser) {
-  // Get all cards from this crew
-  const crewCards = cards.filter(c => c.faculty === crewDef.name);
+  const normalizedCrewName = normalizeCrewName(crewDef.name);
+  const crewCards = cards.filter(c => normalizeCrewName(c.faculty) === normalizedCrewName || (c.artifact && normalizeCrewName(c.faculty).includes('strawhat') && normalizedCrewName.includes('strawhat')));
   
-  // Get unique cards by character, sorted by attribute then name
+  // Get unique cards by character for display, sorted by attribute then name
   const uniqueByCharacter = new Map();
+  const typeOrder = card => (card.artifact ? 2 : card.ship ? 3 : 1);
   crewCards.forEach(c => {
-    if (!uniqueByCharacter.has(c.character)) {
+    const current = uniqueByCharacter.get(c.character);
+    if (!current || typeOrder(c) < typeOrder(current)) {
       uniqueByCharacter.set(c.character, c);
     }
   });
@@ -242,16 +264,23 @@ function buildPackEmbed(crewDef, discordUser) {
   // Attribute order: STR, DEX, QCK, PSY, INT
   const attributeOrder = ['STR', 'DEX', 'QCK', 'PSY', 'INT'];
   
-  // Sort by attribute, then by character name
+  // Sort by attribute, then by character name. Artifacts should always come last.
   const sortedCharacters = Array.from(uniqueByCharacter.values())
     .sort((a, b) => {
-      const aAttrIdx = attributeOrder.indexOf(a.attribute || 'STR');
-      const bAttrIdx = attributeOrder.indexOf(b.attribute || 'STR');
-      if (aAttrIdx !== bAttrIdx) return aAttrIdx - bAttrIdx;
+      const typeOrder = card => (card.artifact ? 2 : card.ship ? 3 : 1);
+      const aType = typeOrder(a);
+      const bType = typeOrder(b);
+      if (aType !== bType) return aType - bType;
+      if (aType !== 2 && aType !== 3) {
+        const aAttrIdx = attributeOrder.indexOf(a.attribute || 'STR');
+        const bAttrIdx = attributeOrder.indexOf(b.attribute || 'STR');
+        if (aAttrIdx !== bAttrIdx) return aAttrIdx - bAttrIdx;
+      }
       return a.character.localeCompare(b.character);
     });
   
-  const cardCount = uniqueByCharacter.size;
+  // Count ALL cards including duplicates with same character but different titles
+  const cardCount = crewCards.length;
   
   // Define rank colors.
   const rankColors = {
@@ -274,7 +303,7 @@ function buildPackEmbed(crewDef, discordUser) {
     'UR': '<:UR:1489354976039927869>'
   };
   
-  const rankColor = rankColors[crewDef.rank] || '#FFFFFF';
+  const rankColor = crewDef.color || rankColors[crewDef.rank] || '#FFFFFF';
   const rankEmoji = rankEmojis[crewDef.rank] || '';
   
   // Build character list with emojis, one per line
@@ -294,7 +323,7 @@ function buildPackEmbed(crewDef, discordUser) {
     .setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   
   if (characterList) {
-    embed.addFields({ name: 'Characters', value: characterList, inline: false });
+    embed.addFields({ name: 'Cards', value: characterList, inline: false });
   }
   
   return embed;
@@ -308,6 +337,12 @@ module.exports = {
     const query = message ? args.join(' ') : interaction.options.getString('query');
     const userId = message ? message.author.id : interaction.user.id;
     const discordUser = message ? message.author : interaction.user;
+
+    if (!query || !query.trim()) {
+      const reply = 'Please state a card.';
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
     
     // First, check if query matches a crew/pack name
     const crewDef = getCrewByName(query);
@@ -335,31 +370,48 @@ module.exports = {
     }
 
     // Otherwise, fall back to card lookup
-    const cardDef = await findBestOwnedCard(userId, query);
-    if (!cardDef) {
+    const matches = searchCards(query);
+    if (!matches.length) {
       const reply = `No card found matching **${query}**.`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    const sortByStrength = (a, b) => {
+      const rankOrder = { D: 1, C: 2, B: 3, A: 4, S: 5, SS: 6, UR: 7 };
+      const rankA = rankOrder[a.rank] || 0;
+      const rankB = rankOrder[b.rank] || 0;
+      if (rankA !== rankB) return rankB - rankA;
+      const masteryA = a.mastery || 1;
+      const masteryB = b.mastery || 1;
+      if (masteryA !== masteryB) return masteryB - masteryA;
+      if (a.character !== b.character) return a.character.localeCompare(b.character);
+      if (a.title && b.title && a.title !== b.title) return a.title.localeCompare(b.title);
+      return a.id.localeCompare(b.id);
+    };
+
+    const sessionCards = [...matches].sort(sortByStrength);
+    const cardDef = sessionCards[0];
+
     const user = await User.findOne({ userId });
+    if (cardDef.ship && user && user.activeShip === cardDef.id) {
+      updateShipBalance(user);
+      await user.save();
+    }
     const userEntry = user?.ownedCards?.find(e => e.cardId === cardDef.id) || null;
 
-    // Only show all mastery versions of this character for navigation
-    const allVersions = require('../utils/cards').getAllCardVersions(cardDef.character);
-    const sessionCards = allVersions.map(id => require('../utils/cards').getCardById(id)).filter(Boolean);
-    const currentIndex = sessionCards.findIndex(c => c.id === cardDef.id);
-    const session = { userId, cards: sessionCards, currentIndex: currentIndex >= 0 ? currentIndex : 0 };
+    const currentIndex = 0;
+    const session = { userId, cards: sessionCards, currentIndex };
     if (!global.infoSessions) global.infoSessions = new Map();
     global.infoSessions.set(`${userId}_info`, session);
 
     const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
     const embed = buildCardEmbed(cardDef, userEntry, avatarUrl, user);
     const isOwned = userEntry !== null;
-    const row = makeInfoRow(session.currentIndex, session.cards.length, cardDef, isOwned);
+    const rows = makeInfoRows(session.userId, currentIndex, session.cards.length, cardDef, isOwned);
 
-    if (message) return message.channel.send({ embeds: [embed], components: [row] });
-    return interaction.reply({ embeds: [embed], components: [row] });
+    if (message) return message.channel.send({ embeds: [embed], components: rows.length ? rows : [] });
+    return interaction.reply({ embeds: [embed], components: rows.length ? rows : [] });
   },
 
   async handleButton(interaction, action, indexPart) {

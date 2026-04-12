@@ -5,7 +5,8 @@ const { Schema } = mongoose;
 const UserCardSchema = new Schema({
   cardId: { type: String, required: true },
   level: { type: Number, default: 1 },
-  xp: { type: Number, default: 0 }
+  xp: { type: Number, default: 0 },
+  equippedTo: { type: String, default: null }
 }, { _id: false });
 
 const UserSchema = new Schema({
@@ -22,6 +23,8 @@ const UserSchema = new Schema({
   bountyCooldownUntil: { type: Date, default: null },
   robCooldownUntil: { type: Date, default: null },
   lootCooldownUntil: { type: Date, default: null },
+  betCooldownUntil: { type: Date, default: null },
+  triviaCooldownUntil: { type: Date, default: null },
   isailProgress: { type: Number, default: 1 },
   lastIsailFail: { type: Date, default: null },
   lastIsailEnemies: { type: [String], default: [] },
@@ -34,6 +37,10 @@ const UserSchema = new Schema({
   team: { type: [String], default: [] },
   // custom team background image URL
   teamBackgroundUrl: { type: String, default: null },
+  // active ship set for passive income
+  activeShip: { type: String, default: null },
+  shipBalance: { type: Number, default: 0 },
+  shipLastUpdated: { type: Date, default: Date.now },
   // pack inventory for global stock system
   packInventory: { type: Object, default: {} },
   // daily rewards

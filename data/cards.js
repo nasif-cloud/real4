@@ -9,95 +9,60 @@ exports.rankData = {
   UR: { color: '#E0115F', badge: 'https://files.catbox.moe/07p0m2.png' }
 };
 
-// ID generation with collision handling.
-// Format: First letters of name parts + Rank + Upgrade version
-// Example: Monkey D. Luffy, Rank B, U1 = "MDLB1"
-// Example: Alvida, Rank A, U2 = "AAA2" (collision handling adds more letters)
-function generateCardId(character, rank, masteryLevel, existingIds = new Set()) {
-  // Parse character name into parts (handles middle names)
-  const parts = character.split(' ').filter(p => p.length > 0);
-  
-  // Build initial ID from first letters
-  let idBase = parts.map(p => p[0].toUpperCase()).join('') + rank + masteryLevel;
-  
-  // If ID doesn't exist, return it
-  if (!existingIds.has(idBase)) {
-    return idBase;
+const ATTRIBUTE_RANDOM_EMOJI = {
+  STR: '<:STRrandom:1492293852873232455>',
+  DEX: '<:Dexrandom:1492293859785441400>',
+  QCK: '<:Qckrandom:1492293854265868300>',
+  INT: '<:INTrandom:1492293858170765466>',
+  PSY: '<:psyrandom:1492293855700062258>'
+};
+
+const OLD_RANDOM_EMOJI_TOKENS = new Set([
+  '<:randomenemy:1491916913960423645>',
+  '<:randomenemygreen:1491937401860259982>',
+  '<:randomenemyqck:1491937598690820267>',
+  '<:randomenemyint:1491938030611861574>',
+  '<:randomenemypsy:1491937909060931847>'
+]);
+
+function getAttributeEmoji(card) {
+  if (!card || !card.attribute) return card && card.emoji;
+  const mappedEmoji = ATTRIBUTE_RANDOM_EMOJI[card.attribute];
+  if (!mappedEmoji) return card.emoji;
+  if (card.title === 'Random enemy' || OLD_RANDOM_EMOJI_TOKENS.has(card.emoji)) {
+    return mappedEmoji;
   }
-  
-  // Handle collisions by progressively adding more letters
-  let collision = true;
-  let attempts = 0;
-  const maxLettersPerPart = 3;
-  
-  while (collision && attempts < 100) {
-    attempts++;
-    let newIdBase = '';
-    
-    // Progressively build longer ID by taking more letters from each name part
-    let lettersToTake = Math.floor(attempts / (parts.length || 1)) + 1;
-    
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
-      const take = Math.min(lettersToTake, part.length, maxLettersPerPart);
-      newIdBase += part.substring(0, take).toUpperCase();
-    }
-    
-    idBase = newIdBase + rank + masteryLevel;
-    collision = existingIds.has(idBase);
-  }
-  
-  return idBase;
+  return card.emoji;
 }
 
 // Helper function to flatten consolidated cards into the expected array format
-// Consolidates upgrades of the same character into one object, which is then expanded
-// Handles emoji/attribute inheritance from u1 to higher upgrades
+// Simplified version that ignores upgrades and returns only base cards
 function flattenCards(consolidatedCards) {
   const result = [];
   const usedIds = new Set();
   
-  // First pass: generate and collect all IDs
-  const cardIdMap = new Map(); // character -> { u1Id, u2Id, u3Id, u4Id }
-  
   consolidatedCards.forEach(card => {
-    const masteryTotal = card.upgradeTotal || 1;
-    const idMap = {};
+    // Skip cards without explicit IDs (shouldn't happen, but safeguard)
+    if (!card.id) {
+      console.warn(`Card for ${card.character} has no explicit id, skipping`);
+      return;
+    }
     
-    // Generate ID for u1
-    idMap.u1 = generateCardId(card.character, card.rank, 1, usedIds);
-    usedIds.add(idMap.u1);
+    if (usedIds.has(card.id)) {
+      throw new Error(`Duplicate card id ${card.id} in data/cards.js`);
+    }
+    usedIds.add(card.id);
     
-    // Generate IDs for upgrades
-    const upgradeNames = ['secondupgrade', 'thirdupgrade', 'fourthupgrade'];
-    upgradeNames.forEach((upgradeName, index) => {
-      if (card[upgradeName]) {
-        const masteryLevel = index + 2;
-        const upgradeRank = card[upgradeName].rank;
-        const upgradeId = generateCardId(card.character, upgradeRank, masteryLevel, usedIds);
-        idMap[`u${masteryLevel}`] = upgradeId;
-        usedIds.add(upgradeId);
-      }
-    });
-    
-    cardIdMap.set(card.character, idMap);
-  });
-  
-  // Second pass: create flattened cards with generated IDs
-  consolidatedCards.forEach(card => {
-    const masteryTotal = card.upgradeTotal || 1;
-    const idMap = cardIdMap.get(card.character);
-    
-    // Extract u1 properties (always at top level of consolidated card)
-    const u1Card = {
-      id: idMap.u1,
+    // Create single card object (all cards are mastery 1 since upgrades removed)
+    const flattedCard = {
+      id: card.id,
       character: card.character,
       alias: card.alias,
       title: card.title,
       faculty: card.faculty,
+      group: card.group,
       rank: card.rank,
       mastery: 1,
-      mastery_total: masteryTotal,
       pullable: card.pullable !== undefined ? card.pullable : true,
       power: card.power,
       health: card.health,
@@ -108,64 +73,31 @@ function flattenCards(consolidatedCards) {
     };
     
     // Add optional fields if they exist
-    if (card.special_attack) u1Card.special_attack = card.special_attack;
-    if (card.effect !== undefined) u1Card.effect = card.effect;
-    if (card.effectDuration !== undefined) u1Card.effectDuration = card.effectDuration;
-    if (card.itself !== undefined) u1Card.itself = card.itself;
-    if (card.attribute) u1Card.attribute = card.attribute;
-    if (card.emoji) u1Card.emoji = card.emoji;
-    if (card.boost) u1Card.boost = card.boost;
-    if (card.upgradeRequirements) u1Card.upgradeRequirements = card.upgradeRequirements;
+    if (card.special_attack) flattedCard.special_attack = card.special_attack;
+    if (card.effect !== undefined) flattedCard.effect = card.effect;
+    if (card.effectDuration !== undefined) flattedCard.effectDuration = card.effectDuration;
+    if (card.effectAmount !== undefined) flattedCard.effectAmount = card.effectAmount;
+    if (card.effectChance !== undefined) flattedCard.effectChance = card.effectChance;
+    if (card.itself !== undefined) flattedCard.itself = card.itself;
+    if (card.attribute) flattedCard.attribute = card.attribute;
+    if (card.emoji) flattedCard.emoji = getAttributeEmoji(card);
+    if (card.boost) flattedCard.boost = card.boost;
+    if (card.artifact) flattedCard.artifact = card.artifact;
+    if (card.ship) flattedCard.ship = true;
+    if (card.color) flattedCard.color = card.color;
+    if (card.incomeMultiplier !== undefined) flattedCard.incomeMultiplier = card.incomeMultiplier;
+    if (card.capacity !== undefined) flattedCard.capacity = card.capacity;
+    if (card.startingBalance !== undefined) flattedCard.startingBalance = card.startingBalance;
     
-    result.push(u1Card);
-    
-    // Process upgrades (secondupgrade, thirdupgrade, fourthupgrade)
-    const upgradeNames = ['secondupgrade', 'thirdupgrade', 'fourthupgrade'];
-    upgradeNames.forEach((upgradeName, index) => {
-      if (card[upgradeName]) {
-        const masteryLevel = index + 2;
-        const upgradeData = card[upgradeName];
-        
-        const upgradedCard = {
-          id: idMap[`u${masteryLevel}`],
-          character: card.character,
-          alias: card.alias,
-          title: upgradeData.title,
-          faculty: upgradeData.faculty,
-          rank: upgradeData.rank,
-          mastery: masteryLevel,
-          mastery_total: masteryTotal,
-          pullable: false, // upgrades > 1 are unpullable
-          power: upgradeData.power,
-          health: upgradeData.health,
-          speed: upgradeData.speed,
-          attack_min: upgradeData.attack_min,
-          attack_max: upgradeData.attack_max,
-          image_url: upgradeData.image_url
-        };
-        
-        // Inherit emoji and attribute from u1
-        if (card.attribute) upgradedCard.attribute = card.attribute;
-        if (card.emoji) upgradedCard.emoji = card.emoji;
-        
-        // Add optional fields if they exist in upgrade data
-        if (upgradeData.special_attack) upgradedCard.special_attack = upgradeData.special_attack;
-        if (upgradeData.effect !== undefined) upgradedCard.effect = upgradeData.effect;
-        if (upgradeData.effectDuration !== undefined) upgradedCard.effectDuration = upgradeData.effectDuration;
-        if (upgradeData.itself !== undefined) upgradedCard.itself = upgradeData.itself;
-        if (upgradeData.boost) upgradedCard.boost = upgradeData.boost;
-        if (upgradeData.upgradeRequirements) upgradedCard.upgradeRequirements = upgradeData.upgradeRequirements;
-        
-        result.push(upgradedCard);
-      }
-    });
+    result.push(flattedCard);
   });
   
   return result;
 }
 
 // Consolidated card definitions - upgrades are nested to reduce repetition
-const consolidatedCardData = [
+
+const consolidatedCardData = [ /*
   {
     character: 'Monkey D. Luffy',
     alias: ['luffy', 'monkey d luffy', 'strawhat'],
@@ -345,6 +277,39 @@ const consolidatedCardData = [
       boost: 'Monkey D. Luffy (7%), Figarland Shanks (7%)',
       image_url: 'https://one-piece-artworks.com/app/view/assets/img/dkqNc3f.png'
     }
+  },
+  {
+    character: 'Strawhat Artifact',
+    alias: ['strawhat artifact', 'artifact strawhat'],
+    attribute: 'STR',
+    emoji: '<:strawhat:1492324127590322238>',
+    pullable: true,
+    title: "Monkey D. Luffy's Strawhat",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 1,
+    health: 1,
+    speed: 1,
+    attack_min: 0,
+    attack_max: 0,
+    boost: 'Monkey D. Luffy (20%), Figarland Shanks (20%)',
+    artifact: true,
+    image_url: 'https://media.discordapp.net/attachments/1455999349317304361/1492301017830658142/Copy_of_Blue_and_Green_Cute_Colorful_Playing_Book_Cover_20260410_191119_0000.png?ex=69dad520&is=69d983a0&hm=7c1ab9abaae6f7d02a4335ae09a9a78dbe85f618bbbe9c6e689743b4a4b199d8&=&format=webp&quality=lossless&width=337&height=538'
+  },
+  {
+    character: 'Thousand Sunny',
+    alias: ['thousand sunny', 'sunny'],
+    ship: true,
+    pullable: true,
+    title: 'Strawhats Pirate ship',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    color: '#ffea00',
+    incomeMultiplier: 1.01,
+    capacity: 1000,
+    startingBalance: 100,
+    emoji: '<:ThousandSunny:1492324131111111111>',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/meBZeey',
   },
   {
     character: 'Cutty Flam',
@@ -1916,8 +1881,1856 @@ const consolidatedCardData = [
     attack_min: 2,
     attack_max: 3,
     image_url: 'https://one-piece-artworks.com/app/view/assets/img/uSGF2aM.png'
-  },
+  }, */
+{
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0001',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:MonkeyD:1492353158960124037>',
+    faculty: 'Strawhat Pirates',
+    rank: 'C',
+    power: 8,
+    health: 12,
+    speed: 3,
+    attack_min: 2,
+    attack_max: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0001.png'
+  }, 
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0002',
+    pullable: true,
+    attribute: 'STR',
 
+    emoji: '<:Luffygumgumpistol:1492353926257971341>',
+    title: 'Gum-Gum Pistol',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 12,
+    health: 18,
+    speed: 4,
+    attack_min: 3,
+    attack_max: 4,
+    special_attack: {
+      name: 'Gum-Gum Pistol',
+      min_atk: 6,
+      max_atk: 9,
+      gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0002.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0003',
+    pullable: true,
+    attribute: 'STR',
+
+    emoji: '<:Luffygumgumbazooka:1492505343291297874>',
+    title: 'Gum-Gum Bazooka',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 30,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 7,
+    special_attack: {
+      name: 'Gum-Gum Bazooka',
+      min_atk: 11,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/A-3wT_YrbC4AAAAd/buggy-one-piece.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0003.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0004',
+    pullable: true,
+    attribute: 'STR',
+
+    emoji: '<:0004:1492514154349723770>',
+    title: 'Gear 2',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 42,
+    speed: 10,
+    attack_min: 7,
+    attack_max: 10,
+    special_attack: {
+      name: 'Gear 2',
+      min_atk: 15,
+      max_atk: 18,
+      gif: 'https://media1.tenor.com/m/d1s-yLh9hcsAAAAC/one-piece.gif'
+    },
+    effect: 'attackup',
+    effectDuration: -1,
+    itself: true,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0004.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0216',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0216:1492515036340555949>',
+    title: 'Gum-Gum Baloon',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 32,
+    speed: 5,
+    attack_min: 4,
+    attack_max: 7,
+    special_attack: {
+      name: 'Gum-Gum Baloon',
+      min_atk: 9,
+      max_atk: 13,
+      gif: 'https://media1.tenor.com/m/YZqF7Vz-zeAAAAAC/fuusen-gomu.gif'
+    },
+    effect: 'reflect',
+    effectDuration: 1,
+    itself: true,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0216.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0217',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0217:1492517167210565652>',
+    title: 'Gear Third',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 25,
+    health: 40,
+    speed: 10,
+    attack_min: 8,
+    attack_max: 12,
+    special_attack: {
+      name: 'Gear Third',
+      min_atk: 15,
+      max_atk: 25,
+      gif: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0217.png'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0217.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0420',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0420:1492517825594654902>',
+    title: 'Gum-Gum Bazooka: Supermacy',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 28,
+    health: 45,
+    speed: 11,
+    attack_min: 8,
+    attack_max: 12,
+    special_attack: {
+      name: 'Gum-Gum Bazooka',
+      min_atk: 18,
+      max_atk: 24,
+      gif: 'https://media1.tenor.com/m/niocnoxo9kcAAAAC/luffy.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0420.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0519',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0519:1492519794476318822>',
+    title: "Merveille's Adventurer",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 19,
+    health: 34,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0519.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0520',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0520:1492520316885401610>',
+    title: "Pirates' Attack",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 40,
+    health: 68,
+    speed: 16,
+    attack_min: 14,
+    attack_max: 18,
+    special_attack: {
+      name: 'Gum-Gum Giant Thor Axe',
+      min_atk: 28,
+      max_atk: 36,
+      gif: 'https://media1.tenor.com/m/qATRdgVYZo0AAAAd/one-piece-one-piece-strong-world.gif'
+    },
+    effect: 'attackup',
+    effectDuration: 1,
+    itself: true,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0520.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0570',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0570:1492524332940001381>',
+    title: 'Davy Back Fight: Afro',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 14,
+    health: 22,
+    speed: 4,
+    attack_min: 4,
+    attack_max: 6,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0570.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0571',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0571:1492526058745106634>',
+    title: 'Davy Back Fight: Combat',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 30,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0571.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0577',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0577:1492526330875482353>',
+    title: 'Voyage Log: Straw Hat Pirates',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 40,
+    speed: 9,
+    attack_min: 7,
+    attack_max: 10,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0577.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0578',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0578:1492526792773341234>',
+    title: 'Voyage Dream: Pirate King',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 42,
+    health: 72,
+    speed: 17,
+    attack_min: 15,
+    attack_max: 19,
+    special_attack: {
+      name: 'Gum-Gum Jet Gatling',
+      min_atk: 30,
+      max_atk: 38,
+      gif: 'https://media1.tenor.com/m/dMFIkRa_YTgAAAAC/luffy-one.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0578.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0659',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0659:1492527517670838363>',
+    title: 'Swim Ring',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 30,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0659.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0727',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0727:1492527817903313086>',
+    title: 'Gum-Gum Gatling',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 19,
+    health: 32,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 9,
+    special_attack: {
+      name: 'Gum-Gum Gatling',
+      min_atk: 13,
+      max_atk: 18,
+      gif: 'https://media1.tenor.com/m/NOneFWcoDMUAAAAC/ratiobymuuk.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0727.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0761',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0761:1492528212880654386>',
+    title: 'Halloween Monster',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 33,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0761.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0794',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0794:1492528601281859694>',
+    title: 'Star of Hope',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 34,
+    speed: 5,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0794.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0795',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0795:1492528899848933516>',
+    title: 'Nightmare Luffy, Star of Hope',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 44,
+    speed: 9,
+    attack_min: 8,
+    attack_max: 11,
+    special_attack: {
+      name: 'Gum-Gum Storm',
+      min_atk: 17,
+      max_atk: 22,
+      gif: 'https://media1.tenor.com/m/jydojpfOT7UAAAAd/nightmare-luffy-gum-gum-storm.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0795.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0936',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0936:1492531934817947769>',
+    title: 'Summit War Survivor',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0936.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0937',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0937:1492532329535635548>',
+    title: "Crew's Promise",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 25,
+    health: 42,
+    speed: 10,
+    attack_min: 7,
+    attack_max: 11,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0937.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0005',
+    pullable: true,
+    attribute: 'DEX',
+
+    emoji: '<:0005:1492532805434081510>',
+    title: '',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 14,
+    health: 22,
+    speed: 4,
+    attack_min: 3,
+    attack_max: 4,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0005.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0006',
+    pullable: true,
+    attribute: 'DEX',
+
+    emoji: '<:0006:1492533856388124885>',
+    title: 'Three Thousand Worlds',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 34,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    special_attack: {
+      name: 'Three Thousand Worlds',
+      min_atk: 11,
+      max_atk: 16,
+      gif: null
+    },
+    effect: 'cut',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0006.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0007',
+    pullable: true,
+    attribute: 'DEX',
+
+    emoji: '<:0007:1492534760810090737>',
+    title: 'Pound Phoenix',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 8,
+    special_attack: {
+      name: '108 Pound Phoenix',
+      min_atk: 13,
+      max_atk: 18,
+      gif: 'https://media1.tenor.com/m/GbiM4UcfKX4AAAAC/zoro-roronoa-zoro.gif'
+    },
+    effect: 'cut',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0007.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0008',
+    pullable: true,
+    attribute: 'DEX',
+
+    emoji: '<:0008:1492535386617155768>',
+    title: 'Ashura Ichibugin',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 11,
+    attack_min: 8,
+    attack_max: 11,
+    special_attack: {
+      name: 'Ashura Ichibugin',
+      min_atk: 16,
+      max_atk: 22,
+      gif: 'https://media1.tenor.com/m/OrUXc8YuElgAAAAd/demon-asura-nine-sword-style.gif'
+    },
+    effect: 'cut',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0008.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0218',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0218:1492536048356556992>',
+    title: 'Streaming Wolf Swords',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 34,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0218.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0219',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0219:1492537617156280460>',
+    title: "Lion's song",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 25,
+    health: 42,
+    speed: 10,
+    attack_min: 8,
+    attack_max: 11,
+    special_attack: {
+      name: "Lion's Song",
+      min_atk: 16,
+      max_atk: 21,
+      gif: 'https://media1.tenor.com/m/CbYM0rXR3BwAAAAC/zoro-film-gold.gif'
+    },
+    effect: 'cut',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0219.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0421',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0421:1492538132594167891>',
+    title: 'Three Thousand Worlds: The Final Stroke',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 19,
+    health: 36,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 9,
+    special_attack: {
+      name: 'Three Thousand Worlds: The Final Stroke',
+      min_atk: 13,
+      max_atk: 18,
+      gif: null
+    },
+    effect: 'cut',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0421.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0553',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0553:1492539398821118062>',
+    title: "Merveille's Wonder",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 33,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0553.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0554',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0554:1492539868067139756>',
+    title: "Straw Hat Pirates' Attack",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 25,
+    health: 44,
+    speed: 10,
+    attack_min: 8,
+    attack_max: 11,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0554.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0579',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0579:1492540212600115422>',
+    title: 'Voyage Log: Straw Hat Pirates',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 31,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0579.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0580',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0580:1492540767875366932>',
+    title: 'Voyage Dream: Master Swordsman',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 43,
+    speed: 10,
+    attack_min: 8,
+    attack_max: 11,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0580.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0766',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0766:1492541145895665685>',
+    title: 'Jack the Ripper',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0766.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0905',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0905:1492541781055897799>',
+    title: 'Gloom Island Swordsman',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 19,
+    health: 34,
+    speed: 6,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0905.png'
+  },
+  {
+    character: 'Roronoa Zoro',
+    alias: ['zoro', 'roronoa zoro', 'pirate hunter'],
+    id: '0906',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0906:1492542082622160957>',
+    title: 'Swordsman Disciple',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 25,
+    health: 42,
+    speed: 10,
+    attack_min: 8,
+    attack_max: 11,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0906.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0547',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0547:1492521943084302366>',
+    title: "Mt. Convo's Brothers 3",
+    faculty: null,
+    rank: 'A',
+    power: 18,
+    health: 33,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0547.png'
+  },
+  {
+    character: 'Monkey D. Luffy',
+    alias: ['luffy', 'monkey d luffy', 'strawhat'],
+    id: '0548',
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0548:1492523207889260544>',
+    title: "Mt. Convo's Brothers 3, Cup of Sworn Brotherhood",
+    faculty: null,
+    rank: 'S',
+    power: 24,
+    health: 41,
+    speed: 9,
+    attack_min: 7,
+    attack_max: 10,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0548.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami'],
+    id: '0009',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0009:1492609629807448094>',
+    title: 'Nami',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 13,
+    health: 22,
+    speed: 4,
+    attack_min: 2,
+    attack_max: 4,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0009.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'tornado tempo'],
+    id: '0010',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0010:1492610844695986276>',
+    title: 'Tornado Tempo',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 30,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 7,
+    special_attack: {
+      name: 'Tornado Tempo',
+      min_atk: 10,
+      max_atk: 13,
+      gif: null
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0010.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'mirage tempo'],
+    id: '0011',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0011:1492646094125924553>',
+    title: 'Mirage Tempo',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 29,
+    speed: 7,
+    attack_min: 4,
+    attack_max: 7,
+    special_attack: {
+      name: 'Mirage Tempo',
+      min_atk: 8,
+      max_atk: 13,
+      gif: 'https://media1.tenor.com/m/DjG8UDDaw7IAAAAd/one-piece-nami.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0011.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'thunderbolt tempo'],
+    id: '0012',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0012:1492646615738220646>',
+    title: 'Thunderbolt Tempo',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 10,
+    attack_min: 8,
+    attack_max: 11,
+    special_attack: {
+      name: 'Thunderbolt Tempo',
+      min_atk: 16,
+      max_atk: 21,
+      gif: 'https://media1.tenor.com/m/04rqkR4x6CgAAAAd/nami.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0012.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'fine tempo'],
+    id: '0220',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0220:1492647395098624081>',
+    title: 'Fine Tempo',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    special_attack: {
+      name: 'Fine Tempo',
+      min_atk: 10,
+      max_atk: 14,
+      gif: null
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0220.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'happiness punch'],
+    id: '0221',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0221:1492647790126305400>',
+    title: 'Happiness Punch',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 28,
+    health: 45,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    special_attack: {
+      name: 'Happiness Punch',
+      min_atk: 18,
+      max_atk: 24,
+      gif: 'https://media1.tenor.com/m/NM44zX9jYasAAAAd/nami-vivi.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0221.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'mirage tempo the heavens'],
+    id: '0422',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0422:1492648422547656724>',
+    title: 'Mirage Tempo: The Heavens',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 19,
+    health: 32,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    special_attack: {
+      name: 'Mirage Tempo',
+      min_atk: 8,
+      max_atk: 13,
+      gif: 'https://media1.tenor.com/m/DjG8UDDaw7IAAAAd/one-piece-nami.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0422.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'merveille\'s adventurer'],
+    id: '0523',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0523:1492648873913618652>',
+    title: "Merveille's Adventurer",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0523.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'and billy the thunder bird'],
+    id: '0524',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0524:1492651626035548222>',
+    title: 'And billy the Thunder Bird',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0524.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'blossom cloud'],
+    id: '0535',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0535:1492652002948153394>',
+    title: 'Blossom Cloud',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    special_attack: {
+      name: 'Mirage Tempo Fata Morgana: Blossom',
+      min_atk: 12,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/4bXHBKQLDQcAAAAC/nami-mirage-tempo.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0535.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'blossom climate'],
+    id: '0536',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0536:1492652666059227217>',
+    title: 'Blossom Climate',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 28,
+    health: 45,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    special_attack: {
+      name: 'Mirage Tempo Fata Morgana: Blossom',
+      min_atk: 18,
+      max_atk: 24,
+      gif: 'https://media1.tenor.com/m/4bXHBKQLDQcAAAAC/nami-mirage-tempo.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0536.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'tea time'],
+    id: '0576',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0576:1492653026119254046>',
+    title: 'Tea Time',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 30,
+    speed: 6,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0576.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'voyage log: strawhat pirates'],
+    id: '0650',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0650:1492653333654016141>',
+    title: 'Voyage Log: Strawhat Pirates',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0650.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'voyage dream: world map'],
+    id: '0651',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0651:1492653995460657272>',
+    title: 'Voyage Dream: World Map',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 43,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0651.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'on vacation'],
+    id: '0662',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0662:1492655163134181476>',
+    title: 'On vacation',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 30,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0662.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'ice cream loving nami'],
+    id: '0680',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0680:1492655465455161434>',
+    title: 'Ice Cream Loving Nami',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0680.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'ice cream loving lemon ice cream'],
+    id: '0681',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0681:1492655780099264662>',
+    title: 'Ice Cream loving - Lemon Ice Cream',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 44,
+    speed: 11,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0681.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'jackie o lantern'],
+    id: '0764',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0764:1492656117946384457>',
+    title: "Jackie 'o Lantern",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0764.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'angel in white wedding'],
+    id: '0807',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0807:1492656519135625368>',
+    title: 'Angel in White: Wedding',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 14,
+    health: 24,
+    speed: 5,
+    attack_min: 3,
+    attack_max: 5,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0807.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'goddess in white wedding'],
+    id: '0808',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0808:1492656853895610460>',
+    title: 'Goddess In White: Wedding',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0808.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'snowscape'],
+    id: '0863',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0863:1492657325188841732>',
+    title: 'Snowscape',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/800/0863.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'weather researcher'],
+    id: '0938',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0938:1492657715208786062>',
+    title: 'Weather Researcher',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 31,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0938.png'
+  },
+  {
+    character: 'Nami',
+    alias: ['nami', 'weatheria cat burglar'],
+    id: '0939',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0939:1492658221410812154>',
+    title: 'Weatheria Cat Burglar',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 28,
+    health: 45,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0939.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp'],
+    id: '0013',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0013:1492660263441137825>',
+    title: 'Usopp',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 13,
+    health: 23,
+    speed: 4,
+    attack_min: 3,
+    attack_max: 5,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0013.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'tabasco star'],
+    id: '0014',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0014:1492660530299539496>',
+    title: 'Tabasco Star',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 30,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    special_attack: {
+      name: 'Tabasco Star',
+      min_atk: 11,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/fL__PyRJTuYAAAAC/usopp-one-piece.gif'
+    },
+    effect: 'bleed',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0014.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'usopp golden pound'],
+    id: '0015',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0015:1492661033280733205>',
+    title: 'Usopp Golden Pound',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    special_attack: {
+      name: 'Golden Pound',
+      min_atk: 11,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/2KCIdLi3NJ4AAAAd/usopp-one-piece.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0015.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'sogeking'],
+    id: '0016',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0016:1492662917760422009>',
+    title: 'Sogeking',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 43,
+    speed: 9,
+    attack_min: 8,
+    attack_max: 11,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0016.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'usopp hammer'],
+    id: '0222',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0222:1492663511661416458>',
+    title: 'Usopp Hammer',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 14,
+    health: 25,
+    speed: 5,
+    attack_min: 3,
+    attack_max: 5,
+    special_attack: {
+      name: 'Usopp Hammer',
+      min_atk: 7,
+      max_atk: 10,
+      gif: 'https://media1.tenor.com/m/NG52898sDosAAAAd/usopp-usopp-hammer.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 1,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0222.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'impact'],
+    id: '0223',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0223:1492663948510625925>',
+    title: 'Impact',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 32,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    special_attack: {
+      name: 'Impact Dial',
+      min_atk: 10,
+      max_atk: 14,
+      gif: 'https://media1.tenor.com/m/-M-KbgWbDuUAAAAd/usopp-one-piece.gif'
+    },
+    effect: 'attackdown',
+    effectDuration: 3,
+    effectAmount: 50,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0223.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'usopp-un'],
+    id: '0517',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0517:1492665046113980537>',
+    title: 'Usopp-un',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0517.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'hercules\' student'],
+    id: '0518',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0518:1492665322455433391>',
+    title: "Hercules' Student",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0518.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'merveille\'s adventurer'],
+    id: '0555',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0555:1492665883405975634>',
+    title: "Merveille's Adventurer",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0555.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'straw hat pirates attack'],
+    id: '0556',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0556:1492666157931696178>',
+    title: "Straw Hat Pirates' Attack",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0556.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'davy back fight cornerman'],
+    id: '0572',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0572:1492666486215544904>',
+    title: 'Davy Back Fight: Cornerman',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 30,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0572.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'voyage log strawhat pirates'],
+    id: '0660',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0660:1492666702587236422>',
+    title: 'Voyage Log: Strawhat Pirates',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0660.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'voyage dream brave warrior'],
+    id: '0661',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0661:1492666946758381608>',
+    title: 'Voyage Dream: Brave Warrior',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0661.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'lying wolf'],
+    id: '0762',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0762:1492667260693774407>',
+    title: 'Lying Wolf',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0762.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'pepper sauce star strike'],
+    id: '0867',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0867:1492667722142715995>',
+    title: 'Pepper Sauce Star: Strike',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    special_attack: {
+      name: 'Pepper Sauce Star: Strike',
+      min_atk: 12,
+      max_atk: 15,
+      gif: 'https://media1.tenor.com/m/L3Zfs1_z5gkAAAAd/usopp-one-piece.gif'
+    },
+    effect: 'bleed',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0762.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'bowin islands food addict'],
+    id: '0940',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0940:1492669371082870956>',
+    title: 'Bowin Islands Food Addict',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0940.png'
+  },
+  {
+    character: 'Usopp',
+    alias: ['usopp', 'hero fighter of the forest'],
+    id: '0941',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0941:1492669607977423041>',
+    title: 'Hero Fighter of the forest',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0941.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'sanji'],
+    id: '0017',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0017:1492692959739510885>',
+    title: 'Vinsmoke Sanji',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 14,
+    health: 24,
+    speed: 5,
+    attack_min: 3,
+    attack_max: 5,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0017.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'plastic surgery shot'],
+    id: '0018',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0018:1492693787409907895>',
+    title: 'Plastic Surgery Shot',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    special_attack: {
+      name: 'Plastic Surgery Shot',
+      min_atk: 12,
+      max_atk: 16,
+      gif: 'https://tenor.com/bWrQf.gif'
+    },
+    effect: 'confusion',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0018.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'chef sanji hot rock stew'],
+    id: '0019',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0019:1492696111973138433>',
+    title: 'Chef Sanji: Hot Rock Stew',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0019.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'diable jambe'],
+    id: '0020',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0020:1492696839106068711>',
+    title: 'Diable Jambe',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 26,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    special_attack: {
+      name: 'Diable Jambe',
+      min_atk: 18,
+      max_atk: 24,
+      gif: 'https://tenor.com/bPHBt.gif'
+    },
+    effect: 'cut',
+    effectDuration: 3,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0020.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'mr prince mutton shot'],
+    id: '0224',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0224:1492698130452578366>',
+    title: 'Mr Prince: Mutton Shot',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 14,
+    health: 24,
+    speed: 5,
+    attack_min: 3,
+    attack_max: 5,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0224.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'mr prince veau shot'],
+    id: '0225',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0225:1492699141003018340>',
+    title: 'Mr Prince: Veau Shot',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 30,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0225.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'parage shot the storm'],
+    id: '0419',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0419:1492699817879666831>',
+    title: 'Parage Shot: The Storm',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0419.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'kamabakka queendom traditional fighting style'],
+    id: '0435',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:435:1492700841025736724>',
+    title: 'Kamabakka Queendom Traditional Fighting Style',
+    faculty: 'Strawhat Pirates',
+    rank: 'B',
+    power: 13,
+    health: 23,
+    speed: 5,
+    attack_min: 3,
+    attack_max: 5,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0435.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'candy'],
+    id: '0436',
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:1000046913:1492702146972487762>',
+    title: 'Candy',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 30,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/400/0436.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'merveille\'s wonder'],
+    id: '0521',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:521:1492701594012356628>',
+    title: "Merveille's Wonder",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0521.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'straw hat pirates attack'],
+    id: '0522',
+    pullable: true,
+    attribute: 'INT',
+    emoji: '<:0522:1492702640147271872>',
+    title: "Straw Hat Pirates' Attack",
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 43,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/500/0522.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'voyage log strawhat pirates'],
+    id: '0604',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0604:1492703176552484984>',
+    title: 'Voyage Log: Strawhat Pirates',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 31,
+    speed: 8,
+    attack_min: 6,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0604.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'voyage dream all blue'],
+    id: '0605',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0605:1492703787008393347>',
+    title: 'Voyage Dream: All Blue',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/600/0605.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'ghost knight'],
+    id: '0768',
+    pullable: true,
+    attribute: 'PSY',
+    emoji: '<:0768:1492704205067260025>',
+    title: 'Ghost Knight',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 18,
+    health: 32,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/700/0768.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'kamabakka queendome escapee'],
+    id: '0911',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:911:1492704800348045414>',
+    title: 'Kamabakka Queendome Escapee',
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 17,
+    health: 30,
+    speed: 7,
+    attack_min: 5,
+    attack_max: 8,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0911.png'
+  },
+  {
+    character: 'Vinsmoke Sanji',
+    alias: ['vinsmoke sanji', 'chef of love'],
+    id: '0912',
+    pullable: true,
+    attribute: 'DEX',
+    emoji: '<:0912:1492705228900798484>',
+    title: 'Chef of Love',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    power: 27,
+    health: 44,
+    speed: 10,
+    attack_min: 9,
+    attack_max: 12,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/900/0912.png'
+  },
+  {
+    character: 'Strawhat Artifact',
+    alias: ['strawhat artifact', 'artifact strawhat'],
+    id: 'a001',
+    attribute: 'STR',
+    emoji: '<:strawhat:1492324127590322238>',
+    pullable: true,
+    title: "Monkey D. Luffy's Strawhat",
+    faculty: 'Strawhat Pirates',
+    rank: 'A',
+    power: 1,
+    health: 1,
+    speed: 1,
+    attack_min: 0,
+    attack_max: 0,
+    boost: 'Monkey D. Luffy (20%), Figarland Shanks (20%)',
+    artifact: true,
+    image_url: 'https://media.discordapp.net/attachments/1455999349317304361/1492301017830658142/Copy_of_Blue_and_Green_Cute_Colorful_Playing_Book_Cover_20260410_191119_0000.png?ex=69dad520&is=69d983a0&hm=7c1ab9abaae6f7d02a4335ae09a9a78dbe85f618bbbe9c6e689743b4a4b199d8&=&format=webp&quality=lossless&width=337&height=538'
+  },
+  {
+    character: 'Thousand Sunny',
+    alias: ['thousand sunny', 'sunny'],
+    id: 's013',
+    ship: true,
+    pullable: true,
+    title: 'Strawhats Pirate ship',
+    faculty: 'Strawhat Pirates',
+    rank: 'S',
+    color: '#ffea00',
+    incomeMultiplier: 1.01,
+    capacity: 1000,
+    startingBalance: 100,
+    emoji: '<:ThousandSunny:1492324131111111111>',
+    image_url: 'https://one-piece-artworks.com/app/view/assets/img/meBZeey',
+  },
   ...require('./morecards').moreCards
 ];
 

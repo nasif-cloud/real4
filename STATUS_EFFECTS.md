@@ -82,6 +82,56 @@ This document lists all status effects available in the battle system, their mec
 - **Duration**: Specified in turns.
 - **Application**: Can be applied to self or target based on "itself" flag.
 
+### Reflect
+- **Icon**: <:refelct:1492516882954190898>
+- **Mechanics**: Redirects incoming attacks back to the attacker.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Acid
+- **Icon**: <:acid:1492617822851829770>
+- **Mechanics**: Deals damage each turn, with damage increasing by the same amount each turn.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Prone
+- **Icon**: <:prone:1492621344825937970>
+- **Mechanics**: Makes the affected card take extra damage from effective attributes.
+- **Parameters**: `effectAmount` (default 20%) - extra damage taken from effective attributes.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Blessed
+- **Icon**: <:blessed:placeholder>
+- **Mechanics**: Gains energy faster for the duration.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Charmed
+- **Icon**: <:charmed:placeholder>
+- **Mechanics**: Cannot attack same-attribute targets for the duration.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Doomed
+- **Icon**: <:doomed:placeholder>
+- **Mechanics**: The affected card will die when the effect expires.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Drunk
+- **Icon**: <:drunk:placeholder>
+- **Mechanics**: Chance to hit a wrong target for the duration.
+- **Parameters**: `effectChance` (default 20%) - chance to hit another target.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
+
+### Hungry
+- **Icon**: <:hungry:placeholder>
+- **Mechanics**: Takes damage every turn until rested for the duration.
+- **Parameters**: `effectAmount` or `amount` (default 1) - damage taken each turn.
+- **Duration**: Specified in turns.
+- **Application**: Can be applied to self or target based on "itself" flag.
 
 ## Usage in Cards
 

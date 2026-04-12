@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { cards } = require('../data/cards');
+const { getCardById, formatCardId } = require('../utils/cards');
 const { OWNER_ID } = require('../config');
 const duelCmd = require('./duel');
 
@@ -24,7 +25,6 @@ async function list({ message }) {
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
       { name: 'op owner setdrops <#channel>', value: 'Enable card drops in a channel (spawns every 5 min, expires in 10 min)', inline: false },
       { name: 'op owner unsetdrops', value: 'Disable card drops globally', inline: false },
-      { name: 'op owner toggleupgrade <on|off>', value: 'Enable/disable upgrade requirements system globally', inline: false },
       { name: 'op owner time <duration>', value: 'Simulate time passing (e.g., op owner time 8h triggers pull reset)', inline: false },
       { name: 'op ownerlist', value: 'Show this list', inline: false }
     );
@@ -38,7 +38,7 @@ async function execute({ message, args }) {
 
   const sub = args[0];
   if (!sub) {
-    return message.reply('Usage: op owner <give|resetdata|toggleupgrade|setdrops> ...');
+    return message.reply('Usage: op owner <give|resetdata|setdrops> ...');
   }
 
   if (sub === 'give') {
@@ -128,16 +128,17 @@ async function execute({ message, args }) {
       if (type === 'card') {
         const cardId = amountArg;
         // check existence
-        const cardDef = cards.find(c => c.id === cardId);
-        if (!cardDef) return message.reply(`No card with id ${cardId} exists`);
+        const cardDef = getCardById(cardId);
+        if (!cardDef) return message.reply(`No card with id ${formatCardId(cardId)} exists`);
         // check ownership first
-        if (target.ownedCards.some(e => e.cardId === cardId)) {
+        if (target.ownedCards.some(e => e.cardId === cardDef.id)) {
           return message.reply('User already owns that card, gift cancelled.');
         }
-        target.ownedCards.push({ cardId, level: 1, xp: 0 });
-        if (!target.history.includes(cardId)) target.history.push(cardId);
+        const actualCardId = cardDef.id;
+        target.ownedCards.push({ cardId: actualCardId, level: 1, xp: 0 });
+        if (!target.history.includes(actualCardId)) target.history.push(actualCardId);
         await target.save();
-        return message.reply(`Added card ${cardId} to <@${targetId}>'s collection`);
+        return message.reply(`Added card ${formatCardId(actualCardId)} to <@${targetId}>'s collection`);
       }
 
       return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');
@@ -153,27 +154,6 @@ async function execute({ message, args }) {
       duelCmd.clearUserState(targetId);
     }
     return message.reply(`Deleted data for <@${targetId}>`);
-  }
-
-  if (sub === 'toggleupgrade') {
-    const state = args[1];
-    if (!state || !['on', 'off'].includes(state.toLowerCase())) {
-      return message.reply('Usage: op owner toggleupgrade <on|off>');
-    }
-
-    const enabled = state.toLowerCase() === 'on';
-    // Store in a global setting or database; for simplicity, we'll use environment/config
-    // For now, store as a flag that can be checked
-    const config = require('../config');
-    config.upgradeRequirementsEnabled = enabled;
-    
-    // Also update all existing users; if enabling, set flag to false (not disabled)
-    // If disabling, set flag to true (disabled)
-    const updateOp = enabled ? { upgradeRequirementsDisabled: false } : { upgradeRequirementsDisabled: true };
-    await User.updateMany({}, updateOp);
-
-    const status = enabled ? 'enabled' : 'disabled';
-    return message.reply(`Upgrade requirements system ${status} for all users.`);
   }
 
   if (sub === 'setdrops') {

@@ -60,8 +60,26 @@ module.exports = {
         user.markModified('packInventory');
         packText = ` and \`1x\` **${crew.packEmoji} ${crew.name} pack**`;
       }
+
+      const chestRoll = Math.random();
+      let chestText = '';
+      if (chestRoll < 0.8) {
+        const chestCount = Math.floor(Math.random() * 2) + 1;
+        user.items = user.items || [];
+        const existingChest = user.items.find(it => it.itemId === 'c_chest');
+        if (existingChest) existingChest.quantity += chestCount;
+        else user.items.push({ itemId: 'c_chest', quantity: chestCount });
+        chestText = ` and ${chestCount}x <:Cchest:1492559506868146307> **C Chest**`;
+      } else if (chestRoll < 0.9) {
+        user.items = user.items || [];
+        const existingChest = user.items.find(it => it.itemId === 'b_chest');
+        if (existingChest) existingChest.quantity += 1;
+        else user.items.push({ itemId: 'b_chest', quantity: 1 });
+        chestText = ' and 1x <:Bchest:1492559568738451567> **B Chest**';
+      }
+
       await user.save();
-      reply = `You looted the **${crew.icon} ${crew.name}** pirate ship for **<:beri:1490738445319016651> ${amount} Berries**${packText}${packText ? ' !' : '!'}`;
+      reply = `You looted the **${crew.icon} ${crew.name}** pirate ship for **<:beri:1490738445319016651> ${amount} Berries**${packText}${chestText}${packText || chestText ? ' !' : '!'}`;
     }
 
     if (message) return message.channel.send(reply);

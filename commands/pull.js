@@ -85,10 +85,10 @@ module.exports = {
     if (pool.length === 0) pool = pullable;
     const card = pool[Math.floor(Math.random() * pool.length)];
 
-    // Get all versions of this character
-    const allVersionIds = getAllCardVersions(card.character);
+    // Get all versions in this card group
+    const allVersionIds = getAllCardVersions(card);
     
-    // Find if user owns any version of this character
+    // Find if user owns any version in this card group
     let bestOwnedEntry = null;
     let bestOwnedId = null;
     for (const versionId of allVersionIds) {
@@ -107,36 +107,33 @@ module.exports = {
       const pulledCard = getCardById(card.id);
       
       if (pulledCard.mastery < bestOwnedCard.mastery) {
-        // Pulled a lower version than what they own - add XP to best owned
         bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
         const gained = Math.floor(bestOwnedEntry.xp / 100);
         if (gained > 0) {
           bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
           bestOwnedEntry.xp = bestOwnedEntry.xp % 100;
         }
-        duplicateText = `Lower version pulled! +100 XP to ${bestOwnedCard.character} U${bestOwnedCard.mastery}${gained ? ` (+${gained} lvl)` : ''}`;
+        duplicateText = `+100 XP`;
       } else if (pulledCard.mastery === bestOwnedCard.mastery) {
-        // Same version - normal duplicate handling
         bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
         const gained = Math.floor(bestOwnedEntry.xp / 100);
         if (gained > 0) {
           bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
           bestOwnedEntry.xp = bestOwnedEntry.xp % 100;
         }
-        duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''}`;
+        duplicateText = `+100 XP`;
       } else {
         // Pulled a higher version than what they own
         const bestOwnedIdVal = bestOwnedId; // id of version they currently have
         // check if the card on team prevents upgrade
         if (user.team && user.team.includes(bestOwnedIdVal)) {
-          // treat as duplicate XP instead of upgrade
           bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
           const gained = Math.floor(bestOwnedEntry.xp / 100);
           if (gained > 0) {
             bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
             bestOwnedEntry.xp = bestOwnedEntry.xp % 100;
           }
-          duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''} (upgrade blocked while on team)`;
+          duplicateText = `+100 XP`;
         } else {
           // normal upgrade: add new version and remove lower ones
           user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });

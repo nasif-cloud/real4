@@ -18,6 +18,11 @@ const duelCmd = require('./commands/duel');
 const sellCmd = require('./commands/sell');
 const shopCmd = require('./commands/shop');
 const buyCmd = require('./commands/buy');
+const claimCmd = require('./commands/claim');
+const bulksellCmd = require('./commands/bulksell');
+const equipCmd = require('./commands/equip');
+const unequipCmd = require('./commands/unequip');
+const triviaCmd = require('./commands/trivia');
 const bountyCmd = require('./commands/bounty');
 const userCmd = require('./commands/user');
 const leaderboardCmd = require('./commands/leaderboard');
@@ -28,6 +33,9 @@ const robCmd = require('./commands/rob');
 const stopRobCmd = require('./commands/stoprob');
 const timersCmd = require('./commands/timers');
 const lootCmd = require('./commands/loot');
+const setShipCmd = require('./commands/setship');
+const depositCmd = require('./commands/deposit');
+const betCmd = require('./commands/bet');
 const User = require('./models/User');
 
 async function main() {
@@ -85,6 +93,9 @@ async function main() {
         if (action === 'help_category') {
           return require('./commands/help').handleCategorySelect(interaction);
         }
+        if (action === 'trivia_diff') {
+          return triviaCmd.handleDifficultySelect(interaction);
+        }
       }
 
       if (interaction.isChatInputCommand()) {
@@ -100,23 +111,31 @@ async function main() {
         if (commandName === 'sell') return sellCmd.execute({ interaction });
         if (commandName === 'shop') return shopCmd.execute({ interaction });
         if (commandName === 'buy') return buyCmd.execute({ interaction });
+        if (commandName === 'bet') return betCmd.execute({ interaction });
+        if (commandName === 'trivia') return triviaCmd.execute({ interaction });
         if (commandName === 'bounty') return bountyCmd.execute({ interaction });
         if (commandName === 'user') return userCmd.execute({ interaction });
         if (commandName === 'leaderboard') return leaderboardCmd.execute({ interaction });
         if (commandName === 'daily') return dailyCmd.execute({ interaction });
         if (commandName === 'stock') return stockCmd.execute({ interaction });
         if (commandName === 'open') return openCmd.execute({ interaction });
+        if (commandName === 'claim') return claimCmd.execute({ interaction });
+        if (commandName === 'bulksell') return bulksellCmd.execute({ interaction });
         if (commandName === 'rob') return robCmd.execute({ interaction });
         if (commandName === 'stoprob') return stopRobCmd.execute({ interaction });
         if (commandName === 'loot') return lootCmd.execute({ interaction });
         if (commandName === 'timers') return timersCmd.execute({ interaction });
         if (commandName === 'info') return require('./commands/info').execute({ interaction });
+        if (commandName === 'setship') return setShipCmd.execute({ interaction });
+        if (commandName === 'deposit') return depositCmd.execute({ interaction });
         if (commandName === 'card') return require('./commands/card').execute({ interaction });
         if (commandName === 'upgrade') return require('./commands/upgrade').execute({ interaction });
         if (commandName === 'balance') return require('./commands/balance').execute({ interaction });
         if (commandName === 'isail') return require('./commands/isail').execute({ interaction });
         if (commandName === 'fish') return require('./commands/fish').execute({ interaction });
         if (commandName === 'feed') return require('./commands/feed').execute({ interaction });
+        if (commandName === 'equip') return equipCmd.execute({ interaction });
+        if (commandName === 'unequip') return unequipCmd.execute({ interaction });
         if (commandName === 'help') return require('./commands/help').execute({ interaction });
       }
 
@@ -204,6 +223,10 @@ async function main() {
           return stockCmd.handleButton(interaction, cardId);
         }
 
+        if (action === 'trivia_answer' || action === 'trivia_continue') {
+          return triviaCmd.handleButton(interaction);
+        }
+
         // handle collection navigation
         if (action && (action.startsWith('collection_next') || action.startsWith('collection_prev') || action === 'collection_sort' || action === 'collection_sort_select')) {
           return require('./commands/collection').handleButton(interaction, interaction.customId);
@@ -217,11 +240,6 @@ async function main() {
         // handle inventory pagination
         if (action && (action.startsWith('inv_prev') || action.startsWith('inv_next'))) {
           return require('./commands/inventory').handleButton(interaction, interaction.customId);
-        }
-
-        // handle upgrade payment interactions
-        if (action && action.startsWith('upgrade_')) {
-          return require('./commands/upgrade').handleUpgradeButton(interaction);
         }
 
         // handle card drop claims
@@ -243,6 +261,11 @@ async function main() {
         // handle team autoteam
         if (action === 'team_autoteam') {
           return require('./commands/team').handleButton(interaction, action, cardId);
+        }
+
+        if (action && action.startsWith('bulksell_confirm')) {
+          const [, token, choice] = interaction.customId.split(':');
+          return bulksellCmd.handleButton(interaction, choice, token);
         }
       }
     } catch (err) {
@@ -300,22 +323,30 @@ async function main() {
       if (cmd === 'sell') return await sellCmd.execute({ message, args });
       if (cmd === 'shop') return await shopCmd.execute({ message });
       if (cmd === 'buy') return await buyCmd.execute({ message, args });
+      if (cmd === 'coin' || cmd === 'bet') return await betCmd.execute({ message, args });
       if (cmd === 'bounty') return await bountyCmd.execute({ message });
       if (cmd === 'user') return await userCmd.execute({ message, args });
       if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message, args });
       if (cmd === 'daily') return await dailyCmd.execute({ message });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });
+      if (cmd === 'claim') return await claimCmd.execute({ message, args });
+      if (cmd === 'bulksell') return await bulksellCmd.execute({ message, args });
       if (cmd === 'rob') return await robCmd.execute({ message, args });
       if (cmd === 'stoprob') return await stopRobCmd.execute({ message });
       if (cmd === 'loot') return await lootCmd.execute({ message });
       if (cmd === 'timers') return await timersCmd.execute({ message });
+      if (cmd === 'trivia') return await triviaCmd.execute({ message });
       if (cmd === 'collection') return await require('./commands/collection').execute({ message });
       if (cmd === 'info') return await require('./commands/info').execute({ message, args });
       if (cmd === 'upgrade') return await require('./commands/upgrade').execute({ message, args });
+      if (cmd === 'set' || cmd === 'setship') return await setShipCmd.execute({ message, args });
+      if (cmd === 'deposit') return await depositCmd.execute({ message, args });
       if (cmd === 'isail') return await require('./commands/isail').execute({ message });
       if (cmd === 'fish') return await require('./commands/fish').execute({ message });
       if (cmd === 'feed') return await require('./commands/feed').execute({ message, args });
+      if (cmd === 'equip') return await equipCmd.execute({ message, args });
+      if (cmd === 'unequip') return await unequipCmd.execute({ message, args });
       if (cmd === 'help' || cmd === 'h') return await require('./commands/help').execute({ message });
       if (cmd === 'ownerlist') return await require('./commands/owner').list({ message });
       if (cmd === 'owner') return await require('./commands/owner').execute({ message, args });

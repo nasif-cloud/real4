@@ -4,6 +4,18 @@ const { levelers } = require('../data/levelers');
 const { rods } = require('../data/rods');
 const crews = require('../data/crews');
 const { sanitizeUserRods } = require('../utils/inventoryHelper');
+const { chests, CHEST_EMOJIS } = require('../data/chests');
+
+const ITEM_DISPLAY_NAMES = {
+  c_chest: 'C Chest',
+  b_chest: 'B Chest',
+  a_chest: 'A Chest'
+};
+const ITEM_DISPLAY_EMOJIS = {
+  c_chest: CHEST_EMOJIS.c_chest,
+  b_chest: CHEST_EMOJIS.b_chest,
+  a_chest: CHEST_EMOJIS.a_chest
+};
 
 const ITEMS_PER_PAGE = 20;
 
@@ -61,7 +73,9 @@ function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
     .forEach(i => {
       const leveler = levelers.find(l => l.id === i.itemId);
       if (!leveler) {
-        let display = `${i.itemId} x${i.quantity}`;
+        const displayName = ITEM_DISPLAY_NAMES[i.itemId] || i.itemId;
+        const emoji = ITEM_DISPLAY_EMOJIS[i.itemId] || '';
+        let display = `${emoji}${displayName} x${i.quantity}`;
         if (i.durability !== undefined) {
           display += ` (${i.durability})`;
         }

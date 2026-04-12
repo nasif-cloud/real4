@@ -9,6 +9,14 @@ crews.forEach(crew => {
   crewIcons[crew.name] = crew.icon;
 });
 
+const RANDOM_ENEMY_EMOJI_REMAP = {
+  '<:randomenemy:1491916913960423645>': '<:fgcrb:1492280855832432680>',
+  '<:randomenemygreen:1491937401860259982>': '<:fgcgb:1492280858806059068>',
+  '<:randomenemyqck:1491937598690820267>': '<:fgcbb:1492280860064350368>',
+  '<:randomenemyint:1491938030611861574>': '<:fgcpb:1492280857187192983>',
+  '<:randomenemypsy:1491937909060931847>': '<:fgcyb:1492280854767079494>'
+};
+
 function getModifiedRates(baseRates, rodMultiplier = 1) {
   if (rodMultiplier === 1) return baseRates;
   const boostedRanks = new Set(['A', 'S', 'SS', 'UR']);
@@ -54,17 +62,128 @@ function getRankFromDistributionWithFilter(rates, allowedRanks) {
   return getRankFromDistribution(filteredRates);
 }
 
+function normalizeName(name) {
+  return name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '') : '';
+}
+
 function getFacultyCharacters(faculty) {
+  const normalizedFaculty = normalizeName(faculty);
   const characters = new Set();
+  if (!normalizedFaculty) return characters;
   cards.forEach(c => {
-    if (c.faculty === faculty) characters.add(c.character);
+    const cardFaculty = normalizeName(c.faculty);
+    if (!cardFaculty) return;
+    if (cardFaculty === normalizedFaculty || cardFaculty.includes(normalizedFaculty) || normalizedFaculty.includes(cardFaculty)) {
+      characters.add(c.character);
+    }
   });
   return characters;
 }
 
+function normalizeCardId(cardId) {
+  if (cardId == null) return '';
+  const raw = String(cardId).trim().toLowerCase();
+  const lettersDigits = raw.match(/^([a-z]+)(\d+)$/i);
+  if (lettersDigits) {
+    return `${lettersDigits[1].toLowerCase()}${lettersDigits[2].padStart(3, '0')}`;
+  }
+  if (/^\d+$/.test(raw)) {
+    return raw.padStart(4, '0');
+  }
+  return raw;
+}
+
+function formatCardId(cardId) {
+  return normalizeCardId(cardId);
+}
+
 // Get a card definition by its ID
 function getCardById(cardId) {
-  return cards.find(c => c.id === cardId);
+  const card = cards.find(c => c.id === cardId);
+  if (card) return card;
+  const normalizedId = normalizeCardId(cardId);
+  return cards.find(c => normalizeCardId(c.id) === normalizedId) || null;
+}
+
+function getCardGroup(cardDef) {
+  if (!cardDef || typeof cardDef !== 'object') return null;
+  return cardDef.group || null;
+}
+
+function isArtifactCard(cardDef) {
+  return cardDef && cardDef.artifact === true;
+}
+
+function isShipCard(cardDef) {
+  return cardDef && cardDef.ship === true;
+}
+
+function getShipById(cardId) {
+  const card = cards.find(c => c.id === cardId && c.ship === true);
+  if (card) return card;
+  const normalizedId = normalizeCardId(cardId);
+  return cards.find(c => normalizeCardId(c.id) === normalizedId && c.ship === true) || null;
+}
+
+function updateShipBalance(user) {
+  if (!user || !user.activeShip) return;
+  const ship = getShipById(user.activeShip);
+  if (!ship) return;
+  const startingBalance = typeof ship.startingBalance === 'number' ? ship.startingBalance : 100;
+  if (typeof user.shipBalance !== 'number' || user.shipBalance <= 0) {
+    user.shipBalance = startingBalance;
+  }
+  const lastUpdated = user.shipLastUpdated ? new Date(user.shipLastUpdated) : new Date();
+  const now = new Date();
+  const minutesPassed = Math.floor((now - lastUpdated) / 60000);
+  if (minutesPassed <= 0) {
+    user.shipLastUpdated = user.shipLastUpdated || now;
+    return;
+  }
+  let nextBalance = user.shipBalance * Math.pow(ship.incomeMultiplier, minutesPassed);
+  nextBalance = Math.min(ship.capacity, Math.ceil(nextBalance));
+  user.shipBalance = nextBalance;
+  user.shipLastUpdated = now;
+}
+
+function parseBoostTargets(boostText) {
+  if (!boostText || typeof boostText !== 'string') return [];
+  const regex = /([\w .'-]+?)(?:,\s*([\w ]+))?\s*\((\d+)%\)/gi;
+  const results = [];
+  let match;
+  while ((match = regex.exec(boostText)) !== null) {
+    results.push({ target: match[1].trim(), stat: match[2] ? match[2].trim() : null, pct: parseInt(match[3], 10) });
+  }
+  return results;
+}
+
+function getArtifactBoostSummary(cardDef, level = 1) {
+  const targets = parseBoostTargets(cardDef.boost);
+  if (!targets.length) return null;
+  const allStats = targets.every(t => !t.stat);
+  const uniquePct = Array.from(new Set(targets.map(t => t.pct)));
+  if (allStats && uniquePct.length === 1) {
+    const basePct = uniquePct[0];
+    const levelBonus = Math.ceil((level || 1) / 10);
+    const totalPct = basePct + (levelBonus > 0 ? levelBonus : 0);
+    return `${totalPct}%`;
+  }
+  return null;
+}
+
+function getArtifactSignatureLines(cardDef) {
+  const targets = parseBoostTargets(cardDef.boost);
+  if (!targets.length) return [];
+  return targets.map((target) => {
+    let emoji = '';
+    const crew = crews.find(cr => cr.name.toLowerCase().replace(/[- ]/g, '') === target.target.toLowerCase().replace(/[- ]/g, ''));
+    if (crew && crew.icon) emoji = `${crew.icon} `;
+    else {
+      const targetCard = cards.find(c => c.character.toLowerCase() === target.target.toLowerCase());
+      if (targetCard && targetCard.emoji) emoji = `${targetCard.emoji} `;
+    }
+    return `${emoji}${target.target}`.trim();
+  });
 }
 
 function getAttributeEmoji(attribute) {
@@ -84,8 +203,24 @@ function stripBoostAmounts(boostText) {
   return boostText.replace(/\s*\(\d+%\)/g, '').trim();
 }
 
-function getAllCardVersions(character) {
-  return cards.filter(c => c.character === character).map(c => c.id);
+function getAllCardVersions(cardOrCharacter) {
+  if (!cardOrCharacter) return [];
+  if (typeof cardOrCharacter === 'object') {
+    const group = getCardGroup(cardOrCharacter);
+    if (group) {
+      return cards.filter(c => getCardGroup(c) === group).map(c => c.id);
+    }
+    return cardOrCharacter.id ? [cardOrCharacter.id] : [];
+  }
+
+  const byId = cards.find(c => c.id === cardOrCharacter);
+  if (byId) return [byId.id];
+
+  const normalizedGroup = normalizeName(cardOrCharacter);
+  const groupCards = cards.filter(c => c.group && normalizeName(c.group) === normalizedGroup);
+  if (groupCards.length) return groupCards.map(c => c.id);
+
+  return cards.filter(c => c.character === cardOrCharacter).map(c => c.id);
 }
 
 function getOwnedEntry(user, cardDef) {
@@ -93,8 +228,9 @@ function getOwnedEntry(user, cardDef) {
 }
 
 function hasHigherVersionOwned(user, cardDef) {
-  if (!user || !Array.isArray(user.ownedCards) || !cardDef || cardDef.mastery >= cardDef.mastery_total) return false;
-  const allVersionIds = getAllCardVersions(cardDef.character);
+  if (!user || !Array.isArray(user.ownedCards) || !cardDef) return false;
+  const allVersionIds = getAllCardVersions(cardDef);
+  if (allVersionIds.length <= 1) return false;
   const currentIndex = allVersionIds.indexOf(cardDef.id);
   if (currentIndex < 0) return false;
   const higherVersionIds = allVersionIds.slice(currentIndex + 1);
@@ -130,6 +266,8 @@ function resolveBoostsForCard(cardDef, user) {
   user.ownedCards.forEach(entry => {
     const def = cards.find(c => c.id === entry.cardId);
     if (def && def.boost) {
+      // Artifact boosts only apply when equipped to this card
+      if (isArtifactCard(def) && entry.equippedTo !== cardDef.id) return;
       // Regex: target, optional stat, percent
       const regex = /([\w .'-]+?)(?:,\s*([\w ]+))?\s*\((\d+)%\)/gi;
       let match;
@@ -142,7 +280,6 @@ function resolveBoostsForCard(cardDef, user) {
           targetName.toLowerCase() === cardDef.character.toLowerCase() ||
           (cardDef.faculty && targetName.toLowerCase().replace(/-/g, '').replace(/ /g, '') === cardDef.faculty.toLowerCase().replace(/-/g, '').replace(/ /g, ''))
         ) {
-          const isFacultyBoost = cardDef.faculty && targetName.toLowerCase().replace(/-/g, '').replace(/ /g, '') === cardDef.faculty.toLowerCase().replace(/-/g, '').replace(/ /g, '');
           const boostAmount = getEffectiveBoost(def.id, pct);
           if (stat) {
             statBoosts[stat] = (statBoosts[stat] || 0) + boostAmount;
@@ -195,13 +332,30 @@ async function findBestOwnedVersion(userId, character) {
   return getCardById(lastId);
 }
 
+async function findBestOwnedShip(userId, query) {
+  const User = require('../models/User');
+  const matches = searchCards(query).filter(c => c.ship);
+  if (!matches.length) return null;
+
+  const user = await User.findOne({ userId });
+  if (!user || !Array.isArray(user.ownedCards)) return matches[0];
+
+  const ownedIds = user.ownedCards.map(e => e.cardId);
+  const ownedMatches = matches.filter(m => ownedIds.includes(m.id));
+  return ownedMatches.length ? ownedMatches[ownedMatches.length - 1] : matches[0];
+}
+
 // fuzzy search: return matched card definitions sorted by mastery asc
 function searchCards(query) {
   if (!query) return [];
   const q = query.toLowerCase();
+  const normalizedQuery = normalizeCardId(q);
   const matches = cards.filter(c => {
-    if (c.id.toLowerCase() === q) return true;
+    const normalizedId = normalizeCardId(c.id);
+    if (normalizedId === normalizedQuery) return true;
+    if (normalizedId.includes(normalizedQuery) && /^[a-z]*\d+$/.test(q)) return true;
     if (c.character.toLowerCase().includes(q)) return true;
+    if (c.title && c.title.toLowerCase().includes(q)) return true;
     if (Array.isArray(c.alias) && c.alias.some(a => a.toLowerCase().includes(q))) return true;
     return false;
   });
@@ -237,8 +391,8 @@ function simulatePull(pityCount, faculty = null, options = {}) {
   const effectiveRates = getModifiedRates(rateSource, rodMultiplier);
   const rank = getRankFromDistribution(effectiveRates);
 
-  let candidateCards = cards.filter(c => c.mastery === mastery && c.rank === rank);
-  if (mastery === 1) candidateCards = candidateCards.filter(c => c.pullable);
+  let candidateCards = cards.filter(c => c.mastery === mastery && c.rank === rank && !isShipCard(c));
+  if (mastery === 1) candidateCards = candidateCards.filter(c => c.pullable && !isShipCard(c));
 
   if (faculty) {
     const facultyCharacters = getFacultyCharacters(faculty);
@@ -246,9 +400,9 @@ function simulatePull(pityCount, faculty = null, options = {}) {
       return null;
     }
 
-    let eligibleCards = cards.filter(c => c.mastery === mastery && facultyCharacters.has(c.character));
+    let eligibleCards = cards.filter(c => c.mastery === mastery && facultyCharacters.has(c.character) && !isShipCard(c));
     if (mastery === 1) {
-      eligibleCards = eligibleCards.filter(c => c.pullable);
+      eligibleCards = eligibleCards.filter(c => c.pullable && !isShipCard(c));
     }
 
     if (eligibleCards.length === 0) {
@@ -312,52 +466,88 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
   // always include a name field; use faculty if nothing else
   if (!author.name && pityText) author.name = card.faculty;
   
-  // Calculate attack value for display
-  const attackVal = `${card.attack_min} - ${card.attack_max}`;
-  
-  // Build stats field - exclude attack for cards that are pure boosts
-  let statsText = `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}`;
-  if (!card.boost) {
-    statsText += `\n**Attack:** ${attackVal}`;
+  // Artifact cards use a simplified pull embed with boost/signature info
+  let embed = new EmbedBuilder().setColor(color).setTitle(`${card.character}`).setImage(card.image_url || null)
+    .setFooter({ text: `ID ${formatCardId(card.id)}${pityText ? ` | ${pityText}` : ''}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
+
+  if (isShipCard(card)) {
+    const descLines = [
+      card.title || '',
+      `**Rank:** ${card.rank}`,
+      '',
+      `**Income:** \`${card.incomeMultiplier}x\``,
+      `**Capacity:** <:beri:1490738445319016651>${card.capacity}`
+    ];
+    const shipEmbed = new EmbedBuilder()
+      .setColor(card.color || color)
+      .setTitle(card.character)
+      .setDescription(descLines.join('\n'))
+      .setImage(card.image_url || null)
+      .setFooter({ text: `ID ${formatCardId(card.id)}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
+
+    if (author.name || author.iconURL) {
+      shipEmbed.setAuthor(author);
+    }
+    return shipEmbed;
   }
-  
-  // Build description with rank field
-  const descLines = [
-    card.title || '',
-    `**Rank:** ${card.rank}`
-  ];
-  
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(`${card.character}`)
-    .setDescription(descLines.join('\n'))
-    .addFields(
-      { name: 'Stats', value: statsText, inline: false }
-    )
-    .setImage(card.image_url || null)
-    .setFooter({ text: `${username} pulled this card | ${pityText}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
+
+  if (isArtifactCard(card)) {
+    const boostSummary = getArtifactBoostSummary(card);
+    const signatureLines = getArtifactSignatureLines(card);
+    const descLines = [
+      card.title || '',
+      `**Rank:** ${card.rank}`
+    ];
+    if (boostSummary) {
+      descLines.push('', `**Boost:** \`${boostSummary}\` Of all stats`);
+    }
+    if (signatureLines.length) {
+      descLines.push('**Signature(s)**', ...signatureLines);
+    }
+    embed.setDescription(descLines.join('\n'));
+  } else {
+    // Calculate attack value for display
+    const attackVal = `${card.attack_min} - ${card.attack_max}`;
+    // Build stats field - exclude attack for cards that are pure boosts
+    let statsText = `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}`;
+    if (!card.boost) {
+      statsText += `\n**Attack:** ${attackVal}`;
+    }
+    const descLines = [
+      card.title || '',
+      `**Rank:** ${card.rank}`
+    ];
+    embed.setDescription(descLines.join('\n'));
+    embed.addFields({ name: 'Stats', value: statsText, inline: false });
+  }
 
   if (author.name || author.iconURL) {
     embed.setAuthor(author);
   }
 
-  // Use card emoji as thumbnail (like card embeds), with fallback to rank badge
-  const emojiThumbnail = getEmojiImageUrl(card.emoji);
-  if (emojiThumbnail) {
-    embed.setThumbnail(emojiThumbnail);
-  } else {
-    const rankBadge = rankData[card.rank] && rankData[card.rank].badge;
-    if (rankBadge) embed.setThumbnail(rankBadge);
-    else if (iconVal && iconVal.startsWith && iconVal.startsWith('http')) embed.setThumbnail(iconVal);
+  if (card.title !== 'Random enemy') {
+    const emojiThumbnail = getEmojiImageUrl(card.emoji);
+    if (emojiThumbnail) {
+      embed.setThumbnail(emojiThumbnail);
+    } else {
+      const rankBadge = rankData[card.rank] && rankData[card.rank].badge;
+      if (rankBadge) embed.setThumbnail(rankBadge);
+      else if (iconVal && iconVal.startsWith && iconVal.startsWith('http')) embed.setThumbnail(iconVal);
+    }
   }
 
   return embed;
 }
 
 // Build a card embed according to spec
+function normalizeEmoji(emoji) {
+  return RANDOM_ENEMY_EMOJI_REMAP[emoji] || emoji;
+}
+
 function getEmojiImageUrl(emoji) {
   if (!emoji || typeof emoji !== 'string') return null;
-  const match = emoji.match(/<a?:[^:]+:(\d+)>/);
+  const normalized = normalizeEmoji(emoji);
+  const match = normalized.match(/<a?:[^:]+:(\d+)>/);
   return match ? `https://cdn.discordapp.com/emojis/${match[1]}.png` : null;
 }
 
@@ -369,7 +559,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     PSY: '#f5df4d',
     INT: '#9b59b6'
   };
-  const color = attributeColors[cardDef.attribute] || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31';
+  const color = cardDef.ship ? (cardDef.color || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31') : (attributeColors[cardDef.attribute] || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31');
   let iconText = crewIcons[cardDef.faculty];
   let iconUrl = iconText;
   if (iconText && iconText.startsWith && iconText.startsWith('<:')) {
@@ -392,6 +582,87 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   const cardStats = getCardFinalStats(cardDef, lvl, user);
   const scaled = cardStats.scaled;
   const boostEntries = cardStats.boostEntries || [];
+
+  if (cardDef.ship) {
+    const isActiveShip = user && user.activeShip === cardDef.id;
+    const shipBalance = isActiveShip ? Math.floor(user.shipBalance || cardDef.startingBalance || 100) : null;
+    const isMaxed = shipBalance !== null && shipBalance >= cardDef.capacity;
+    const descLines = [
+      cardDef.title || '',
+      '',
+      `**Rank:** ${cardDef.rank}`,
+      `**Capacity:** <:beri:1490738445319016651>${cardDef.capacity}`,
+      `**Income:** \`${cardDef.incomeMultiplier}x\``,
+      `**Owned:** ${isOwned ? 'Yes' : 'No'}`,
+    ];
+    if (shipBalance !== null) {
+      descLines.push('', `**Earnings:** <:beri:1490738445319016651>${shipBalance}${isMaxed ? ' *max*' : ''}`);
+    }
+
+    const shipEmbed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor(author)
+      .setTitle(cardDef.character)
+      .setDescription(descLines.join('\n'))
+      .setImage(cardDef.image_url || null)
+      .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
+
+    if (iconUrl) {
+      shipEmbed.setThumbnail(iconUrl);
+    }
+
+    return shipEmbed;
+  }
+
+  if (isArtifactCard(cardDef)) {
+    const attributeIcon = getAttributeEmoji(cardDef.attribute);
+    const boostSummary = getArtifactBoostSummary(cardDef, lvl);
+    const signatureLines = getArtifactSignatureLines(cardDef);
+    const wielderLine = exactEntry && exactEntry.equippedTo
+      ? (() => {
+        const targetCard = cards.find(c => c.id === exactEntry.equippedTo);
+        if (targetCard) return `**Wielder:** ${targetCard.emoji ? `${targetCard.emoji} ` : ''}${targetCard.character}`;
+        return '**Wielder:** Unknown';
+      })()
+      : null;
+
+    const descLines = [
+      cardDef.title || '',
+      '',
+      `**Attribute:** ${attributeIcon}`
+    ];
+    if (wielderLine) descLines.push(wielderLine);
+    if (boostSummary) descLines.push(`**Boost:** \`${boostSummary}\` Of all stats`);
+    if (exactEntry) {
+      descLines.push(`**Level:** ${lvl}${typeof exactEntry.xp === 'number' ? ` (XP: ${exactEntry.xp})` : ''}`);
+    }
+    descLines.push(`**Owned:** ${isOwned ? 'Yes' : 'No'}`);
+    descLines.push(`**Rank:** ${cardDef.rank}`);
+    if (signatureLines.length) {
+      descLines.push('', '**Signature(s)**', ...signatureLines);
+    }
+
+    const artifactEmbed = new EmbedBuilder()
+      .setColor(color)
+      .setAuthor(author)
+      .setTitle(cardDef.character)
+      .setDescription(descLines.join('\n'))
+      .setImage(cardDef.image_url || null)
+      .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
+
+    if (cardDef.title !== 'Random enemy') {
+      const emojiThumbnail = getEmojiImageUrl(cardDef.emoji);
+      if (emojiThumbnail) {
+        artifactEmbed.setThumbnail(emojiThumbnail);
+      } else {
+        const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
+        if (rankBadge) artifactEmbed.setThumbnail(rankBadge);
+        else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) artifactEmbed.setThumbnail(iconUrl);
+      }
+    }
+
+    return artifactEmbed;
+  }
 
   // Title line: Card name (biggest), title next to it
   let titleLine = cardDef.character;
@@ -416,15 +687,17 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     .setTitle(cardDef.character)
     .setDescription(descLines.join('\n'))
     .setImage(cardDef.image_url || null)
-    .setFooter({ text: `Mastery ${cardDef.mastery}/${cardDef.mastery_total}`, iconURL: avatarUrl || null });
+    .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
 
-  const emojiThumbnail = getEmojiImageUrl(cardDef.emoji);
-  if (emojiThumbnail) {
-    embed.setThumbnail(emojiThumbnail);
-  } else {
-    const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
-    if (rankBadge) embed.setThumbnail(rankBadge);
-    else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) embed.setThumbnail(iconUrl);
+  if (cardDef.title !== 'Random enemy') {
+    const emojiThumbnail = getEmojiImageUrl(cardDef.emoji);
+    if (emojiThumbnail) {
+      embed.setThumbnail(emojiThumbnail);
+    } else {
+      const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
+      if (rankBadge) embed.setThumbnail(rankBadge);
+      else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) embed.setThumbnail(iconUrl);
+    }
   }
 
   const statsLines = [
@@ -484,19 +757,30 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
   if (cardDef.special_attack && scaled.special_attack) {
     const sa = cardDef.special_attack;
+    const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
+    const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
     let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)`;
     if (cardDef.effect && cardDef.effectDuration) {
       const effectDesc = cardDef.effect === 'undead' && cardDef.itself
         ? 'Keeps itself alive at 1 HP until the effect ends'
-        : getEffectDescription(cardDef.effect, cardDef.effectDuration, !!cardDef.itself, cardDef.effectAmount, cardDef.effectChance);
+        : getEffectDescription(cardDef.effect, cardDef.effectDuration, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance);
       if (effectDesc) {
         let amountLabel = '';
-        if (['regen', 'attackup', 'attackdown', 'defenseup', 'defensedown'].includes(cardDef.effect)) {
-          const percent = cardDef.effectAmount ?? (cardDef.effect === 'regen' ? 10 : 12);
-          amountLabel = ` \`${percent}%\``;
-        } else if (cardDef.effect === 'confusion') {
-          const percent = cardDef.effectChance ?? 50;
-          amountLabel = ` \`${percent}%\``;
+        if (['cut', 'bleed'].includes(cardDef.effect)) {
+          const amount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'cut' ? 1 : 2);
+          amountLabel = ` (${amount} damage)`;
+        } else if (cardDef.effect === 'acid') {
+          const amount = normalizeEffectValue(cardDef.effectAmount, 1);
+          amountLabel = ` (${amount} initial)`;
+        } else if (cardDef.effect === 'prone') {
+          const amount = normalizeEffectValue(cardDef.effectAmount, 20);
+          amountLabel = ` (${amount}% extra)`;
+        } else if (cardDef.effect === 'drunk') {
+          const amount = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 20);
+          amountLabel = ` (${amount}% wrong target chance)`;
+        } else if (cardDef.effect === 'hungry') {
+          const amount = normalizeEffectValue(cardDef.effectAmount, 1);
+          amountLabel = ` (${amount} damage/turn)`;
         }
         specialAttackValue += ` - *${effectDesc}${amountLabel}*`;
       }
@@ -505,7 +789,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   }
 
   if (cardDef.effect && (!cardDef.special_attack || !scaled.special_attack)) {
-    const effectDescription = getEffectDescription(cardDef.effect, cardDef.effectDuration || 0, !!cardDef.itself, cardDef.effectAmount, cardDef.effectChance);
+    const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
+    const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
+    const effectDescription = getEffectDescription(cardDef.effect, cardDef.effectDuration || 0, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance);
     if (effectDescription) {
       embed.addFields({ name: 'Effect', value: effectDescription, inline: false });
     }
@@ -585,19 +871,40 @@ function calculateFinalStats(cardDef, level, boostPct = 0) {
 }
 
 // expose helper for other modules to describe status effects on attacks
+function normalizeGifUrl(url) {
+  if (!url || typeof url !== 'string') return url;
+  const tenorShortMatch = url.match(/^https?:\/\/(?:www\.)?tenor\.com\/([A-Za-z0-9_-]+)(?:\.gif)?(?:\?.*)?$/i);
+  if (tenorShortMatch) {
+    return `https://media.tenor.com/${tenorShortMatch[1]}.gif`;
+  }
+  const tenorViewMatch = url.match(/^https?:\/\/(?:www\.)?tenor\.com\/view\/[^/]+-(\d+)(?:\?.*)?$/i);
+  if (tenorViewMatch) {
+    return `https://media.tenor.com/${tenorViewMatch[1]}.gif`;
+  }
+  return url;
+}
+
+function normalizeEffectValue(value, fallback) {
+  if (value === null || value === undefined) return fallback;
+  const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function getEffectDescription(effectType, duration, isSelf = false, effectAmount = null, effectChance = null) {
   const isPermanent = duration === -1;
   const durationText = isPermanent ? '' : `${duration} turn${duration > 1 ? 's' : ''}`;
   const targetLabel = isSelf ? 'own' : `opponent's`;
-  const amount = effectAmount ?? (effectType === 'regen' ? 10 : 12);
-  const chance = effectChance ?? 50;
+  const amount = normalizeEffectValue(effectAmount, effectType === 'regen' ? 10 : 12);
+  const chance = normalizeEffectValue(effectChance ?? effectAmount, 50);
   const amountText = ['attackup', 'attackdown', 'defenseup', 'defensedown'].includes(effectType)
     ? ` ${amount}%`
     : effectType === 'regen'
       ? ` (${amount}%)`
       : effectType === 'confusion'
         ? ` (${chance}% chance)`
-        : '';
+        : effectType === 'bleed' || effectType === 'cut'
+          ? ` (${amount} damage)`
+          : '';
 
   const effectDescriptions = {
     regen: isPermanent
@@ -639,8 +946,15 @@ module.exports = {
   getCardById,
   getAllCardVersions,
   findBestOwnedVersion,
+  findBestOwnedShip,
   getEffectDescription,
+  normalizeGifUrl,
   getCardFinalStats,
   getAttributeEmoji,
   simulatePull,
+  isArtifactCard,
+  isShipCard,
+  getShipById,
+  updateShipBalance,
+  formatCardId,
 };

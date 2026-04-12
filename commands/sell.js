@@ -93,6 +93,12 @@ module.exports = {
 
     // Sell card
     // Check if card is on team
+    if (card.artifact || card.ship) {
+      const reply = `You can't sell **${card.character}**.`;
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
     if (user.team && user.team.includes(card.id)) {
       const reply = `You can't sell **${card.character}** while they're on your team.`;
       if (message) return message.channel.send(reply);

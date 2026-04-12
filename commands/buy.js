@@ -3,6 +3,7 @@ const { EmbedBuilder } = require('discord.js');
 const { getCurrentStock, getPricing, decrementStock } = require('../src/stock');
 const crews = require('../data/crews');
 const { rods } = require('../data/rods');
+const { chests } = require('../data/chests');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 const { sanitizeUserRods } = require('../utils/inventoryHelper');
 
@@ -46,8 +47,18 @@ function fuzzyMatch(query, candidates) {
   return bestScore > 0 ? best : null;
 }
 
+const CHEST_ITEMS = chests.reduce((map, chest) => {
+  const item = { name: chest.name, cost: chest.price, type: 'item', itemId: chest.id };
+  map[chest.name.toLowerCase()] = item;
+  chest.aliases.forEach(alias => {
+    map[alias.toLowerCase()] = item;
+  });
+  return map;
+}, {});
+
 const SHOP_ITEMS = {
-  'reset token': { name: 'Reset Token', cost: 500, type: 'item' }
+  'reset token': { name: 'Reset Token', cost: 500, type: 'item' },
+  ...CHEST_ITEMS
 };
 
 // Add rods to shop items (excluding basic which is not purchaseable)
@@ -195,7 +206,7 @@ module.exports = {
       // Set as current rod
       user.currentRod = item.rod.id;
     } else {
-      // Other items (like reset token) use beli
+      // Other items (like chests or reset token) use beli
       costCurrency = 'Beli';
       if ((user.balance || 0) < totalCost) {
         const reply = `You need **${totalCost}** Beli to buy ${amount}x ${item.name}. You only have **${user.balance || 0}** Beli.`;
@@ -203,7 +214,15 @@ module.exports = {
         return interaction.reply({ content: reply, ephemeral: true });
       }
       user.balance -= totalCost;
-      if (itemKey === 'reset token') {
+      if (item.type === 'item' && item.itemId) {
+        user.items = user.items || [];
+        const existingItem = user.items.find(it => it.itemId === item.itemId);
+        if (existingItem) {
+          existingItem.quantity += amount;
+        } else {
+          user.items.push({ itemId: item.itemId, quantity: amount });
+        }
+      } else if (itemKey === 'reset token') {
         user.resetTokens = (user.resetTokens || 0) + amount;
       }
     }

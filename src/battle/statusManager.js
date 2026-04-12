@@ -1,4 +1,6 @@
 // Centralized status and battle utilities shared by isail and duel
+const { getDamageMultiplier } = require('../../utils/attributeSystem');
+const statusEffects = require('../../commands/status-effects');
 const STATUS_EMOJIS = {
   stun: '<:Stun:1479135399573061751>',
   freeze: '<:Freeze:1479137305749880924>',
@@ -11,7 +13,16 @@ const STATUS_EMOJIS = {
   defenseup: '<:defenseup:1485297398942269510>',
   defensedown: '<:defensedown:1485297768535949524>',
   truesight: '<:truesight:1485299663879012484>',
-  undead: '<:undead:1485300491930959882>'
+  undead: '<:undead:1485300491930959882>',
+  reflect: '<:refelct:1492516882954190898>',
+  acid: '<:acid:1492617822851829770>',
+  prone: '<:prone:1492621344825937970>',
+  dissattack: '<:dissattack:1492623438160990343>',
+  blessed: '<:blessed:placeholder>',
+  charmed: '<:charmed:placeholder>',
+  doomed: '<:doomed:placeholder>',
+  drunk: '<:drunk:placeholder>',
+  hungry: '<:hungry:placeholder>'
 };
 
 function randomInt(min, max) {
@@ -46,11 +57,39 @@ function hasStatusLock(card) {
   return card.status.some(st => st.type === 'stun' || st.type === 'freeze');
 }
 
+function hasAttackDisabled(card) {
+  if (!card || !card.status || card.status.length === 0) return false;
+  return card.status.some(st => st.type === 'dissattack');
+}
+
 function getStatusLockReason(card) {
   if (!card || !card.status || card.status.length === 0) return null;
   const lock = card.status.find(st => st.type === 'stun' || st.type === 'freeze');
   if (lock) return lock.type === 'stun' ? 'stunned' : 'frozen';
   return null;
+}
+
+function getProneMultiplier(attacker, defender) {
+  if (!defender || !defender.status || !attacker) return 1;
+  const prone = defender.status.find(st => st.type === 'prone');
+  if (!prone) return 1;
+  const attrMultiplier = getDamageMultiplier(attacker.def.attribute, defender.def.attribute);
+  if (attrMultiplier > 1) {
+    const extra = (prone.amount ?? 20) / 100;
+    return 1 + extra;
+  }
+  return 1;
+}
+
+function getDrunkChance(entity) {
+  if (!entity || !entity.status) return 0;
+  const drunk = entity.status.find(st => st.type === 'drunk');
+  return drunk ? (drunk.chance ?? 20) : 0;
+}
+
+function removeStatusTypes(entity, types) {
+  if (!entity || !entity.status) return;
+  entity.status = entity.status.filter(st => !types.includes(st.type));
 }
 
 function _handleKO(entity) {
@@ -82,73 +121,11 @@ function applyStartOfTurnEffects(teamArray) {
   teamArray.forEach(e => {
     if (!e || !e.status) return;
     e.status = e.status.filter(st => {
-      if (st.type === 'cut') {
-        e.currentHP = Math.max(0, (e.currentHP || 0) - 1);
-        logs.push(`${e.def?.character || e.rank || 'Entity'} suffers cut for -1 HP!`);
-        const ko = _handleKO(e);
-        if (ko) logs.push(ko);
-        if (st.remaining !== Infinity) {
-          st.remaining -= 1;
-        }
-        return st.remaining > 0 || st.remaining === Infinity;
+      const handler = statusEffects[st.type];
+      if (handler && typeof handler.onStartOfTurn === 'function') {
+        return handler.onStartOfTurn(e, st, logs, _handleKO);
       }
 
-      if (st.type === 'bleed') {
-        e.currentHP = Math.max(0, (e.currentHP || 0) - 2);
-        logs.push(`${e.def?.character || e.rank || 'Entity'} suffers bleed for -2 HP!`);
-        const ko = _handleKO(e);
-        if (ko) logs.push(ko);
-        if (st.remaining !== Infinity) {
-          st.remaining -= 1;
-        }
-        return st.remaining > 0 || st.remaining === Infinity;
-      }
-
-      if (st.type === 'regen') {
-        const amount = st.amount || 0;
-        const baseHP = e.maxHP || e.def?.health || 0;
-        if (baseHP > 0) {
-          const heal = Math.ceil(baseHP * amount / 100);
-          e.currentHP = Math.min(baseHP, (e.currentHP || 0) + heal);
-          if (e.currentHP > 0) e.alive = true;
-          logs.push(`${e.def?.character || e.rank || 'Entity'} regenerates ${heal} HP from regen!`);
-        }
-        if (st.remaining !== Infinity) {
-          st.remaining -= 1;
-        }
-        return st.remaining > 0 || st.remaining === Infinity;
-      }
-
-      if (st.type === 'stun' || st.type === 'freeze') {
-        if (st.remaining !== Infinity) {
-          st.remaining -= 1;
-          if (st.remaining <= 0) {
-            const msg = `${e.def?.character || e.rank || 'Entity'} is no longer ${st.type === 'stun' ? 'stunned' : 'frozen'}!`;
-            logs.push(msg);
-            return false;
-          }
-        }
-        return true;
-      }
-
-      if (st.type === 'undead') {
-        if (st.remaining !== Infinity) {
-          st.remaining -= 1;
-          if (st.remaining <= 0) {
-            if ((e.currentHP || 0) <= 0) {
-              e.alive = false;
-              e.energy = 0;
-              logs.push(`${e.def?.character || e.rank || 'Entity'} is no longer undead and collapses!`);
-            } else {
-              logs.push(`${e.def?.character || e.rank || 'Entity'} is no longer undead.`);
-            }
-            return false;
-          }
-        }
-        return true;
-      }
-
-      // all other statuses count down; we keep them and/or let the effect layer in other operations
       if (st.remaining !== Infinity) {
         st.remaining -= 1;
       }
@@ -167,12 +144,21 @@ function applyCardEffect(attacker, target) {
   if (!attacker || !attacker.def || !attacker.def.effect) return logs;
   const def = attacker.def;
   // Store original duration for message display
-  const origDur = def.effectDuration || 1;
+  const origDur = def.effectDuration ?? (def.effect === 'doomed' ? 3 : 1);
   // If duration is 0 or -1, effect is permanent (use Infinity internally)
   let dur = origDur === 0 || origDur === -1 ? Infinity : origDur;
+  if (def.effect === 'freeze' || def.effect === 'hungry') {
+    dur = Infinity;
+  }
 
   const selfEffects = ['truesight', 'undead'];
-  const applyTo = def.effect === 'team_stun' ? target : (def.itself || selfEffects.includes(def.effect) ? attacker : target);
+  const applyTo = def.effect === 'team_stun'
+    ? target
+    : (def.all && Array.isArray(target))
+      ? target
+      : (def.itself || selfEffects.includes(def.effect))
+        ? attacker
+        : target;
 
   // locking statuses tick down twice per round (once after each action), so
   // we multiply by two to ensure the intended number of victim turns are
@@ -182,11 +168,34 @@ function applyCardEffect(attacker, target) {
   }
 
   const statusMessage = () => {
-    if (origDur === 0) return ` (permanent)`;
+    if (def.effect === 'freeze' || def.effect === 'hungry') return ` (permanent)`;
+    if (origDur === 0 || origDur === -1) return ` (permanent)`;
     return ` for ${origDur} turn${origDur > 1 ? 's' : ''}`;
   };
 
-  const statusTargetName = (entity) => entity?.def?.character || entity?.rank || 'Enemy';
+  const statusTargetName = (entity) => {
+    if (Array.isArray(entity)) return 'All targets';
+    return entity?.def?.character || entity?.rank || 'Enemy';
+  };
+
+  const addEffectToTarget = (effectTarget, type, duration, data = {}) => {
+    if (Array.isArray(effectTarget)) {
+      effectTarget.forEach(t => addStatus(t, type, duration, data));
+    } else {
+      addStatus(effectTarget, type, duration, data);
+    }
+  };
+
+  const effectHandler = statusEffects[def.effect];
+  if (effectHandler && typeof effectHandler.applyEffect === 'function' && effectHandler.applyEffect.length === 1) {
+    const effectLogs = effectHandler.applyEffect({ target: applyTo, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage });
+    if (Array.isArray(effectLogs)) {
+      logs.push(...effectLogs);
+    } else if (effectLogs) {
+      logs.push(effectLogs);
+    }
+    return logs;
+  }
 
   switch (def.effect) {
     case 'stun':
@@ -197,14 +206,18 @@ function applyCardEffect(attacker, target) {
       addStatus(applyTo, 'freeze', dur);
       logs.push(`${statusTargetName(applyTo)} is frozen and can't move${statusMessage()}!`);
       break;
-    case 'cut':
-      addStatus(applyTo, 'cut', dur);
+    case 'cut': {
+      const amount = def.effectAmount ?? 1;
+      addStatus(applyTo, 'cut', dur, { amount });
       logs.push(`${statusTargetName(applyTo)} is cut${statusMessage()}!`);
       break;
-    case 'bleed':
-      addStatus(applyTo, 'bleed', dur);
+    }
+    case 'bleed': {
+      const amount = def.effectAmount ?? 2;
+      addStatus(applyTo, 'bleed', dur, { amount });
       logs.push(`${statusTargetName(applyTo)} is bleeding${origDur === 0 ? ' (permanent)' : ` for ${origDur} use${origDur > 1 ? 's' : ''}`}!`);
       break;
+    }
     case 'team_stun':
       if (Array.isArray(target)) {
         target.forEach(t => addStatus(t, 'stun', dur));
@@ -212,13 +225,15 @@ function applyCardEffect(attacker, target) {
       }
       break;
     case 'regen':
-      addStatus(applyTo, 'regen', dur, { amount: def.effectAmount || 10 });
-      logs.push(`${statusTargetName(applyTo)} gains regen (${def.effectAmount || 10}%)${statusMessage()}!`);
+      addStatus(applyTo, 'regen', dur, { amount: def.effectAmount ?? 10 });
+      logs.push(`${statusTargetName(applyTo)} gains regen (${def.effectAmount ?? 10}%)${statusMessage()}!`);
       break;
-    case 'confusion':
-      addStatus(applyTo, 'confusion', dur, { chance: def.effectChance || 50 });
-      logs.push(`${statusTargetName(applyTo)} is confused (${def.effectChance || 50}% miss chance)${statusMessage()}!`);
+    case 'confusion': {
+      const chance = def.effectChance ?? def.effectAmount ?? 50;
+      addStatus(applyTo, 'confusion', dur, { chance });
+      logs.push(`${statusTargetName(applyTo)} is confused (${chance}% miss chance)${statusMessage()}!`);
       break;
+    }
     case 'attackup': {
       const amount = def.effectAmount ?? 12;
       addStatus(applyTo, 'attackup', dur, { amount });
@@ -243,19 +258,11 @@ function applyCardEffect(attacker, target) {
       logs.push(`${statusTargetName(applyTo)}'s defense is reduced (${amount}%)${statusMessage()}!`);
       break;
     }
-    case 'truesight':
-      addStatus(applyTo, 'truesight', dur);
-      logs.push(`${statusTargetName(applyTo)} gains truesight${statusMessage()}!`);
+    case 'dissattack':
+      addEffectToTarget(applyTo, 'dissattack', dur);
+      logs.push(`${statusTargetName(applyTo)} cannot attack or special attack${statusMessage()}!`);
       break;
-    case 'undead':
-      addStatus(applyTo, 'undead', dur);
-      if ((applyTo.currentHP || 0) <= 0) {
-        applyTo.currentHP = 1;
-        applyTo.alive = true;
-        logs.push(`${statusTargetName(applyTo)} becomes undead and returns at 1 HP${statusMessage()}!`);
-      } else {
-        logs.push(`${statusTargetName(applyTo)} becomes undead${statusMessage()}!`);
-      }
+    default:
       break;
   }
   return logs;
@@ -337,7 +344,8 @@ function applyBleedOnEnergyUse(entity, energySpent) {
   if (!entity || !entity.status || energySpent <= 0) return logs;
   const bleed = entity.status.find(s => s.type === 'bleed');
   if (!bleed) return logs;
-  const total = 2 * energySpent;
+  const amount = bleed.amount ?? 2;
+  const total = amount * energySpent;
   entity.currentHP = Math.max(0, (entity.currentHP || 0) - total);
   logs.push(`${entity.def?.character || entity.rank || 'Entity'} takes -${total} HP from bleed!`);
   // only decrement if NOT permanent (finite remaining)
@@ -357,6 +365,7 @@ module.exports = {
   STATUS_EMOJIS,
   addStatus,
   hasStatusLock,
+  hasAttackDisabled,
   getStatusLockReason,
   applyStartOfTurnEffects,
   applyCardEffect,
@@ -364,6 +373,9 @@ module.exports = {
   getAttackModifier,
   getDefenseMultiplier,
   getConfusionChance,
+  getProneMultiplier,
+  getDrunkChance,
+  removeStatusTypes,
   hasTruesight,
   consumeTruesight,
   handleKO: _handleKO

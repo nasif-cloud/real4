@@ -17,11 +17,6 @@ commands.push({
   description: 'Show ownership info for a card',
   options: [{ name: 'query', type: 3, description: 'Partial or full card name', required: true }]
 });
-commands.push({
-  name: 'upgrade',
-  description: 'Upgrade one of your cards to the next mastery',
-  options: [{ name: 'query', type: 3, description: 'Card you own (name)', required: true }]
-});
 
 // balance command
 commands.push({
@@ -53,6 +48,16 @@ commands.push({
   description: 'Sell a card or leveler for currency',
   options: [{ name: 'query', type: 3, description: 'Card or item name', required: true }]
 });
+commands.push({
+  name: 'bulksell',
+  description: 'Sell multiple cards or levelers at once',
+  options: [{ name: 'query', type: 3, description: 'List of items to sell, e.g. "Monkey D. Luffy - 10, Yellow Hermit - 17"', required: true }]
+});
+commands.push({
+  name: 'claim',
+  description: 'Claim earnings from your active ship',
+  options: [{ name: 'amount', type: 4, description: 'Amount to claim (leave blank for all)', required: false }]
+});
 
 // infinite sail battle
 commands.push({ name: 'isail', description: 'Challenge the Infinite Sail' });
@@ -70,6 +75,30 @@ commands.push({
   name: 'buy',
   description: 'Buy an item from the shop',
   options: [{ name: 'item', type: 3, description: 'Item name', required: true }]
+});
+commands.push({
+  name: 'bet',
+  description: 'Flip a coin and bet Beli on heads or tails',
+  options: [
+    { name: 'guess', type: 3, description: 'Choose heads or tails', required: true, choices: [
+      { name: 'heads', value: 'heads' },
+      { name: 'tails', value: 'tails' }
+    ] },
+    { name: 'amount', type: 4, description: 'Amount of Beli to bet (minimum 100)', required: false, min_value: 100 }
+  ]
+});
+commands.push({
+  name: 'equip',
+  description: 'Equip an artifact to one of its signature cards',
+  options: [
+    { name: 'artifact', type: 3, description: 'Artifact name', required: true },
+    { name: 'card', type: 3, description: 'Card to equip the artifact to', required: true }
+  ]
+});
+commands.push({
+  name: 'unequip',
+  description: 'Unequip an artifact from its current card',
+  options: [{ name: 'artifact', type: 3, description: 'Artifact name', required: true }]
 });
 
 // bounty system
@@ -118,10 +147,16 @@ commands.push({ name: 'daily', description: 'Claim your OP daily rewards' });
 commands.push({ name: 'stock', description: 'View current pack stock' });
 commands.push({
   name: 'open',
-  description: 'Open a pack to get cards',
-  options: [{ name: 'pack', type: 3, description: 'Pack name', required: true }]
+  description: 'Open a pack or chest to get cards or rewards',
+  options: [
+    { name: 'pack', type: 3, description: 'Pack or chest name', required: true },
+    { name: 'amount', type: 4, description: 'Amount to open (only supported for chests)', required: false }
+  ]
 });
+commands.push({ name: 'setship', description: 'Set your active ship for passive income', options: [{ name: 'ship', type: 3, description: 'Ship name', required: true }] });
+commands.push({ name: 'deposit', description: 'Deposit Beli into your active ship', options: [{ name: 'amount', type: 4, description: 'Amount of Beli to deposit', required: true }] });
 commands.push({ name: 'loot', description: 'Attempt to loot a random guild ship for Beli and packs' });
+commands.push({ name: 'trivia', description: 'Start a trivia quiz for rewards' });
 commands.push({ name: 'rob', description: 'Attempt to rob a user', options: [{ name: 'target', type: 6, description: 'User to rob', required: true }] });
 commands.push({ name: 'stoprob', description: 'Stop an active robbery against you' });
 commands.push({ name: 'collection', description: 'View your card collection' });

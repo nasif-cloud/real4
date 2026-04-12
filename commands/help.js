@@ -19,8 +19,7 @@ const COMMAND_CATEGORIES = {
       { name: 'info <query>', desc: 'View card info with ownership history' },
       { name: 'collection', desc: 'Browse your card collection with filters' },
       { name: 'stock', desc: 'Check stock market prices' },
-       { name: 'open <pack>', desc: 'Open a card pack to get crews' },
-      { name: 'upgrade <query>', desc: 'Upgrade a card to its next mastery level' }
+      { name: 'open <pack>', desc: 'Open a card pack to get crews' }
     ]
   },
   team: {

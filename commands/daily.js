@@ -1,32 +1,41 @@
 const User = require('../models/User');
 const { EmbedBuilder } = require('discord.js');
 const crews = require('../data/crews');
+const { chests, getChestById } = require('../data/chests');
+
+const CHEST_NAMES = Object.fromEntries(chests.map(chest => [chest.id, chest.name]));
+const CHEST_EMOJIS = Object.fromEntries(chests.map(chest => [chest.id, chest.emoji]));
 
 const DAILY_REWARDS = {
   1: {
     beli: [10, 100],
     gems: [0, 1],
-    packs: [{ rank: 'C', count: 1 }]
+    packs: [{ rank: 'C', count: 1 }],
+    chests: [{ id: 'c_chest', chance: 0.5, count: 1 }]
   },
   2: {
     beli: [50, 250],
     gems: [1, 2],
-    packs: [{ rank: 'C', count: 2 }]
+    packs: [{ rank: 'C', count: 2 }],
+    chests: [{ id: 'c_chest', chance: 1, count: 1 }]
   },
   3: {
     beli: [100, 300],
     gems: [1, 3],
-    packs: [{ rank: 'C', count: 2 }, { rank: 'B', count: 1 }]
+    packs: [{ rank: 'C', count: 2 }, { rank: 'B', count: 1 }],
+    chests: [{ id: 'b_chest', chance: 0.5, count: 1, exclusive: true }, { id: 'c_chest', chance: 0.5, count: 1, exclusive: true }]
   },
   4: {
     beli: [250, 500],
     gems: [2, 3],
-    packs: [{ rank: 'B', count: 2 }, { rank: 'A', count: 0.3 }] // 30% chance for A
+    packs: [{ rank: 'B', count: 2 }, { rank: 'A', count: 0.3 }],
+    chests: [{ id: 'b_chest', chance: 1, count: 1 }]
   },
   5: {
     beli: [500, 1000],
     gems: [3, 5],
-    packs: [{ rank: 'B', count: 2 }, { rank: 'A', count: 1 }, { rank: 'S', count: 0.3 }] // 30% chance for S
+    packs: [{ rank: 'B', count: 2 }, { rank: 'A', count: 1 }, { rank: 'S', count: 0.3 }],
+    chests: [{ id: 'b_chest', chance: 0.5, count: 1, exclusive: true }, { id: 'a_chest', chance: 0.5, count: 1, exclusive: true }]
   }
 };
 
@@ -43,6 +52,18 @@ function getRandomCrewByRank(rank) {
   const availableCrews = crews.filter(c => c.rank === crewRank);
   if (availableCrews.length === 0) return null;
   return availableCrews[Math.floor(Math.random() * availableCrews.length)];
+}
+
+function chooseExclusiveChest(chestOptions) {
+  const options = chestOptions.filter(c => c.exclusive);
+  if (!options.length) return null;
+  const totalWeight = options.reduce((sum, option) => sum + option.chance, 0);
+  let roll = Math.random() * totalWeight;
+  for (const option of options) {
+    if (roll < option.chance) return option;
+    roll -= option.chance;
+  }
+  return options[options.length - 1];
 }
 
 function getStreakString(streak) {
@@ -114,6 +135,39 @@ module.exports = {
       }
     }
 
+    const chestRewards = [];
+    user.items = user.items || [];
+    const exclusiveChoice = chooseExclusiveChest(rewards.chests || []);
+    if (exclusiveChoice) {
+      const chestDef = getChestById(exclusiveChoice.id);
+      const existingChest = user.items.find(it => it.itemId === exclusiveChoice.id);
+      if (existingChest) {
+        existingChest.quantity += exclusiveChoice.count;
+      } else {
+        user.items.push({ itemId: exclusiveChoice.id, quantity: exclusiveChoice.count });
+      }
+      const displayName = chestDef ? `${chestDef.emoji} ${chestDef.name}` : exclusiveChoice.id;
+      chestRewards.push(`${exclusiveChoice.count}x ${displayName}`);
+    } else {
+      for (const chest of rewards.chests || []) {
+        if (chest.exclusive) continue;
+        if (Math.random() < chest.chance) {
+          const chestDef = getChestById(chest.id);
+          const existingChest = user.items.find(it => it.itemId === chest.id);
+          if (existingChest) {
+            existingChest.quantity += chest.count;
+          } else {
+            user.items.push({ itemId: chest.id, quantity: chest.count });
+          }
+          const displayName = chestDef ? `${chestDef.emoji} ${chestDef.name}` : chest.id;
+          chestRewards.push(`${chest.count}x ${displayName}`);
+        }
+      }
+    }
+    if (chestRewards.length > 0) {
+      user.markModified('items');
+    }
+
     // Apply rewards
     user.balance += beliReward;
     user.gems += gemsReward;
@@ -139,21 +193,30 @@ module.exports = {
         packLines.push(`${nextEmoji} 1x ${packName.toLowerCase()} pack`);
       }
     }
-    // Compose lines
-    const lines = [
-      '**Daily rewards claimed!**',
-      `${nextEmoji} ${beliIcon} ${beliReward} beli`,
-      `${nextEmoji} ${gemIcon} ${gemsReward} gems`
+
+    let chestLines = [];
+    if (chestRewards.length > 0) {
+      for (const chestName of chestRewards) {
+        chestLines.push(`${nextEmoji} ${chestName}`);
+      }
+    }
+
+    const fields = [
+      { name: 'Beli', value: `${beliIcon} ${beliReward}`, inline: true },
+      { name: 'Gems', value: `${gemIcon} ${gemsReward}`, inline: true }
     ];
     if (packLines.length > 0) {
-      lines.push(...packLines);
+      fields.push({ name: 'Packs', value: packLines.join('\n'), inline: false });
     }
-    lines.push(`\n**Streak**: ${getStreakString(newStreak)}`);
-    lines.push(`-# come back in \`${nextHours}h ${nextMinutes}m\` for more rewards.`);
+    if (chestLines.length > 0) {
+      fields.push({ name: 'Chests', value: chestLines.join('\n'), inline: false });
+    }
 
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setDescription(lines.join('\n'))
+      .setTitle('Daily rewards claimed!')
+      .setDescription(`**Streak**: ${getStreakString(newStreak)}\n-# come back in \`${nextHours}h ${nextMinutes}m\` for more rewards.`)
+      .addFields(fields)
       .setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
 
     if (message) return message.channel.send({ embeds: [embed] });

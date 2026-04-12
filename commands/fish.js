@@ -350,6 +350,37 @@ module.exports = {
       lootLines.push(`<:gem:1490741488081043577> ${gemAmount} gem${gemAmount > 1 ? 's' : ''}`);
     }
 
+    const chestRoll = Math.random();
+    const chestMultiplier = 1 + (currentRodData?.luckBonus || 0);
+    if (chestRoll < 0.001 * chestMultiplier) {
+      user.items = user.items || [];
+      const existingChest = user.items.find(it => it.itemId === 'a_chest');
+      if (existingChest) {
+        existingChest.quantity += 1;
+      } else {
+        user.items.push({ itemId: 'a_chest', quantity: 1 });
+      }
+      lootLines.push('<:Achest:1492559635507450068> A Chest');
+    } else if (chestRoll < 0.021 * chestMultiplier) {
+      user.items = user.items || [];
+      const existingChest = user.items.find(it => it.itemId === 'b_chest');
+      if (existingChest) {
+        existingChest.quantity += 1;
+      } else {
+        user.items.push({ itemId: 'b_chest', quantity: 1 });
+      }
+      lootLines.push('<:Bchest:1492559568738451567> B Chest');
+    } else if (chestRoll < 0.051 * chestMultiplier) {
+      user.items = user.items || [];
+      const existingChest = user.items.find(it => it.itemId === 'c_chest');
+      if (existingChest) {
+        existingChest.quantity += 1;
+      } else {
+        user.items.push({ itemId: 'c_chest', quantity: 1 });
+      }
+      lootLines.push('<:Cchest:1492559506868146307> C Chest');
+    }
+
     // Decrement rod durability
     if (currentRodItem && currentRodItem.durability !== undefined) {
       currentRodItem.durability -= 1;

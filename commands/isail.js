@@ -30,7 +30,7 @@ const marines = require('../data/marines');
 // stats computations (level & boosts) are resolved via a shared helper
 // so that `info` and `isail` always produce identical values.
 const { resolveStats } = require('../utils/statResolver');
-const { getEffectDescription } = require('../utils/cards');
+const { getEffectDescription, normalizeGifUrl } = require('../utils/cards');
 const { getDamageMultiplier, getAttributeDescription } = require('../utils/attributeSystem');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 
@@ -49,6 +49,12 @@ const {
   applyStartOfTurnEffects: applyStatusesForTurn,
   applyCardEffect: applyCardEffectShared,
   calculateUserDamage: calculateUserDamageShared,
+  getAttackModifier,
+  getDefenseMultiplier,
+  getProneMultiplier,
+  getDrunkChance,
+  hasAttackDisabled,
+  removeStatusTypes,
   hasTruesight,
   consumeTruesight,
   handleKO
@@ -56,6 +62,15 @@ const {
 
 
 const calculateUserDamage = calculateUserDamageShared;
+
+function getReflectStatus(entity) {
+  return entity?.status?.find(st => st.type === 'reflect');
+}
+
+function isCharmedAgainstTarget(attacker, target) {
+  if (!attacker || !target || !attacker.status) return false;
+  return attacker.status.some(st => st.type === 'charmed') && attacker.def.attribute === target.attribute;
+}
 
 // Function to get attribute from emoji name
 function getAttributeFromEmoji(emoji) {
@@ -131,9 +146,12 @@ function getEffectString(card, target) {
     const duration = card.def.effectDuration || 1;
     const targetName = card.def.itself ? card.def.character : (target ? (target.rank || target.def?.character) : 'target');
     const icon = STATUS_EMOJIS[card.def.effect] || '';
-    const defaultAmount = 25;
-    const effectAmount = card.def.effectAmount ?? (card.def.effect === 'regen' ? 10 : defaultAmount);
-    const effectChance = card.def.effectChance ?? 30;
+    const defaultAmount = 12;
+    const rawAmount = card.def.effectAmount ?? (card.def.effect === 'regen' ? 10 : defaultAmount);
+    const effectAmount = Number.isNaN(Number(rawAmount)) ? (card.def.effect === 'regen' ? 10 : defaultAmount) : Number(rawAmount);
+    const rawChance = card.def.effectChance ?? card.def.effectAmount;
+    const parsedChance = Number.parseInt(String(rawChance ?? '').replace(/[^0-9]/g, ''), 10);
+    const effectChance = Number.isNaN(parsedChance) ? 50 : parsedChance;
     let details = '';
     if (card.def.effect === 'regen') details = ` (${effectAmount}%)`;
     if (card.def.effect === 'confusion') details = ` (${effectChance}%)`;
@@ -316,8 +334,9 @@ function buildEmbed(state, user, discordUser) {
         const emoji = STATUS_EMOJIS[st.type] || '';
         return st.stacks && st.stacks > 1 ? `${emoji}x${st.stacks}` : emoji;
       }).join(' ');
-      const value = `${statusEmojis} ${hpBar(m.currentHP, m.maxHP)}\n${m.currentHP}/${m.maxHP}`;
-      embed.addFields({ name: `${m.emoji} ${m.rank}`, value, inline: true });
+      const fieldName = `${m.emoji || ''} ${statusEmojis} ${m.rank}`.trim();
+      const value = `${hpBar(m.currentHP, m.maxHP)}\n${m.currentHP}/${m.maxHP}`;
+      embed.addFields({ name: fieldName, value, inline: true });
     }
   } else {
     embed.addFields({ name: 'Enemy Marines', value: 'All marines defeated!', inline: false });
@@ -334,16 +353,16 @@ function buildEmbed(state, user, discordUser) {
         const emoji = STATUS_EMOJIS[st.type] || '';
         return st.stacks && st.stacks > 1 ? `${emoji}x${st.stacks}` : emoji;
       }).join(' ');
-      const prefix = `${c.def.emoji || ''} ${statusEmojis}`.trim();
+      const fieldName = `${c.def.emoji || ''} ${statusEmojis} ${c.def.character}`.trim();
       const idx = state.cards.indexOf(c);
       const isSelected = state.selected !== null && idx === state.selected;
       const level = c.userEntry ? c.userEntry.level : 1;
       const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
-      let value = `${prefix} ${hpBar(c.currentHP, c.maxHP)}`;
+      let value = `${hpBar(c.currentHP, c.maxHP)}`;
       value += `\nLv. ${level} U${upgradeMatch}`;
       value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
       if (isSelected) value = `**> ${value}**`;
-      embed.addFields({ name: c.def.character, value, inline: true });
+      embed.addFields({ name: fieldName, value, inline: true });
     }
   } else {
     embed.addFields({ name: 'Your Crew', value: 'Entire crew defeated!', inline: false });
@@ -490,10 +509,11 @@ function makeTargetRow(state) {
 function rechargeEnergy(state) {
   state.cards.forEach(c => {
     const locked = c.status && c.status.some(st => st.type === 'stun' || st.type === 'freeze');
+    const gain = c.status && c.status.some(st => st.type === 'blessed') ? 2 : 1;
     if (c.turnsUntilRecharge > 0) {
       c.turnsUntilRecharge--;
     } else if (c.alive && c.energy < 3 && !locked) {
-      c.energy++;
+      c.energy = Math.min(3, c.energy + gain);
     }
   });
 }
@@ -1032,6 +1052,9 @@ module.exports = {
         if (hasStatusLock(card)) {
           return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
         }
+        if (hasAttackDisabled(card)) {
+          return interaction.followUp({ content: `${card.def.character} cannot attack or special attack right now!`, ephemeral: true });
+        }
         if (card.energy < 1) {
           return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
         }
@@ -1039,36 +1062,67 @@ module.exports = {
         card.turnsUntilRecharge = 2;
         const user = await User.findOne({ userId: state.userId });
         let dmg = calculateUserDamage(card, 'attack', user);
-        const m = state.marines[targetIdx];
+        let m = state.marines[targetIdx];
 
         // Check for confusion on attacker
         const confusionStatus = card.status?.find(st => st.type === 'confusion');
-        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance || 30)) {
-          state.lastUserAction = `${card.def.character} is confused and misses the attack! <:energy:1478051414558118052> -1`;
+        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance ?? 50)) {
+          const selfDmg = Math.max(0, Math.floor(dmg * (1 + ((card.status?.find(st => st.type === 'attackup')?.amount || 0) - (card.status?.find(st => st.type === 'attackdown')?.amount || 0)) / 100)));
+          card.currentHP = Math.max(0, (card.currentHP || 0) - selfDmg);
+          const selfKo = handleKO(card);
+          if (selfKo) appendLog(state, selfKo);
+          state.lastUserAction = `${card.def.character} is confused and hits themselves for **${selfDmg} DMG**! <:energy:1478051414558118052> -1`;
           const finished = await finalizeUserAction(state, interaction.message, interaction);
           if (finished) battleStates.delete(msgId);
           return safeDefer(interaction);
         }
 
-        // Check for truesight on target (marine doesn't have status, so skip)
+        const drunkChance = getDrunkChance(card);
+        if (drunkChance > 0 && Math.random() * 100 <= drunkChance) {
+          const alternateTargets = state.marines.filter(c => c.alive && c !== m);
+          if (alternateTargets.length > 0) {
+            const wrongTarget = alternateTargets[Math.floor(Math.random() * alternateTargets.length)];
+            appendLog(state, `${card.def.character} is drunk and hits the wrong target!`);
+            m = wrongTarget;
+          } else {
+            state.lastUserAction = `${card.def.character} is drunk and misses the attack! <:energy:1478051414558118052> -1`;
+            const finished = await finalizeUserAction(state, interaction.message, interaction);
+            if (finished) battleStates.delete(msgId);
+            return safeDefer(interaction);
+          }
+        }
+
+        if (isCharmedAgainstTarget(card, m)) {
+          return interaction.followUp({ content: `${card.def.character} is charmed and cannot attack a same-attribute target!`, ephemeral: true });
+        }
 
         // Apply attribute multiplier
         const attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
+        const proneMultiplier = getProneMultiplier(card, m);
 
         // Apply attack modifiers
         const attackUp = card.status?.find(st => st.type === 'attackup');
         const attackDown = card.status?.find(st => st.type === 'attackdown');
-        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount || 10) / 100));
-        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount || 10) / 100));
+        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount ?? 12) / 100));
+        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount ?? 12) / 100));
 
-        const finalDmg = Math.floor(dmg * attrMultiplier);
+        const finalDmg = Math.floor(dmg * attrMultiplier * proneMultiplier);
         
-        m.currentHP -= finalDmg;
-        state.lastMarineTarget = m;
-        if (m.currentHP <= 0) {
-          m.currentHP = 0;
-          m.alive = false;
+        const reflect = getReflectStatus(m);
+        if (reflect) {
+          card.currentHP = Math.max(0, (card.currentHP || 0) - finalDmg);
+          const reflectKO = handleKO(card);
+          if (reflectKO) appendLog(state, reflectKO);
+          appendLog(state, `${m.emoji} ${m.rank} reflects the attack back at ${card.def.character} for ${finalDmg} DMG!`);
+        } else {
+          m.currentHP -= finalDmg;
+          state.lastMarineTarget = m;
+          if (m.currentHP <= 0) {
+            m.currentHP = 0;
+            m.alive = false;
+          }
         }
+
         // no status effects on normal attack (special only)
         // placeholder kept for symmetry
         const effectLogs1 = [];
@@ -1080,6 +1134,9 @@ module.exports = {
         if (card.energy < 3) {
           return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
         }
+        if (hasAttackDisabled(card)) {
+          return interaction.followUp({ content: `${card.def.character} cannot attack or special attack right now!`, ephemeral: true });
+        }
         card.energy -= 3;
         card.turnsUntilRecharge = 2;
         const user = await User.findOne({ userId: state.userId });
@@ -1088,42 +1145,78 @@ module.exports = {
         const rangeMin = card.scaled && card.scaled.special_attack ? card.scaled.special_attack.min : 0;
         const rangeMax = card.scaled && card.scaled.special_attack ? card.scaled.special_attack.max : 0;
         let dmg = calculateUserDamage(card, 'special', user);
-        const m = state.marines[targetIdx];
+        let m = state.marines[targetIdx];
 
         // Check for confusion on attacker
         const confusionStatus = card.status?.find(st => st.type === 'confusion');
-        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance || 30)) {
-          state.lastUserAction = `${card.def.character} is confused and misses the special attack! <:energy:1478051414558118052> -3`;
+        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance ?? 50)) {
+          const selfDmg = Math.max(0, Math.floor(dmg * (1 + ((card.status?.find(st => st.type === 'attackup')?.amount || 0) - (card.status?.find(st => st.type === 'attackdown')?.amount || 0)) / 100)));
+          card.currentHP = Math.max(0, (card.currentHP || 0) - selfDmg);
+          const selfKo = handleKO(card);
+          if (selfKo) appendLog(state, selfKo);
+          state.lastUserAction = `${card.def.character} is confused and hits themselves for **${selfDmg} DMG**! <:energy:1478051414558118052> -3`;
           const finished = await finalizeUserAction(state, interaction.message, interaction);
           if (finished) battleStates.delete(msgId);
           return safeDefer(interaction);
         }
 
-        // Check for truesight on target (marine doesn't have status, so skip)
+        const drunkChance = getDrunkChance(card);
+        if (drunkChance > 0 && Math.random() * 100 <= drunkChance) {
+          const alternateTargets = state.marines.filter(c => c.alive && c !== m);
+          if (alternateTargets.length > 0) {
+            const wrongTarget = alternateTargets[Math.floor(Math.random() * alternateTargets.length)];
+            appendLog(state, `${card.def.character} is drunk and hits the wrong target!`);
+            m = wrongTarget;
+          } else {
+            state.lastUserAction = `${card.def.character} is drunk and misses the special attack! <:energy:1478051414558118052> -3`;
+            const finished = await finalizeUserAction(state, interaction.message, interaction);
+            if (finished) battleStates.delete(msgId);
+            return safeDefer(interaction);
+          }
+        }
+
+        if (isCharmedAgainstTarget(card, m)) {
+          return interaction.followUp({ content: `${card.def.character} is charmed and cannot attack a same-attribute target!`, ephemeral: true });
+        }
 
         // Apply attribute multiplier
         const attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
+        const proneMultiplier = getProneMultiplier(card, m);
 
         // Apply attack modifiers
         const attackUp = card.status?.find(st => st.type === 'attackup');
         const attackDown = card.status?.find(st => st.type === 'attackdown');
-        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount || 10) / 100));
-        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount || 10) / 100));
+        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount ?? 12) / 100));
+        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount ?? 12) / 100));
 
-        const finalDmg = Math.floor(dmg * attrMultiplier);
+        const finalDmg = Math.floor(dmg * attrMultiplier * proneMultiplier);
         
-        m.currentHP -= finalDmg;
-        state.lastMarineTarget = m;
-        if (m.currentHP <= 0) {
-          m.currentHP = 0;
-          m.alive = false;
+        const reflect = getReflectStatus(m);
+        if (reflect) {
+          card.currentHP = Math.max(0, (card.currentHP || 0) - finalDmg);
+          const reflectKO = handleKO(card);
+          if (reflectKO) appendLog(state, reflectKO);
+          appendLog(state, `${m.emoji} ${m.rank} reflects the special attack back at ${card.def.character} for ${finalDmg} DMG!`);
+        } else {
+          m.currentHP -= finalDmg;
+          state.lastMarineTarget = m;
+          if (m.currentHP <= 0) {
+            m.currentHP = 0;
+            m.alive = false;
+          }
+          // only apply status from special attack
+          const effectTarget = card.def.all && !card.def.itself
+            ? state.marines.filter(marine => marine.currentHP > 0)
+            : card.def.all && card.def.itself
+              ? state.cards.filter(c => c.currentHP > 0)
+              : m;
+          const effectLogs2 = applyCardEffectShared(card, effectTarget);
+          effectLogs2.forEach(l => appendLog(state, l));
         }
-        // only apply status from special attack
-        const effectLogs2 = applyCardEffectShared(card, m);
-        effectLogs2.forEach(l => appendLog(state, l));
         
         if (card.def.special_attack?.gif) {
-          state.embedImage = card.def.special_attack.gif;
+          const gifUrl = normalizeGifUrl(card.def.special_attack.gif);
+          state.embedImage = gifUrl;
           try {
             let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
             if (card.def.effect && card.def.effectDuration) {
@@ -1132,7 +1225,7 @@ module.exports = {
             }
             const gifEmbed = new EmbedBuilder()
               .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
-              .setImage(card.def.special_attack.gif)
+              .setImage(gifUrl)
               .setDescription(desc);
             const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] });
             state.gifMessageId = gifMsg.id;
@@ -1230,7 +1323,7 @@ module.exports = {
           card.energy -= 3;
           // set gif display
           if (card.def.special_attack && card.def.special_attack.gif) {
-            state.embedImage = card.def.special_attack.gif;
+            state.embedImage = normalizeGifUrl(card.def.special_attack.gif);
           }
         }
         const energyCost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
