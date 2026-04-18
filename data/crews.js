@@ -8,7 +8,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/yzb6ru.webp',
     packEmoji: '<:strawhatpiratespack:1491566740570636349>',
     rank: 'A',
-    color: '#f4b400'
+    color: '#f40000'
   },
   {
     name: "Buggy Pirates",
@@ -16,7 +16,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/6jdjgs.webp',
     packEmoji: '<:Buggypiratespack:1491566887933317311>',
     rank: 'A',
-    color: '#ff6f61'
+    color: '#ff1500'
   },
   {
     name: "Cross Guild",
@@ -24,7 +24,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/tjvgbt.webp',
     packEmoji: '<:Crossguildpack:1491567315282559077>',
     rank: 'A',
-    color: '#4dc4ff'
+    color: '#a64dff'
   },
   {
     name: "Marines",
@@ -32,7 +32,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/74j02n.webp',
     packEmoji: '<:marinespack:1491567224941711571>',
     rank: 'C',
-    color: '#4d8cff'
+    color: '#a3c1f9'
   },
   {
     name: "Boroque Works",
@@ -40,7 +40,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/33dxzb.webp',
     packEmoji: '<:boroqueworkspack:1491567131140034570>',
     rank: 'A',
-    color: '#a96fd2'
+    color: '#a42bf9'
   },
   {
     name: "Red-Haired Pirates",
@@ -48,7 +48,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/pqtpc0.webp',
     packEmoji: '<:RedHairedpiratespack:1491567444744212631>',
     rank: 'S',
-    color: '#f44336'
+    color: '#fe1302'
   },
   {
     name: "Blackbeard Pirates",
@@ -56,7 +56,7 @@ module.exports = [
     packImage: 'https://files.catbox.moe/e9muh7.webp',
     packEmoji: '<:Blackbearddpiratespack:1491567558455726302>',
     rank: 'S',
-    color: '#262626'
+    color: '#080808'
   },
   {
     name: "Whitebeard Pirates",

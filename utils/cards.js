@@ -129,7 +129,7 @@ function updateShipBalance(user) {
   if (!user || !user.activeShip) return;
   const ship = getShipById(user.activeShip);
   if (!ship) return;
-  const startingBalance = typeof ship.startingBalance === 'number' ? ship.startingBalance : 100;
+  const startingBalance = 0;
   if (typeof user.shipBalance !== 'number' || user.shipBalance <= 0) {
     user.shipBalance = startingBalance;
   }
@@ -196,6 +196,30 @@ function getAttributeEmoji(attribute) {
     ALL: '🔷'
   };
   return map[attribute] || attribute || '❔';
+}
+
+function buildDurabilityBar(current, max) {
+  if (max <= 0) return '';
+  if (current <= 0) {
+    return '<:Healthemptyleft:1481750325151928391>'
+      + '<:Healthemptymiddle:1481750341489004596>'.repeat(6)
+      + '<:healthemptyright:1481750363286667334>';
+  }
+  const healthPercent = Math.max(0, Math.min(1, current / max));
+  const totalSections = 8;
+  const filledSections = Math.floor(healthPercent * totalSections);
+  const emptySections = totalSections - filledSections;
+  const icons = [
+    emptySections > 0 ? '<:Healthemptyleft:1481750325151928391>' : '<:durabilltyleftfull:1491513785570033734>',
+    emptySections > 1 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
+    emptySections > 2 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
+    emptySections > 3 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
+    emptySections > 4 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
+    emptySections > 5 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
+    emptySections > 6 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
+    emptySections > 7 ? '<:healthemptyright:1481750363286667334>' : '<:durabilityrightfull:1491513801089093923>'
+  ];
+  return icons.join('');
 }
 
 function stripBoostAmounts(boostText) {
@@ -585,7 +609,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
   if (cardDef.ship) {
     const isActiveShip = user && user.activeShip === cardDef.id;
-    const shipBalance = isActiveShip ? Math.floor(user.shipBalance || cardDef.startingBalance || 100) : null;
+    const shipBalance = isActiveShip
+      ? Math.floor((typeof user?.shipBalance === 'number') ? user.shipBalance : (cardDef.startingBalance !== undefined ? cardDef.startingBalance : 0))
+      : null;
     const isMaxed = shipBalance !== null && shipBalance >= cardDef.capacity;
     const descLines = [
       cardDef.title || '',
@@ -609,6 +635,15 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
     if (iconUrl) {
       shipEmbed.setThumbnail(iconUrl);
+    }
+
+    // Show Cola status for ships (per-user state if available, otherwise show card defaults)
+    const shipState = user && user.ships ? (user.ships[cardDef.id] || null) : null;
+    const currCola = shipState && typeof shipState.cola === 'number' ? shipState.cola : (cardDef.cola !== undefined ? cardDef.cola : null);
+    const maxCola = (cardDef.maxCola !== undefined) ? cardDef.maxCola : (shipState && typeof shipState.maxCola === 'number' ? shipState.maxCola : null);
+    if (currCola !== null && maxCola !== null) {
+      const colaBar = buildDurabilityBar(currCola, maxCola);
+      shipEmbed.addFields({ name: 'Cola', value: `${colaBar} (${currCola}/${maxCola})`, inline: false });
     }
 
     return shipEmbed;
@@ -872,8 +907,12 @@ function calculateFinalStats(cardDef, level, boostPct = 0) {
 
 // expose helper for other modules to describe status effects on attacks
 function normalizeGifUrl(url) {
-  if (!url || typeof url !== 'string') return url;
-  const tenorShortMatch = url.match(/^https?:\/\/(?:www\.)?tenor\.com\/([A-Za-z0-9_-]+)(?:\.gif)?(?:\?.*)?$/i);
+  if (!url || typeof url !== 'string') return url;  // Handle direct media.tenor.com URLs (e.g., https://media1.tenor.com/m/{id}/{name}.gif)
+  const directMediaMatch = url.match(/^https?:\/\/media\d*\.tenor\.com\/(.+)$/i);
+  if (directMediaMatch) {
+    // Normalize to media.tenor.com (Discord sometimes has issues with media1, media2, etc.)
+    return `https://media.tenor.com/${directMediaMatch[1]}`;
+  }  const tenorShortMatch = url.match(/^https?:\/\/(?:www\.)?tenor\.com\/([A-Za-z0-9_-]+)(?:\.gif)?(?:\?.*)?$/i);
   if (tenorShortMatch) {
     return `https://media.tenor.com/${tenorShortMatch[1]}.gif`;
   }
@@ -951,6 +990,7 @@ module.exports = {
   normalizeGifUrl,
   getCardFinalStats,
   getAttributeEmoji,
+  buildDurabilityBar,
   simulatePull,
   isArtifactCard,
   isShipCard,

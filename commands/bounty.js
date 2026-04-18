@@ -2,6 +2,7 @@ const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const duelCmd = require('./duel');
 const { OWNER_ID } = require('../config');
+const { getNextPullResetDate } = require('../src/stock');
 
 function formatRelativeTime(futureDate) {
   const now = new Date();
@@ -100,9 +101,9 @@ module.exports = {
     const opponentName = opponentDiscord ? opponentDiscord.username : 'Unknown';
     const opponentAvatar = opponentDiscord ? opponentDiscord.displayAvatarURL() : avatarUrl;
 
-    // Set active bounty / cooldown
+    // Set active bounty / cooldown (align with global pull reset)
     requester.activeBountyTarget = opponent.userId;
-    requester.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    requester.bountyCooldownUntil = getNextPullResetDate();
     await requester.save();
 
     // Reward preview (based on relative bounty)

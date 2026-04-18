@@ -92,6 +92,25 @@ function removeStatusTypes(entity, types) {
   entity.status = entity.status.filter(st => !types.includes(st.type));
 }
 
+function decrementStatusDurations(entity) {
+  if (!entity || !entity.status) return;
+  entity.status = entity.status.filter(st => {
+    if (st.remaining > 0) {
+      st.remaining--;
+      return st.remaining > 0;
+    }
+    return false;
+  });
+}
+
+function decrementStatusDurationsForTeam(team) {
+  if (Array.isArray(team)) {
+    team.forEach(decrementStatusDurations);
+  } else {
+    decrementStatusDurations(team);
+  }
+}
+
 function _handleKO(entity) {
   if (!entity) return null;
   if (entity.currentHP <= 0) {
@@ -199,62 +218,63 @@ function applyCardEffect(attacker, target) {
 
   switch (def.effect) {
     case 'stun':
-      addStatus(applyTo, 'stun', dur);
+      addEffectToTarget(applyTo, 'stun', dur);
       logs.push(`${statusTargetName(applyTo)} is stunned and can't move${statusMessage()}!`);
       break;
     case 'freeze':
-      addStatus(applyTo, 'freeze', dur);
+      addEffectToTarget(applyTo, 'freeze', dur);
       logs.push(`${statusTargetName(applyTo)} is frozen and can't move${statusMessage()}!`);
       break;
     case 'cut': {
       const amount = def.effectAmount ?? 1;
-      addStatus(applyTo, 'cut', dur, { amount });
+      addEffectToTarget(applyTo, 'cut', dur, { amount });
       logs.push(`${statusTargetName(applyTo)} is cut${statusMessage()}!`);
       break;
     }
     case 'bleed': {
       const amount = def.effectAmount ?? 2;
-      addStatus(applyTo, 'bleed', dur, { amount });
-      logs.push(`${statusTargetName(applyTo)} is bleeding${origDur === 0 ? ' (permanent)' : ` for ${origDur} use${origDur > 1 ? 's' : ''}`}!`);
+      addEffectToTarget(applyTo, 'bleed', dur, { amount });
+      // Intentionally do not emit a separate "is bleeding" log here to avoid
+      // duplicating the inline effect description shown with the attack.
       break;
     }
     case 'team_stun':
       if (Array.isArray(target)) {
-        target.forEach(t => addStatus(t, 'stun', dur));
+        addEffectToTarget(target, 'stun', dur);
         logs.push(`All opponents are stunned${statusMessage()}!`);
       }
       break;
     case 'regen':
-      addStatus(applyTo, 'regen', dur, { amount: def.effectAmount ?? 10 });
+      addEffectToTarget(applyTo, 'regen', dur, { amount: def.effectAmount ?? 10 });
       logs.push(`${statusTargetName(applyTo)} gains regen (${def.effectAmount ?? 10}%)${statusMessage()}!`);
       break;
     case 'confusion': {
       const chance = def.effectChance ?? def.effectAmount ?? 50;
-      addStatus(applyTo, 'confusion', dur, { chance });
+      addEffectToTarget(applyTo, 'confusion', dur, { chance });
       logs.push(`${statusTargetName(applyTo)} is confused (${chance}% miss chance)${statusMessage()}!`);
       break;
     }
     case 'attackup': {
-      const amount = def.effectAmount ?? 12;
-      addStatus(applyTo, 'attackup', dur, { amount });
+      const amount = def.effectAmount !== undefined ? def.effectAmount : 12;
+      addEffectToTarget(applyTo, 'attackup', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s attack is boosted (${amount}%)${statusMessage()}!`);
       break;
     }
     case 'attackdown': {
-      const amount = def.effectAmount ?? 12;
-      addStatus(applyTo, 'attackdown', dur, { amount });
+      const amount = def.effectAmount !== undefined ? def.effectAmount : 12;
+      addEffectToTarget(applyTo, 'attackdown', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s attack is reduced (${amount}%)${statusMessage()}!`);
       break;
     }
     case 'defenseup': {
-      const amount = def.effectAmount ?? 12;
-      addStatus(applyTo, 'defenseup', dur, { amount });
+      const amount = def.effectAmount !== undefined ? def.effectAmount : 12;
+      addEffectToTarget(applyTo, 'defenseup', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s defense is boosted (${amount}%)${statusMessage()}!`);
       break;
     }
     case 'defensedown': {
-      const amount = def.effectAmount ?? 12;
-      addStatus(applyTo, 'defensedown', dur, { amount });
+      const amount = def.effectAmount !== undefined ? def.effectAmount : 12;
+      addEffectToTarget(applyTo, 'defensedown', dur, { amount });
       logs.push(`${statusTargetName(applyTo)}'s defense is reduced (${amount}%)${statusMessage()}!`);
       break;
     }
@@ -272,10 +292,10 @@ function getAttackModifier(entity) {
   if (!entity || !entity.status) return 1;
   const up = entity.status
     .filter(st => st.type === 'attackup')
-    .reduce((sum, st) => sum + (st.amount || 0), 0);
+    .reduce((sum, st) => sum + (st.amount ?? 12), 0);
   const down = entity.status
     .filter(st => st.type === 'attackdown')
-    .reduce((sum, st) => sum + (st.amount || 0), 0);
+    .reduce((sum, st) => sum + (st.amount ?? 12), 0);
   return Math.max(0, 1 + (up - down) / 100);
 }
 
@@ -378,5 +398,7 @@ module.exports = {
   removeStatusTypes,
   hasTruesight,
   consumeTruesight,
+  decrementStatusDurations,
+  decrementStatusDurationsForTeam,
   handleKO: _handleKO
 };

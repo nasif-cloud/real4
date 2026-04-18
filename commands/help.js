@@ -17,9 +17,15 @@ const COMMAND_CATEGORIES = {
     commands: [
       { name: 'pull', desc: 'Perform a card pull (costs one pull, limited per reset)' },
       { name: 'info <query>', desc: 'View card info with ownership history' },
+      { name: 'card <query>', desc: 'View card info with mastery levels' },
       { name: 'collection', desc: 'Browse your card collection with filters' },
       { name: 'stock', desc: 'Check stock market prices' },
-      { name: 'open <pack>', desc: 'Open a card pack to get crews' }
+      { name: 'open <pack>', desc: 'Open a card pack to get crews' },
+      { name: 'equip <artifact> <card>', desc: 'Equip an artifact to a card' },
+      { name: 'unequip <artifact>', desc: 'Unequip an artifact from its card' },
+      { name: 'upgrade <card>', desc: 'Upgrade a card to the next rank' },
+      { name: 'bulkfeed <format>', desc: 'Bulk feed items to multiple cards' },
+      { name: 'reset', desc: 'Reset pulls using a reset token' }
     ]
   },
   team: {
@@ -37,7 +43,10 @@ const COMMAND_CATEGORIES = {
     commands: [
       { name: 'duel [@user]', desc: 'Challenge another player to a 1v1 team battle' },
       { name: 'isail', desc: 'Battle against NPC marines (single-player adventure)' },
-      { name: 'bounty', desc: 'Check active bounties or fight for rewards' }
+      { name: 'bounty', desc: 'Check active bounties or fight for rewards' },
+      { name: 'rob [@user]', desc: 'Attempt to rob another player\'s Beli' },
+      { name: 'stoprob', desc: 'Stop an active robbery against you' },
+      { name: 'loot', desc: 'Attempt to loot a random guild ship' }
     ]
   },
   economy: {
@@ -48,15 +57,21 @@ const COMMAND_CATEGORIES = {
       { name: 'shop', desc: 'View the shop' },
       { name: 'buy <item> [quantity]', desc: 'Purchase items from the shop' },
       { name: 'sell <query>', desc: 'Sell cards from your collection' },
-      { name: 'inventory / inv', desc: 'View your inventory of items' }
+      { name: 'bulksell <format>', desc: 'Bulk sell multiple cards' },
+      { name: 'inventory / inv', desc: 'View your inventory of items' },
+      { name: 'setship <ship>', desc: 'Set your active ship for passive income' },
+      { name: 'deposit <amount>', desc: 'Deposit Beli into your active ship' },
+      { name: 'claim [amount]', desc: 'Claim earnings from your active ship' },
+      { name: 'bet <amount> <guess>', desc: 'Bet Beli on a coin flip (heads or tails)' }
     ]
   },
   activities: {
-    name: 'fun',
+    name: 'Fun',
     emoji: '<:paintbrush:1490733392860287088>',
     commands: [
       { name: 'fish', desc: 'Go fishing for levelers and cards (3% gem chance!)' },
       { name: 'feed <query> <item>', desc: 'Feed items to a card to level it up' },
+      { name: 'trivia [difficulty]', desc: 'Play a trivia quiz to earn rewards' },
     ]
   },
   info: {

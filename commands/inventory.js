@@ -17,6 +17,20 @@ const ITEM_DISPLAY_EMOJIS = {
   a_chest: CHEST_EMOJIS.a_chest
 };
 
+// Additional item display names/emojis
+ITEM_DISPLAY_NAMES.cola = 'Cola';
+ITEM_DISPLAY_EMOJIS.cola = '<:cola:1494106165955792967>';
+ITEM_DISPLAY_NAMES.red_shard = 'Red Shard';
+ITEM_DISPLAY_EMOJIS.red_shard = '<:RedShard:1494106374492131439>';
+ITEM_DISPLAY_NAMES.blue_shard = 'Blue Shard';
+ITEM_DISPLAY_EMOJIS.blue_shard = '<:Blueshard:1494106500149411980>';
+ITEM_DISPLAY_NAMES.green_shard = 'Green Shard';
+ITEM_DISPLAY_EMOJIS.green_shard = '<:GreenShard:1494106686963581039>';
+ITEM_DISPLAY_NAMES.yellow_shard = 'Yellow Shard';
+ITEM_DISPLAY_EMOJIS.yellow_shard = '<:YellowShard:1494106825627406530>';
+ITEM_DISPLAY_NAMES.purple_shard = 'Purple Shard';
+ITEM_DISPLAY_EMOJIS.purple_shard = '<:PurpleShard:1494106958582776008>';
+
 const ITEMS_PER_PAGE = 20;
 
 function parseTargetIdFromArgs(args) {
@@ -75,7 +89,7 @@ function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
       if (!leveler) {
         const displayName = ITEM_DISPLAY_NAMES[i.itemId] || i.itemId;
         const emoji = ITEM_DISPLAY_EMOJIS[i.itemId] || '';
-        let display = `${emoji}${displayName} x${i.quantity}`;
+        const display = emoji ? `${emoji} ${displayName} x${i.quantity}` : `${displayName} x${i.quantity}`;
         if (i.durability !== undefined) {
           display += ` (${i.durability})`;
         }

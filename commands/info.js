@@ -1,5 +1,5 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { searchCards, buildCardEmbed, getCardFinalStats, getAttributeEmoji, updateShipBalance } = require('../utils/cards');
+const { searchCards, buildCardEmbed, getCardFinalStats, getAttributeEmoji, updateShipBalance, buildDurabilityBar, getShipById, getCardById } = require('../utils/cards');
 const { sortedOwnedCards } = require('./collection');
 const User = require('../models/User');
 const { cards } = require('../data/cards');
@@ -168,32 +168,7 @@ function getRodColor(rodId) {
   }
 }
 
-function buildDurabilityBar(current, max) {
-  if (max <= 0) return '';
-  if (current <= 0) {
-    return '<:Healthemptyleft:1481750325151928391>' +
-           '<:Healthemptymiddle:1481750341489004596>'.repeat(6) +
-           '<:healthemptyright:1481750363286667334>';
-  }
-  
-  const healthPercent = Math.max(0, Math.min(1, current / max));
-  const totalSections = 8;
-  const filledSections = Math.floor(healthPercent * totalSections);
-  const emptySections = totalSections - filledSections;
-  
-  const icons = [
-    emptySections > 0 ? '<:Healthemptyleft:1481750325151928391>' : '<:durabilltyleftfull:1491513785570033734>',
-    emptySections > 1 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 2 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 3 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 4 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 5 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 6 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 7 ? '<:healthemptyright:1481750363286667334>' : '<:durabilityrightfull:1491513801089093923>'
-  ];
-  
-  return icons.join('');
-}
+// Durability bar is provided by utils/cards.buildDurabilityBar
 
 function buildRodEmbed(rodDef, discordUser, user) {
   const rodItem = user && user.items?.find(it => it.itemId === rodDef.id);
@@ -306,8 +281,9 @@ function buildPackEmbed(crewDef, discordUser) {
   const rankColor = crewDef.color || rankColors[crewDef.rank] || '#FFFFFF';
   const rankEmoji = rankEmojis[crewDef.rank] || '';
   
-  // Build character list with emojis, one per line
+  // Build character list: hide ship emoji and mark ships with (ship)
   const characterLines = sortedCharacters.map(card => {
+    if (card.ship) return `${card.character} (ship)`;
     const emoji = card.emoji || '';
     return `${emoji} ${card.character}`;
   });
@@ -337,11 +313,39 @@ module.exports = {
     const query = message ? args.join(' ') : interaction.options.getString('query');
     const userId = message ? message.author.id : interaction.user.id;
     const discordUser = message ? message.author : interaction.user;
+    // Load user early so we can special-case queries like "ship" to show the active ship
+    const user = await User.findOne({ userId });
 
     if (!query || !query.trim()) {
       const reply = 'Please state a card.';
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    // If the user asked simply for "ship" (or similar), show their active ship if set
+    const qNorm = query.trim().toLowerCase();
+    if (['ship', 'my ship', 'active ship', 'activeship', 'myship'].includes(qNorm)) {
+      if (!user || !user.activeShip) {
+        const reply = 'You have no active ship set. Use `op setship` to set one.';
+        if (message) return message.channel.send(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+      const shipDef = getShipById(user.activeShip) || getCardById(user.activeShip);
+      if (!shipDef) {
+        const reply = 'Your active ship could not be found.';
+        if (message) return message.channel.send(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+      // ensure ship balance/related fields are up-to-date
+      if (shipDef.ship && user && user.activeShip === shipDef.id) {
+        updateShipBalance(user);
+        await user.save();
+      }
+      const userEntry = user?.ownedCards?.find(e => e.cardId === shipDef.id) || null;
+      const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
+      const embed = buildCardEmbed(shipDef, userEntry, avatarUrl, user);
+      if (message) return message.channel.send({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed] });
     }
     
     // First, check if query matches a crew/pack name
@@ -355,7 +359,6 @@ module.exports = {
     // Then check exact rod and leveler names only
     const rodDef = getRodByName(query);
     if (rodDef) {
-      const user = await User.findOne({ userId });
       const rodEmbed = buildRodEmbed(rodDef, discordUser, user);
       if (message) return message.channel.send({ embeds: [rodEmbed] });
       return interaction.reply({ embeds: [rodEmbed] });
@@ -363,7 +366,6 @@ module.exports = {
 
     const levelerDef = getLevelerByName(query);
     if (levelerDef) {
-      const user = await User.findOne({ userId });
       const levelerEmbed = buildLevelerEmbed(levelerDef, discordUser, user);
       if (message) return message.channel.send({ embeds: [levelerEmbed] });
       return interaction.reply({ embeds: [levelerEmbed] });
@@ -393,7 +395,6 @@ module.exports = {
     const sessionCards = [...matches].sort(sortByStrength);
     const cardDef = sessionCards[0];
 
-    const user = await User.findOne({ userId });
     if (cardDef.ship && user && user.activeShip === cardDef.id) {
       updateShipBalance(user);
       await user.save();

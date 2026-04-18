@@ -14,14 +14,16 @@ function compareCards(a, b, mode, user) {
 
   switch (mode) {
     case 'strongest-weakest':
-      if (powerA !== powerB) return powerB - powerA;
+      // Prefer higher rank first, then by boosted power
       if (rankA !== rankB) return rankB - rankA;
+      if (powerA !== powerB) return powerB - powerA;
       if (a.card.mastery !== b.card.mastery) return b.card.mastery - a.card.mastery;
       if (levelA !== levelB) return levelB - levelA;
       return a.card.character.localeCompare(b.card.character);
     case 'weakest-strongest':
-      if (powerA !== powerB) return powerA - powerB;
+      // Prefer lower rank first, then by boosted power
       if (rankA !== rankB) return rankA - rankB;
+      if (powerA !== powerB) return powerA - powerB;
       if (a.card.mastery !== b.card.mastery) return a.card.mastery - b.card.mastery;
       if (levelA !== levelB) return levelA - levelB;
       return a.card.character.localeCompare(b.card.character);
@@ -44,9 +46,17 @@ function sortAndFilter(items, mode, user) {
 
   if (mode && mode.endsWith('-only')) {
     const key = mode.split('-')[0];
-    const attr = attrMap[key] || '';
-    filtered = filtered.filter(x => (x.card.attribute || '').toUpperCase() === attr);
-    mode = 'strongest-weakest';
+    if (attrMap[key]) {
+      const attr = attrMap[key];
+      filtered = filtered.filter(x => (x.card.attribute || '').toUpperCase() === attr);
+      mode = 'strongest-weakest';
+    } else if (key === 'ships') {
+      filtered = filtered.filter(x => x.card.ship);
+      mode = 'strongest-weakest';
+    } else if (key === 'artifacts') {
+      filtered = filtered.filter(x => x.card.artifact);
+      mode = 'strongest-weakest';
+    }
   }
 
   if (['strongest-weakest', 'weakest-strongest', 'highest-level', 'lowest-level'].includes(mode)) {
@@ -71,11 +81,11 @@ function sortedOwnedCards(user) {
   return sortAndFilter(cardsWithDef, 'strongest-weakest');
 }
 
-function makeNavRow(userId, index, total) {
+function makeNavRow(userId, index, total, cardDef, owned) {
   const prevDisabled = index <= 0;
   const nextDisabled = index >= total - 1;
 
-  return new ActionRowBuilder().addComponents(
+  const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`collection_prev:${userId}:${index}`)
       .setLabel('Previous')
@@ -89,6 +99,18 @@ function makeNavRow(userId, index, total) {
       .setStyle(nextDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
       .setDisabled(nextDisabled)
   );
+
+  if (owned && cardDef && !cardDef.ship) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`collection_boost:${userId}`)
+        .setLabel('Boosts')
+        .setEmoji({ id: '1490506833344073768' })
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
+  return row;
 }
 
 function makeSortButton(userId) {
@@ -115,44 +137,67 @@ function makeSortMenu(userId) {
         { label: 'Only STR', value: 'str-only' },
         { label: 'Only QCK', value: 'qck-only' },
         { label: 'Only PSY', value: 'psy-only' },
-        { label: 'Only INT', value: 'int-only' }
+        { label: 'Only INT', value: 'int-only' },
+        { label: 'Only Ships', value: 'ships-only' },
+        { label: 'Only Artifacts', value: 'artifacts-only' }
       ])
   );
 }
 
-function makeCollectionBoostRow(userId, cardDef, owned) {
-  if (!owned || cardDef.ship) return null;
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`collection_boost:${userId}`)
-      .setLabel('Boosts')
-      .setEmoji({ id: '1490506833344073768' })
-      .setStyle(ButtonStyle.Secondary)
-  );
-}
+function buildCollectionBoostEmbed(cardDef, userEntry, user) {
+  const lvl = userEntry ? userEntry.level : 1;
+  const stats = getCardFinalStats(cardDef, lvl, user);
+  const boostEntries = stats.boostEntries || [];
+  const statBoosts = stats.statBoosts || {};
+  // Calculate level boost percent
+  const levelBoostPct = Math.ceil(lvl / 10); // +1% per 10 levels, rounded up
 
-function buildCollectionBoostEmbed(cardDef, user, entry) {
-  const stats = getCardFinalStats(cardDef, entry?.level || 1, user);
+  // Always define cardEmoji at the top
+  const cardEmoji = cardDef.emoji ? cardDef.emoji + ' ' : '';
+
+  // Compose boost lines with correct emoji and format
   const lines = [];
-
-  if (!stats.boostEntries || !stats.boostEntries.length) {
-    lines.push('This card currently has no active boosts.');
-  } else {
-    lines.push('**Active boosts**');
-    for (const boost of stats.boostEntries) {
-      const statLabel = boost.stat ? ` (${boost.stat})` : '';
-      lines.push(`• ${boost.source}: +${boost.pct}%${statLabel}`);
-    }
+  // Show all character/crew boosts first, with emoji
+  if (boostEntries.length) {
+    const { cards } = require('../data/cards');
+    boostEntries.forEach(b => {
+      if (b.source === 'Levels') return; // skip, will add at end
+      // Find the booster card by character name (case-insensitive)
+      let emoji = '';
+      const boosterCard = cards.find(c => c.character.toLowerCase() === b.source.toLowerCase());
+      if (boosterCard && boosterCard.emoji) {
+        emoji = boosterCard.emoji + ' ';
+      }
+      if (b.stat) {
+        lines.push(`${emoji}**${b.source}**: boosts ${b.stat} by \`${b.pct}%\``);
+      } else {
+        lines.push(`${emoji}**${b.source}**: boosts all stats by \`${b.pct}%\``);
+      }
+    });
   }
-  lines.push(`\n**Final power:** ${stats.scaled.power}`);
-  if (stats.totalBoostPct) {
-    lines.push(`**Total boost:** +${stats.totalBoostPct}%`);
-  }
+  // Always show level boost last, no emoji
+  lines.push(`**Levels**: boosts all stats by \`${levelBoostPct}%\``);
 
-  return new EmbedBuilder()
-    .setTitle(`${cardDef.character} boosts`)
-    .setDescription(lines.join('\n'))
-    .setColor('#2b2d31');
+  // Compose summary
+  const baseStats = `**Base stats:** ${cardDef.power} Power, ${cardDef.health} Health, ${cardDef.speed} Speed, ${cardDef.attack_min} - ${cardDef.attack_max} Attack`;
+  // Compose total boost summary in requested format
+  let totalParts = [];
+  // Add all stats (levels + other all stats boosts)
+  let allStatsTotal = levelBoostPct + (stats.totalBoostPct || 0);
+  if (allStatsTotal > 0) totalParts.push(`\`${allStatsTotal}%\` all stats`);
+  // Add stat-specific boosts
+  Object.entries(statBoosts).forEach(([stat, pct]) => {
+    totalParts.push(`\`${pct}%\` ${stat}`);
+  });
+  const totalBoostLine = `**Total boost:** ${totalParts.join(' + ')}`;
+
+  const embed = new EmbedBuilder()
+    .setTitle(`${cardEmoji}${cardDef.character} active boosts`)
+    .setColor('#2b2d31')
+    .setDescription(`${baseStats}\n${totalBoostLine}`)
+    .addFields({ name: 'Active boosts', value: lines.join('\n'), inline: false });
+
+  return embed;
 }
 
 async function renderCard(interaction, user, session, index) {
@@ -164,11 +209,9 @@ async function renderCard(interaction, user, session, index) {
   const avatarUrl = interaction.user.displayAvatarURL();
   const embed = buildCardEmbed(item.card, item.entry, avatarUrl, user);
 
-  const rowNav = makeNavRow(interaction.user.id, index, session.cards.length);
+  const rowNav = makeNavRow(interaction.user.id, index, session.cards.length, item.card, !!item.entry);
   const rowSort = makeSortButton(interaction.user.id);
-  const rowBoost = makeCollectionBoostRow(interaction.user.id, item.card, !!item.entry);
   const components = [rowNav, rowSort];
-  if (rowBoost) components.push(rowBoost);
 
   return interaction.update({ embeds: [embed], components });
 }
@@ -198,11 +241,9 @@ module.exports = {
 
     const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
     const embed = buildCardEmbed(sorted[0].card, sorted[0].entry, avatarUrl, user);
-    const rowNav = makeNavRow(userId, 0, sorted.length);
+    const rowNav = makeNavRow(userId, 0, sorted.length, sorted[0].card, !!sorted[0].entry);
     const rowSort = makeSortButton(userId);
-    const rowBoost = makeCollectionBoostRow(userId, sorted[0].card, !!sorted[0].entry);
     const components = [rowNav, rowSort];
-    if (rowBoost) components.push(rowBoost);
 
     if (message) {
       return message.channel.send({ embeds: [embed], components });
@@ -238,9 +279,16 @@ module.exports = {
 
     if (action === 'collection_boost') {
       const user = await User.findOne({ userId: interaction.user.id });
-      const cardDef = session.cards[session.currentIndex];
-      const userEntry = user?.ownedCards?.find(e => e.cardId === cardDef.id) || null;
-      const embed = buildCollectionBoostEmbed(cardDef, user, userEntry);
+      if (!user) {
+        return interaction.reply({ content: 'Unable to find your profile.', ephemeral: true });
+      }
+      const item = session.cards[session.currentIndex];
+      if (!item) {
+        return interaction.reply({ content: 'No card found at current index.', ephemeral: true });
+      }
+      const cardDef = item.card;
+      const userEntry = item.entry;
+      const embed = buildCollectionBoostEmbed(cardDef, userEntry, user);
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 

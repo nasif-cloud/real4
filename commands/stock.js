@@ -74,38 +74,41 @@ async function createStockImage(stock) {
   ctx.fillStyle = '#2f3136';
   ctx.fillRect(0, 0, width, height);
 
-  // Draw each pack image side by side
-  for (let index = 0; index < packCount; index++) {
-    const pack = stock[index];
-
-    // X, Y position for the current pack image
-    const x = padding + index * (imageWidth + padding); // pack X position
-    const y = padding; // pack Y position (same for all packs)
-
+  // Load images in parallel
+  const imagePromises = stock.slice(0, packCount).map(async (pack) => {
     if (pack.packImage && pack.packImage.trim()) {
       try {
-        const response = await fetch(pack.packImage, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(7000) });
+        const response = await fetch(pack.packImage, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const image = await loadImage(buffer);
-
-        // Draw the booster pack image at the specified position and size
-        ctx.drawImage(image, x, y, imageWidth, imageHeight);
+        return await loadImage(buffer);
       } catch (err) {
         console.error(`Failed to load image for ${pack.name}:`, err.message);
-
-        // Fallback placeholder if image fails to load
-        ctx.fillStyle = '#4b4f57';
-        ctx.fillRect(x, y, imageWidth, imageHeight);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '14px sans-serif';
-        ctx.fillText(pack.name, x + 10, y + 20);
+        return null; // fallback
       }
+    }
+    return null;
+  });
+
+  const images = await Promise.all(imagePromises);
+
+  // Draw each pack image side by side
+  for (let index = 0; index < packCount; index++) {
+    const pack = stock[index];
+    const image = images[index];
+
+    // X, Y position for the current pack image
+    const x = padding + index * (imageWidth + padding); // pack X position
+    const y = padding; // pack Y position (same for all packs)
+
+    if (image) {
+      // Draw the booster pack image at the specified position and size
+      ctx.drawImage(image, x, y, imageWidth, imageHeight);
     } else {
-      // Empty packImage fallback box for missing URL
+      // Fallback placeholder if image fails to load
       ctx.fillStyle = '#4b4f57';
       ctx.fillRect(x, y, imageWidth, imageHeight);
       ctx.fillStyle = '#ffffff';

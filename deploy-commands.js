@@ -6,7 +6,7 @@ const fs = require('fs');
 const commands = [];
 // core commands
 commands.push({ name: 'start', description: 'Register an account with the One Piece bot' });
-commands.push({ name: 'pull', description: 'Pull a random card (uses 1 pull)' });
+commands.push({ name: 'pull', description: 'Pull a random card' });
 commands.push({
   name: 'card',
   description: 'Display a card\'s information and stats',
@@ -61,6 +61,8 @@ commands.push({
 
 // infinite sail battle
 commands.push({ name: 'isail', description: 'Challenge the Infinite Sail' });
+// Story Mode sail command
+commands.push({ name: 'sail', description: 'Begin the Story Mode sailing adventure' });
 
 // duel command
 commands.push({
@@ -143,6 +145,16 @@ commands.push({
 });
 commands.push({ name: 'daily', description: 'Claim your OP daily rewards' });
 
+// wanted poster command
+commands.push({
+  name: 'wanted',
+  description: 'Generate a wanted poster for a user',
+  options: [
+    { name: 'target', type: 6, description: 'User to create poster for', required: false },
+    { name: 'bounty', type: 3, description: 'Bounty amount to display (overrides stored bounty)', required: false }
+  ]
+});
+
 // pack system
 commands.push({ name: 'stock', description: 'View current pack stock' });
 commands.push({
@@ -154,11 +166,14 @@ commands.push({
   ]
 });
 commands.push({ name: 'setship', description: 'Set your active ship for passive income', options: [{ name: 'ship', type: 3, description: 'Ship name', required: true }] });
+// Fuel a ship using a Cola item
+commands.push({ name: 'fuel', description: 'Fuel a ship by consuming a Cola item', options: [{ name: 'ship', type: 3, description: 'Ship name (optional)', required: false }] });
 commands.push({ name: 'deposit', description: 'Deposit Beli into your active ship', options: [{ name: 'amount', type: 4, description: 'Amount of Beli to deposit', required: true }] });
 commands.push({ name: 'loot', description: 'Attempt to loot a random guild ship for Beli and packs' });
 commands.push({ name: 'trivia', description: 'Start a trivia quiz for rewards' });
 commands.push({ name: 'rob', description: 'Attempt to rob a user', options: [{ name: 'target', type: 6, description: 'User to rob', required: true }] });
 commands.push({ name: 'stoprob', description: 'Stop an active robbery against you' });
+commands.push({ name: 'forfeit', description: 'Forfeit your current duel or isail battle' });
 commands.push({ name: 'collection', description: 'View your card collection' });
 
 // timers command

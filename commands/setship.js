@@ -46,8 +46,13 @@ module.exports = {
 
     updateShipBalance(user);
     user.activeShip = ship.id;
-    user.shipBalance = typeof ship.startingBalance === 'number' ? ship.startingBalance : 100;
+    user.shipBalance = 0;
     user.shipLastUpdated = new Date();
+    user.ships = user.ships || {};
+    if (!user.ships[ship.id]) {
+      const max = (ship.maxCola !== undefined ? ship.maxCola : (ship.cola !== undefined ? ship.cola : 0));
+      user.ships[ship.id] = { cola: max, maxCola: max };
+    }
     await user.save();
 
     const reply = `Set **${ship.character}** as your active ship. Current ship balance is **${user.shipBalance}** <:beri:1490738445319016651>.`;

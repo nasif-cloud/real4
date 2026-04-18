@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const User = require('../models/User');
 const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const { simulatePull } = require('../utils/cards');
+const { simulatePull, isArtifactCard } = require('../utils/cards');
+const { cards } = require('../data/cards');
 
 const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
 
@@ -117,10 +118,20 @@ async function _spawnDrop() {
       return;
     }
 
-    // Simulate a pull (U1 cards only)
-    const card = simulatePull(0, null); // pityCount=0, no faculty filter
-
-    if (!card) return;
+    // Simulate a pull (U1 cards only) but blacklist artifacts from drops
+    let card = simulatePull(0, null); // pityCount=0, no faculty filter
+    // Retry a few times if we accidentally pulled an artifact
+    let tries = 0;
+    while (card && isArtifactCard(card) && tries < 10) {
+      card = simulatePull(0, null);
+      tries++;
+    }
+    // If still artifact or null, fallback to a random non-artifact pullable card
+    if (!card || isArtifactCard(card)) {
+      const pool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
+      if (!pool.length) return;
+      card = pool[Math.floor(Math.random() * pool.length)];
+    }
 
     const dropId = `drop_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const claimButton = new ActionRowBuilder().addComponents(

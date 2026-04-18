@@ -41,11 +41,25 @@ const UserSchema = new Schema({
   activeShip: { type: String, default: null },
   shipBalance: { type: Number, default: 0 },
   shipLastUpdated: { type: Date, default: Date.now },
+  // per-user ship state (e.g., current cola levels)
+  ships: { type: Object, default: {} },
+  // story progression for islands and stages (e.g., { fusha_village: [1,2] })
+  storyProgress: { type: Object, default: {} },
+  // track how many times an island has been fully completed: { fusha_village: 1 }
+  storyCompletions: { type: Object, default: {} },
   // pack inventory for global stock system
   packInventory: { type: Object, default: {} },
   // daily rewards
   lastDaily: { type: Date, default: null },
   dailyStreak: { type: Number, default: 0 },
+  // next scheduled DM reminder for daily (set when user claims daily)
+  nextDailyReminder: { type: Date, default: null },
+  // achievements mapping: achievementId -> date awarded
+  achievements: { type: Object, default: {} },
+  // badges the user owns (achievement ids)
+  badgesOwned: { type: [String], default: [] },
+  // badges the user has equipped to profile (max 3)
+  badgesEquipped: { type: [String], default: [] },
   // fishing
   lastFishFail: { type: Date, default: null },
   // rods for fishing

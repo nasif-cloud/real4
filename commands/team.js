@@ -141,7 +141,14 @@ module.exports = {
         reply = 'Your team is full!';
       } else {
         user.team.push(card.id);
-        await user.save();
+          await user.save();
+          // check achievements for team power
+          try {
+            const { checkAndAwardAll } = require('../utils/achievements');
+            await checkAndAwardAll(user, message ? message.client : interaction.client, { event: 'team' });
+          } catch (err) {
+            console.error('Error checking achievements after team add', err);
+          }
         reply = `Added **${card.character}** to your team.`;
       }
     } else if (sub === 'remove') {
@@ -183,14 +190,21 @@ module.exports = {
         return interaction.reply({ content: 'You don\'t have an account.', ephemeral: true });
       }
 
+      // Acknowledge the interaction quickly to avoid Unknown interaction/timeouts
+      try {
+        if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate().catch(() => {});
+      } catch (err) {
+        // ignore
+      }
+
       const { cards } = require('../data/cards');
       const ownedDefs = (user.ownedCards || [])
         .map(e => cards.find(c => c.id === e.cardId))
         .filter(c => c);
 
-      // Exclude boost cards - assuming boost cards have special_attack with 'boost' or low power
-      // Sort by boosted power so team strength accounts for stat boosts.
-      let eligibles = ownedDefs.filter(c => !c.artifact && !c.ship && (!c.special_attack || !c.special_attack.name.toLowerCase().includes('boost')));
+      // Exclude artifacts and ships; include all regular owned cards.
+      // We'll sort by boosted power so team strength accounts for stat boosts.
+      let eligibles = ownedDefs.filter(c => !c.artifact && !c.ship);
 
       if (eligibles.length === 0) {
         return interaction.reply({ content: 'You don\'t have any eligible cards to form a team.', ephemeral: true });
@@ -207,6 +221,14 @@ module.exports = {
       const selected = eligibles.slice(0, 3);
       user.team = selected.map(c => c.id);
       await user.save();
+
+      // check achievements for team power after auto-team set
+      try {
+        const { checkAndAwardAll } = require('../utils/achievements');
+        await checkAndAwardAll(user, interaction.client, { event: 'team' });
+      } catch (err) {
+        console.error('Error checking achievements after autoteam', err);
+      }
 
       const cardDefs = user.team.map(id => cards.find(c => c.id === id)).filter(Boolean);
       const totalPower = cardDefs.reduce((sum, card) => {
@@ -230,8 +252,24 @@ module.exports = {
             .setEmoji('<:autoteam:1489632891188019342>')
         );
 
-      await interaction.update({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
-      return interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true });
+      // Try to edit the original message (preferred) and follow up to the user.
+      try {
+        if (interaction.message && interaction.message.edit) {
+          await interaction.message.edit({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
+        } else {
+          await interaction.update({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
+        }
+        try { await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
+      } catch (err) {
+        console.error('Autoteam update failed, sending fallback message', err);
+        try {
+          await interaction.channel.send({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
+        } catch (e) {
+          console.error('Fallback channel send failed', e);
+        }
+        try { if (!interaction.replied) await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
+      }
+      return;
     }
   }
 };

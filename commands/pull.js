@@ -50,16 +50,8 @@ module.exports = {
     let rank;
     let pityTriggered = false;
     if (message && user.pityCount >= PITY_TARGET) {
-      // pity guaranteed for prefix pulls
-      const r = Math.random() * 100;
-      let running = 0;
-      for (const [rk, pct] of Object.entries(PITY_DISTRIBUTION)) {
-        running += pct;
-        if (r <= running) {
-          rank = rk;
-          break;
-        }
-      }
+      // pity guaranteed SS drop for prefix pulls
+      rank = 'SS';
       user.pityCount = 0;
       pityTriggered = true;
     } else {
@@ -156,6 +148,14 @@ module.exports = {
     user.pullsRemaining -= 1;
     user.totalPulls = (user.totalPulls || 0) + 1;
     await user.save();
+
+    // Check achievements after changes
+    try {
+      const { checkAndAwardAll } = require('../utils/achievements');
+      await checkAndAwardAll(user, message ? message.client : interaction.client, { event: 'pull', cardId: card.id });
+    } catch (err) {
+      console.error('Error checking achievements after pull', err);
+    }
 
     const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
     const embed = buildPullEmbed(card, username, avatarUrl, pityProgress, duplicateText);

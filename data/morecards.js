@@ -1,5 +1,57 @@
 // Secondary card dataset - additional characters from early arcs
 exports.moreCards = [
+  // Story-mode foes used in Sail/story battles
+  {
+    character: 'Pistol Bandit',
+    alias: ['pistol bandit'],
+    upgradeTotal: 1,
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:F0120:1494099609067323442>',
+    title: 'Fusha mook',
+    faculty: null,
+    rank: 'D',
+    power: 3,
+    health: 5,
+    speed: 3,
+    attack_min: 3,
+    attack_max: 4,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/100/0120.png'
+  },
+  {
+    character: 'Higuma',
+    alias: ['higuma'],
+    upgradeTotal: 1,
+    pullable: true,
+    attribute: 'QCK',
+    emoji: '<:0027:1494100987856556204>',
+    title: 'Higuma',
+    faculty: null,
+    rank: 'C',
+    power: 8,
+    health: 10,
+    speed: 4,
+    attack_min: 7,
+    attack_max: 9,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0027.png'
+  },
+  {
+    character: 'Master of the Near Sea',
+    alias: ['master of the near sea'],
+    upgradeTotal: 1,
+    pullable: true,
+    attribute: 'STR',
+    emoji: '<:0028:1494101589550563338>',
+    title: 'Master of the Near Sea',
+    faculty: null,
+    rank: 'B',
+    power: 15,
+    health: 120,
+    speed: 5,
+    attack_min: 9,
+    attack_max: 11,
+    image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0028.png'
+  },
   // STR random enemies
   {
     character: 'Fodder Sword Bandit',

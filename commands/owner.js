@@ -25,7 +25,7 @@ async function list({ message }) {
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
       { name: 'op owner setdrops <#channel>', value: 'Enable card drops in a channel (spawns every 5 min, expires in 10 min)', inline: false },
       { name: 'op owner unsetdrops', value: 'Disable card drops globally', inline: false },
-      { name: 'op owner time <duration>', value: 'Simulate time passing (e.g., op owner time 8h triggers pull reset)', inline: false },
+      { name: 'op owner ship <@user>', value: 'View the user\'s active ship info', inline: false },
       { name: 'op ownerlist', value: 'Show this list', inline: false }
     );
   return message.channel.send({ embeds: [embed] });
@@ -73,6 +73,36 @@ async function execute({ message, args }) {
         return message.reply(`Given ${amt} ${crewName} pack(s) to <@${targetId}>`);
       }
 
+      if (type === 'masscards') {
+        // syntax: op owner give masscards <faculty> <@user>
+        const facultyQuery = args[2];
+        const mention = args[3];
+        targetId = parseMention(mention);
+        if (!facultyQuery || !targetId) return message.reply('Usage: op owner give masscards <faculty> <@user>');
+        const facultyKey = facultyQuery.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        const { cards } = require('../data/cards');
+        const matches = cards.filter(c => c.faculty && c.faculty.toLowerCase().replace(/[^a-z0-9]+/g, '') === facultyKey);
+        if (!matches.length) return message.reply(`No cards found for faculty ${facultyQuery}`);
+        let target = await User.findOne({ userId: targetId });
+        if (!target) return message.reply('Target user does not have an account.');
+        target.ownedCards = target.ownedCards || [];
+        for (const def of matches) {
+          if (!target.ownedCards.some(e => e.cardId === def.id)) {
+            target.ownedCards.push({ cardId: def.id, level: 1, xp: 0 });
+          }
+          if (!target.history.includes(def.id)) target.history.push(def.id);
+        }
+        await target.save();
+        // run achievement checks for the target
+        try {
+          const { checkAndAwardAll } = require('../utils/achievements');
+          await checkAndAwardAll(target, message.client, { event: 'masscards', faculty: facultyKey });
+        } catch (err) {
+          console.error('Achievement check after masscards failed', err);
+        }
+        return message.reply(`Added ${matches.length} cards from faculty ${facultyQuery} to <@${targetId}>`);
+      }
+
       if (type === 'memerod') {
         const mention = args[2];
         targetId = parseMention(mention);
@@ -91,6 +121,26 @@ async function execute({ message, args }) {
         targetUser.currentRod = 'meme_rod';
         await targetUser.save();
         return message.reply(`Given Meme Rod to <@${targetId}>`);
+      }
+
+      if (type === 'chest' || type === 'chests') {
+        // syntax: op owner give chest <chest name|id> <amount> <@user>
+        const chestQuery = args[2];
+        const amtParsed = parseInt(args[3], 10);
+        const mentionChest = args[4];
+        targetId = parseMention(mentionChest);
+        if (!chestQuery || isNaN(amtParsed) || !targetId) return message.reply('Usage: op owner give chest <chest> <amount> <@user>');
+        const { getChestByQuery, getChestById } = require('../data/chests');
+        const chestDef = getChestByQuery(chestQuery) || getChestById(chestQuery);
+        if (!chestDef) return message.reply(`Chest type "${chestQuery}" not recognized.`);
+        let tgt = await User.findOne({ userId: targetId });
+        if (!tgt) return message.reply('Target user does not have an account.');
+        tgt.items = tgt.items || [];
+        const existing = tgt.items.find(it => it.itemId === chestDef.id);
+        if (existing) existing.quantity += amtParsed;
+        else tgt.items.push({ itemId: chestDef.id, quantity: amtParsed });
+        await tgt.save();
+        return message.reply(`Given ${amtParsed} ${chestDef.name}(s) to <@${targetId}>`);
       }
 
       // fallback for simple two-arg give
@@ -138,6 +188,13 @@ async function execute({ message, args }) {
         target.ownedCards.push({ cardId: actualCardId, level: 1, xp: 0 });
         if (!target.history.includes(actualCardId)) target.history.push(actualCardId);
         await target.save();
+        // check achievements for the receiver (e.g., UR card / faculty completion)
+        try {
+          const { checkAndAwardAll } = require('../utils/achievements');
+          await checkAndAwardAll(target, message.client, { event: 'owner_give_card', cardId: actualCardId });
+        } catch (err) {
+          console.error('Achievement check after owner give card failed', err);
+        }
         return message.reply(`Added card ${formatCardId(actualCardId)} to <@${targetId}>'s collection`);
       }
 
@@ -154,6 +211,36 @@ async function execute({ message, args }) {
       duelCmd.clearUserState(targetId);
     }
     return message.reply(`Deleted data for <@${targetId}>`);
+  }
+
+  if (sub === 'setlevel') {
+    // syntax: op owner setlevel <cardId> <level> <@user>
+    const cardId = args[1];
+    const levelArg = args[2];
+    const mention = args[3];
+    const targetId = parseMention(mention);
+    if (!cardId || !levelArg || !targetId) return message.reply('Usage: op owner setlevel <cardId> <level> <@user>');
+    const level = parseInt(levelArg, 10);
+    if (isNaN(level) || level < 1) return message.reply('Level must be a positive number');
+    const target = await User.findOne({ userId: targetId });
+    if (!target) return message.reply('Target user does not have an account.');
+    target.ownedCards = target.ownedCards || [];
+    let entry = target.ownedCards.find(e => e.cardId === cardId);
+    if (!entry) {
+      target.ownedCards.push({ cardId, level, xp: 0 });
+    } else {
+      entry.level = level;
+      entry.xp = entry.xp || 0;
+    }
+    await target.save();
+    // check achievements (level 100)
+    try {
+      const { checkAndAwardAll } = require('../utils/achievements');
+      await checkAndAwardAll(target, message.client, { event: 'setlevel', cardId, level });
+    } catch (err) {
+      console.error('Achievement check after setlevel failed', err);
+    }
+    return message.reply(`Set level of ${cardId} to ${level} for <@${targetId}>`);
   }
 
   if (sub === 'setdrops') {
@@ -236,6 +323,35 @@ async function execute({ message, args }) {
       console.error('Error simulating time:', err);
       return message.reply('Failed to simulate time passing.');
     }
+  }
+
+  if (sub === 'ship') {
+    const mention = args[1];
+    const targetId = parseMention(mention);
+    if (!targetId) return message.reply('Usage: op owner ship <@user>');
+
+    const target = await User.findOne({ userId: targetId });
+    if (!target) return message.reply('Target user does not have an account.');
+
+    if (!target.activeShip) {
+      return message.reply(`<@${targetId}> does not have an active ship.`);
+    }
+
+    const { getShipById, updateShipBalance } = require('../utils/cards');
+    const ship = getShipById(target.activeShip);
+    if (!ship) {
+      return message.reply(`<@${targetId}>'s active ship is invalid.`);
+    }
+
+    updateShipBalance(target);
+    await target.save();
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${ship.character}`)
+      .setDescription(`**Owner:** <@${targetId}>\n**Balance:** ${target.shipBalance} <:beri:1490738445319016651>`)
+      .setColor('#2b2d31');
+
+    return message.channel.send({ embeds: [embed] });
   }
 
   return message.reply('Unrecognized owner subcommand.');

@@ -146,8 +146,7 @@ module.exports = {
       } else {
         user.items.push({ itemId: exclusiveChoice.id, quantity: exclusiveChoice.count });
       }
-      const displayName = chestDef ? `${chestDef.emoji} ${chestDef.name}` : exclusiveChoice.id;
-      chestRewards.push(`${exclusiveChoice.count}x ${displayName}`);
+      chestRewards.push({ count: exclusiveChoice.count, emoji: chestDef ? chestDef.emoji : '', name: chestDef ? chestDef.name : exclusiveChoice.id });
     } else {
       for (const chest of rewards.chests || []) {
         if (chest.exclusive) continue;
@@ -159,8 +158,7 @@ module.exports = {
           } else {
             user.items.push({ itemId: chest.id, quantity: chest.count });
           }
-          const displayName = chestDef ? `${chestDef.emoji} ${chestDef.name}` : chest.id;
-          chestRewards.push(`${chest.count}x ${displayName}`);
+          chestRewards.push({ count: chest.count, emoji: chestDef ? chestDef.emoji : '', name: chestDef ? chestDef.name : chest.id });
         }
       }
     }
@@ -173,6 +171,8 @@ module.exports = {
     user.gems += gemsReward;
     user.lastDaily = now;
     user.dailyStreak = newStreak;
+    // schedule a one-time DM reminder 24h from now
+    user.nextDailyReminder = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     user.markModified('packInventory');
     await user.save();
 
@@ -194,23 +194,18 @@ module.exports = {
       }
     }
 
-    let chestLines = [];
+    // Consolidate rewards into lines with emoji + amount + label
+    const rewardLines = [];
+    rewardLines.push(`${beliIcon} ${beliReward} Beli`);
+    rewardLines.push(`${gemIcon} ${gemsReward}x gems`);
+    if (packLines.length > 0) rewardLines.push(...packLines);
     if (chestRewards.length > 0) {
-      for (const chestName of chestRewards) {
-        chestLines.push(`${nextEmoji} ${chestName}`);
+      for (const c of chestRewards) {
+        rewardLines.push(`${c.emoji} ${c.count}x ${c.name}`.trim());
       }
     }
 
-    const fields = [
-      { name: 'Beli', value: `${beliIcon} ${beliReward}`, inline: true },
-      { name: 'Gems', value: `${gemIcon} ${gemsReward}`, inline: true }
-    ];
-    if (packLines.length > 0) {
-      fields.push({ name: 'Packs', value: packLines.join('\n'), inline: false });
-    }
-    if (chestLines.length > 0) {
-      fields.push({ name: 'Chests', value: chestLines.join('\n'), inline: false });
-    }
+    const fields = [ { name: 'Rewards', value: rewardLines.join('\n'), inline: false } ];
 
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')

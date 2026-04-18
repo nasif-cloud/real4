@@ -61,6 +61,15 @@ module.exports = {
       .sort((a, b) => (b.ownedCards?.length || 0) - (a.ownedCards?.length || 0))
       .findIndex(u => u.userId === targetId) + 1;
 
+    // badges display (icons only)
+    const { ACHIEVEMENTS } = require('../utils/achievements');
+    const equipped = (user.badgesEquipped || []).map(id => {
+      const def = ACHIEVEMENTS.find(a => a.id === id);
+      return def ? def.icon : id;
+    }).join(' ');
+
+    const statsValue = `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}` + (equipped ? `\nBadges: ${equipped}` : '');
+
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
       .setTitle(`${username}'s Profile`)
@@ -68,7 +77,7 @@ module.exports = {
       .addFields(
         { name: 'Bounty', value: `<:bounty:1490738541448400976>${user.bounty || 100}`, inline: true },
         { name: '**Rankings**', value: `Wealth: #${wealthRank}\nBounty: #${bountyRank}\nDex: #${dexRank}`, inline: false },
-        { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}`, inline: false }
+        { name: '**Statistics**', value: statsValue, inline: false }
       );
 
     if (message) return message.channel.send({ embeds: [embed] });
@@ -104,7 +113,7 @@ module.exports.buildUserProfileEmbed = async function (targetId, discordUser) {
     .addFields(
       { name: 'Bounty', value: `¥${user.bounty || 100}`, inline: true },
       { name: '**Rankings**', value: `Wealth: #${wealthRank}\nBounty: #${bountyRank}\nDex: #${dexRank}`, inline: false },
-      { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}`, inline: false }
+      { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}` + ((user.badgesEquipped || []).length ? `\nBadges: ${(require('../utils/achievements').ACHIEVEMENTS.filter(a => (user.badgesEquipped || []).includes(a.id)).map(a => a.icon).join(' '))}` : ''), inline: false }
     );
 
   return embed;

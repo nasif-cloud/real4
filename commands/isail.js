@@ -1,6 +1,6 @@
 // I changed the title, keep it that way. the enrgy icon is: <:energy:1478051414558118052>
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 
 // helper to safely defer interaction updates without crashing on expired ones
 async function safeDefer(interaction) {
@@ -33,6 +33,8 @@ const { resolveStats } = require('../utils/statResolver');
 const { getEffectDescription, normalizeGifUrl } = require('../utils/cards');
 const { getDamageMultiplier, getAttributeDescription } = require('../utils/attributeSystem');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
+const { fetchBuffer, getMapImageBuffer } = require('../utils/mapImage');
+const { getShipById, getCardById } = require('../utils/cards');
 
 
 
@@ -57,6 +59,7 @@ const {
   removeStatusTypes,
   hasTruesight,
   consumeTruesight,
+  decrementStatusDurationsForTeam,
   handleKO
 } = statusManager;
 
@@ -194,10 +197,10 @@ async function refreshBattleMessage(oldMsg, state, user, discordUser) {
   if (state.finished) {
     components.forEach(r => r.components.forEach(b => b.setDisabled(true)));
     if (state.victory) {
-      const nextIsailRow = new ActionRowBuilder().addComponents(
+        const nextIsailRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId('isail_next')
-          .setLabel('Next Level')
+          .setLabel('Next Stage')
           .setEmoji('<:nextsail:1490397191125209119>')
           .setStyle(ButtonStyle.Secondary)
       );
@@ -314,10 +317,29 @@ function buildEmbed(state, user, discordUser) {
 
   // color remains fixed based on who started (user = white, marine = black)
   const embedColor = state.startingPlayer === 'user' ? '#FFFFFF' : '#000000';
-  const embed = new EmbedBuilder()
-    .setColor('#b0d4ff')
-    .setDescription(`**Infinite sailing stage \`${user.isailProgress}\`**`)
-    .setThumbnail('https://static.wikia.nocookie.net/onepiece/images/d/dc/Marines_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20210110121711')
+  const embed = new EmbedBuilder().setColor('#b0d4ff');
+  if (state.storyMode) {
+    const key = state.storyKey || 'Story';
+    const stageNum = state.storyStage || 1;
+    embed.setDescription(`**${key.replace(/_/g, ' ')} — Stage ${stageNum}**`);
+    // prefer the user's ship as the battle thumbnail for story battles
+    try {
+      if (user && user.activeShip) {
+        const shipDef = getShipById(user.activeShip) || getCardById(user.activeShip) || null;
+        const thumb = shipDef && (shipDef.image_url || shipDef.image || shipDef.art) ? (shipDef.image_url || shipDef.image || shipDef.art) : null;
+        if (thumb) embed.setThumbnail(thumb);
+        else if (discordUser) embed.setThumbnail(discordUser.displayAvatarURL());
+      } else if (discordUser) {
+        embed.setThumbnail(discordUser.displayAvatarURL());
+      }
+    } catch (e) {
+      // swallow thumbnail errors
+    }
+  } else {
+    embed.setDescription(`**sailing stage \`${user.isailProgress}\`**`);
+    // show the marine thumbnail only for infinite sail (not story mode)
+    embed.setThumbnail('https://static.wikia.nocookie.net/onepiece/images/d/dc/Marines_Infobox.png/revision/latest/scale-to-width-down/1000?cb=20210110121711');
+  }
   // set any image override (special attack gif) or default art
   if (state.embedImage) {
     embed.setImage(state.embedImage);
@@ -376,6 +398,9 @@ function buildEmbed(state, user, discordUser) {
     );
   }
 
+  // footer: forfeit hint
+  embed.setFooter({ text: 'Use /forfeit to forfeit the battle' });
+
   return embed;
 }
 
@@ -392,17 +417,17 @@ function makeSelectionRow(state) {
         .setDisabled(disabled)
     );
   });
-  // Add forfeit button to character row only if not awaiting target
-  if (!state.awaitingTarget) {
+  // Rest button - reset energy to 3, only if no card selected
+  if (state.selected === null) {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId('isail_action:forfeit')
-        .setLabel('Forfeit')
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(state.finished)
+        .setCustomId('isail_action:rest')
+        .setLabel('Rest')
+        .setStyle(ButtonStyle.Success)
     );
   }
   return row;
+
 }
 
 function makeActionRow(state) {
@@ -428,13 +453,6 @@ function makeActionRow(state) {
         .setDisabled(isUndead)
     );
   }
-  // Rest button - reset energy to 3
-  row.addComponents(
-    new ButtonBuilder()
-      .setCustomId('isail_action:rest')
-      .setLabel('Rest')
-      .setStyle(ButtonStyle.Success)
-  );
   return row;
 }
 
@@ -454,12 +472,12 @@ async function updateBattleMessage(msg, state, user, discordUser) {
     // add next isail button if victory
     if (state.victory) {
       const nextIsailRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('isail_next')
-          .setLabel('Next Level')
-          .setEmoji('<:nextsail:1490397191125209119>')
-          .setStyle(ButtonStyle.Secondary)
-      );
+      new ButtonBuilder()
+        .setCustomId('isail_next')
+        .setLabel('Next Stage')
+        .setEmoji('<:nextsail:1490397191125209119>')
+        .setStyle(ButtonStyle.Secondary)
+    );
       components.push(nextIsailRow);
     }
   }
@@ -680,31 +698,76 @@ async function handleVictory(state, msg, user, discordUser) {
   // calculate rewards
   let belis = 0;
   let bountyGain = 0;
-  const lvl = user.isailProgress;
-  if (lvl <= 10) belis = randomInt(10, 100);
-  else if (lvl <= 20) belis = randomInt(30, 150);
-  else if (lvl <= 30) {
-    belis = randomInt(50, 300);
-    if (Math.random() < 0.10) {
-      user.resetTokens = (user.resetTokens || 0) + 1;
-      appendLog(state, 'You also found a **Reset Token**!');
+  if (state.storyMode) {
+    // Story-mode: only give island completion rewards when the boss (stage 3) is cleared.
+    const key = state.storyKey || 'story';
+    const stage = state.storyStage || 1;
+
+    // ensure containers exist
+    user.storyProgress = user.storyProgress || {};
+    user.storyCompletions = user.storyCompletions || {};
+    user.storyProgress[key] = user.storyProgress[key] || [];
+
+    // compute marine bounty contribution
+    let marineBounty = 0;
+    if (state.marines && state.marines.length > 0) {
+      state.marines.forEach(m => { marineBounty += bountyMap[m.rank] || 0; });
     }
-  } else if (lvl <= 40) {
-    belis = randomInt(80, 400) + Math.floor((lvl - 30) * 10);
+
+    if (stage < 3) {
+      // Intermediate stages: mark progress but do not award island rewards yet
+      if (!user.storyProgress[key].includes(stage)) user.storyProgress[key].push(stage);
+      belis = 0;
+      bountyGain = 0;
+    } else {
+      // Boss stage cleared -> island completion logic
+      const prevCount = user.storyCompletions[key] || 0;
+      if (prevCount === 0) {
+        // First time completing this island: big bounty + 5 gems
+        user.gems = (user.gems || 0) + 5;
+        bountyGain = marineBounty + 100000;
+        belis = 0;
+      } else if (prevCount === 1) {
+        // Second completion: 1 gem
+        user.gems = (user.gems || 0) + 1;
+        bountyGain = marineBounty;
+        belis = 0;
+      } else {
+        // Subsequent completions: small beli reward
+        belis = 50;
+        bountyGain = marineBounty;
+      }
+      // increment completion counter and persist stage if not recorded
+      user.storyCompletions[key] = prevCount + 1;
+      if (!user.storyProgress[key].includes(3)) user.storyProgress[key].push(3);
+    }
   } else {
-    belis = randomInt(120, 500) + Math.floor((lvl - 40) * 15);
+    // Infinite sail rewards (legacy behavior)
+    const lvl = user.isailProgress || 1;
+    if (lvl <= 10) belis = randomInt(10, 100);
+    else if (lvl <= 20) belis = randomInt(30, 150);
+    else if (lvl <= 30) {
+      belis = randomInt(50, 300);
+      if (Math.random() < 0.10) {
+        user.resetTokens = (user.resetTokens || 0) + 1;
+        appendLog(state, 'You also found a **Reset Token**!');
+      }
+    } else if (lvl <= 40) {
+      belis = randomInt(80, 400) + Math.floor((lvl - 30) * 10);
+    } else {
+      belis = randomInt(120, 500) + Math.floor((lvl - 40) * 15);
+    }
+    if (state.marines && state.marines.length > 0) {
+      state.marines.forEach(marine => {
+        bountyGain += bountyMap[marine.rank] || 0;
+      });
+    }
+    user.isailProgress = (user.isailProgress || 1) + 1;
   }
-  
-  // Calculate bounty from defeated marines
-  if (state.marines && state.marines.length > 0) {
-    state.marines.forEach(marine => {
-      bountyGain += bountyMap[marine.rank] || 0;
-    });
-  }
-  
+
+  // apply rewards
   user.balance = (user.balance || 0) + belis;
   user.bounty = (user.bounty || 100) + bountyGain;
-  user.isailProgress = (user.isailProgress || 1) + 1;
   // store last enemy ranks to avoid repeat on next run
   state.marines && (user.lastIsailEnemies = state.marines.map(m => m.rank));
 
@@ -739,23 +802,62 @@ async function handleVictory(state, msg, user, discordUser) {
   }
 
   await user.save();
-  // Create a simple victory embed
-  const victoryEmbed = new EmbedBuilder()
-    .setColor('#f8fec6')
-    .setTitle('Victory!')
-    .setDescription(`• Earned ${belis} <:beri:1490738445319016651>\n• Earned ${bountyGain} <:bounty:1490738541448400976>\n• team members gained **${xpGain} XP**`);
-  if (discordUser) {
-    victoryEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  try {
+    const { checkAndAwardAll } = require('../utils/achievements');
+    await checkAndAwardAll(user, msg.client, { event: 'isail_victory', amount: bountyGain });
+  } catch (err) {
+    console.error('Achievement check after isail victory failed', err);
   }
+  // Create a simple victory embed with contextual story rewards
+  const victoryEmbed = new EmbedBuilder().setColor('#f8fec6').setTitle('Victory!');
+  const descLines = [];
+  if (state.storyMode && state.storyStage === 3) {
+    const key = state.storyKey || 'story';
+    const completions = (user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0;
+    const gemIcon = '<:gem:1490741488081043577>';
+    if (completions === 1) {
+      // first time island clear
+      descLines.push(`• Earned ${gemIcon} 5 Gems`);
+      descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+      // compute next island name for unlock message
+      const ISLAND_ORDER = ['fusha_village','alvidas_hideout','shells_town','orange_town','syrup_village','baratie','arlong_park','loguetown'];
+      const idx = ISLAND_ORDER.indexOf(key);
+      if (idx >= 0 && idx < ISLAND_ORDER.length - 1) {
+        const nextName = ISLAND_ORDER[idx + 1].replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        descLines.push(`Unlocked **${nextName}**!`);
+      } else {
+        descLines.push('Island cleared!');
+      }
+    } else if (completions === 2) {
+      descLines.push(`• Earned ${gemIcon} 1 Gem`);
+      descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+    } else {
+      descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
+      descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+    }
+  } else {
+    descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
+    descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+  }
+  descLines.push(`• team members gained **${xpGain} XP**`);
+  victoryEmbed.setDescription(descLines.join('\n'));
+  if (discordUser) victoryEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   
-  const nextSailRow = new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId('isail_next')
-        .setLabel('Next Level')
-        .setEmoji('<:nextsail:1490397191125209119>')
-        .setStyle(ButtonStyle.Secondary)
-    );
+  // build next button; if this was a story battle, attach story metadata so the handler resumes the correct stage
+  let nextCustomId = 'isail_next';
+  if (state.storyMode) {
+    const nextStage = (state.storyStage || 1) + 1;
+    if (nextStage <= 3) nextCustomId = `isail_next:story|${state.storyKey}|${nextStage}`;
+    else nextCustomId = `isail_next:finish|${state.storyKey}`;
+  }
+  const nextLabel = nextCustomId.includes('finish|') ? 'Open Map' : 'Next Stage';
+  const nextSailRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(nextCustomId)
+      .setLabel(nextLabel)
+      .setEmoji('<:nextsail:1490397191125209119>')
+      .setStyle(ButtonStyle.Secondary)
+  );
   
   try { await msg.delete(); } catch {}
   await msg.channel.send({ embeds: [victoryEmbed], components: [nextSailRow] });
@@ -774,14 +876,20 @@ async function handleDefeat(state, msg, user, discordUser) {
     defeatEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   }
   
-  const nextSailRow = new ActionRowBuilder()
-    .addComponents(
-      new ButtonBuilder()
-        .setCustomId('isail_next')
-        .setLabel('Next Level')
-        .setEmoji('<:nextsail:1490397191125209119>')
-        .setStyle(ButtonStyle.Secondary)
-    );
+  let nextCustomId = 'isail_next';
+  if (state.storyMode) {
+    // on defeat allow retrying the same stage
+    const retryStage = state.storyStage || 1;
+    nextCustomId = `isail_next:story|${state.storyKey}|${retryStage}`;
+  }
+  const retryLabel = nextCustomId.startsWith('isail_next:story|') ? 'Retry Stage' : 'Next Stage';
+  const nextSailRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(nextCustomId)
+      .setLabel(retryLabel)
+      .setEmoji('<:nextsail:1490397191125209119>')
+      .setStyle(ButtonStyle.Secondary)
+  );
   
   try { await msg.delete(); } catch {}
   await msg.channel.send({ embeds: [defeatEmbed], components: [nextSailRow] });
@@ -802,15 +910,34 @@ function setupTimeout(state, msg, user, discordUser) {
         // Check if battle state still exists with this message ID
         if (!battleStates.has(msg.id)) return;
         if (state.finished) return;
-        state.log = 'Battle timed out due to inactivity.';
-        state.finished = true;
-        // Try to update, but handle case where message was deleted
-        try {
-          await msg.edit({ embeds: [buildEmbed(state, user, discordUser)], components: [] });
-        } catch (e) {
-          // Message was deleted, that's okay
+        // Mark inactivity and pass the turn to the marines
+        appendLog(state, 'Player took too long. Turn passed to the marines.');
+        // clear any pending selection
+        state.selected = null;
+        state.turn = 'marine';
+        // apply start-of-turn effects
+        applyGlobalCut(state);
+        // perform marine action
+        marineAttack(state);
+        // check for defeat
+        if (checkForDefeat(state)) {
+          const userDoc = await User.findOne({ userId: state.userId });
+          await handleDefeat(state, msg, userDoc, discordUser);
+          battleStates.delete(msg.id);
+          return;
         }
-        battleStates.delete(msg.id);
+        // recharge energy for next user turn
+        rechargeEnergy(state);
+        // refresh the battle message
+        try {
+          await refreshBattleMessage(msg, state, await User.findOne({ userId: state.userId }), discordUser);
+        } catch (e) {
+          if (e.code !== 10008) console.error('Timeout refresh error:', e);
+        }
+        // reset log after showing
+        state.log = '';
+        // restart inactivity timer for next turn
+        setupTimeout(state, msg, await User.findOne({ userId: state.userId }), discordUser);
       } catch (e) {
         console.error('Timeout handler error:', e);
       }
@@ -821,6 +948,138 @@ function setupTimeout(state, msg, user, discordUser) {
 function appendLog(state, txt) {
   if (state.log) state.log += '\n' + txt;
   else state.log = txt;
+}
+
+// exportable helper to start a battle using a provided marines array
+async function startBattleWithMarines({ message, interaction, user, discordUser, marines, storyMode = false, storyKey = null, storyStage = null }) {
+  if (!user) return;
+  const userId = user.userId || user.userId;
+
+  // Check for active battle for this user
+  let activeIsail = null;
+  for (const [msgId, state] of battleStates) {
+    if (state.userId === userId && !state.finished) {
+      activeIsail = msgId;
+      break;
+    }
+  }
+  if (activeIsail) {
+    const reply = 'You already have an active Isail in progress!';
+    if (message) return message.reply(reply);
+    return interaction.reply({ content: reply, ephemeral: true });
+  }
+
+  if (!Array.isArray(user.team) || user.team.length === 0) {
+    const reply = 'Your team must have at least 1 card.';
+    if (message) return message.reply(reply);
+    return interaction.reply({ content: reply, ephemeral: true });
+  }
+
+  const teamDefs = user.team.slice(0, 3).map(id => cardDefs.find(c => c.id === id)).filter(Boolean);
+  if (teamDefs.length === 0) {
+    const reply = 'Your team must have at least 1 valid card.';
+    if (message) return message.reply(reply);
+    return interaction.reply({ content: reply, ephemeral: true });
+  }
+
+  const resolvedTeam = teamDefs.map(def => {
+    const entry = (user.ownedCards || []).find(e => e.cardId === def.id) || { cardId: def.id, level: 1, xp: 0 };
+    const scaled = resolveStats(entry, user.ownedCards || []);
+    return {
+      def,
+      userEntry: entry,
+      scaled: scaled || {
+        health: def.health,
+        power: def.power,
+        speed: def.speed,
+        attack_min: def.attack_min,
+        attack_max: def.attack_max,
+        special_attack: def.special_attack ? { min: def.special_attack.min_atk || def.special_attack.min, max: def.special_attack.max_atk || def.special_attack.max } : undefined
+      },
+      currentHP: (scaled && scaled.health) || def.health,
+      maxHP: (scaled && scaled.health) || def.health,
+      energy: 3,
+      alive: true,
+      turnsUntilRecharge: 0,
+      status: []
+    };
+  });
+
+  // Ensure marines array has currentHP fields
+  const safeMarines = (marines || []).map(m => {
+    const maxHP = m.maxHP || m.hp || 30;
+    return Object.assign({}, m, { currentHP: typeof m.currentHP === 'number' ? m.currentHP : maxHP, maxHP });
+  });
+
+  const state = {
+    userId,
+    marines: safeMarines,
+    cards: resolvedTeam,
+    turn: null,
+    startingPlayer: null,
+    log: '',
+    selected: null,
+    awaitingTarget: null,
+    finished: false,
+    lastUserAction: '',
+    lastMarineAction: '',
+    timeout: null,
+    embedImage: null,
+    storyMode: !!storyMode,
+    storyKey: storyKey || null,
+    storyStage: storyStage || null
+  };
+
+  // If the provided marines include a representative image, show it on the battle embed
+  if (safeMarines && safeMarines.length > 0) {
+    state.embedImage = safeMarines[0].image || safeMarines[0].image_url || null;
+  }
+
+  const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
+  const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
+  state.turn = userSpeed >= marineSpeed ? 'user' : 'marine';
+  state.startingPlayer = state.turn;
+  applyGlobalCut(state);
+
+  const embed = buildEmbed(state, user, discordUser);
+  const row = makeSelectionRow(state);
+  const components = [row];
+  let msg;
+  if (message) {
+    msg = await message.channel.send({ embeds: [embed], components });
+  } else {
+    try {
+      if (!interaction.deferred && !interaction.replied) {
+        msg = await interaction.reply({ embeds: [embed], components, fetchReply: true });
+      } else {
+        msg = await interaction.channel.send({ embeds: [embed], components });
+      }
+    } catch (e) {
+      msg = await interaction.channel.send({ embeds: [embed], components });
+    }
+  }
+  battleStates.set(msg.id, state);
+  await setupTimeout(state, msg, user, discordUser);
+
+  setTimeout(() => {
+    const expiredEmbed = buildEmbed(state, user, discordUser);
+    expiredEmbed.setFooter({ text: 'Expired' });
+    msg.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
+  }, 180000);
+
+  if (state.turn === 'marine') {
+    marineAttack(state);
+    if (checkForDefeat(state)) {
+      await handleDefeat(state, msg, user, discordUser);
+      battleStates.delete(msg.id);
+      return;
+    }
+    state.turn = 'user';
+    applyGlobalCut(state);
+    msg = await refreshBattleMessage(msg, state, user, discordUser);
+    state.log = '';
+    await runSkipCycle(state, msg, user, discordUser);
+  }
 }
 
 module.exports = {
@@ -854,13 +1113,14 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // cooldown check
+    // cooldown check (1 minute on loss; owner bypass)
     const now = new Date();
-    if (userId !== OWNER_ID && user.lastIsailFail) {
+    if (user.lastIsailFail) {
       const diff = now - user.lastIsailFail;
-      if (diff < 30_000) {
-        const wait = Math.ceil((30_000 - diff) / 1000);
-        const reply = `You must wait ${wait}s before attempting Infinite Sail again.`;
+      const COOLDOWN_MS = 60_000;
+      if (diff < COOLDOWN_MS) {
+        const wait = Math.ceil((COOLDOWN_MS - diff) / 1000);
+        const reply = `You must wait ${wait}s before attempting Sailing again.`;
         if (message) return message.reply(reply);
         return interaction.reply({ content: reply, ephemeral: true });
       }
@@ -929,15 +1189,36 @@ module.exports = {
     applyGlobalCut(state);
 
     // send initial message
-    const embed = buildEmbed(state, user, discordUser);
-    const row = makeSelectionRow(state);
-    const components = [row];
-    let msg;
-    if (message) {
-      msg = await message.channel.send({ embeds: [embed], components });
-    } else {
-      msg = await interaction.reply({ embeds: [embed], components, fetchReply: true });
-    }
+      const embed = buildEmbed(state, user, discordUser);
+      const row = makeSelectionRow(state);
+      const components = [row];
+      let msg;
+
+      // If this is not the user's first Infinite Sail run, send the map image first
+      const sendMapFirst = !!(user && user.isailProgress && user.isailProgress > 1);
+      if (sendMapFirst) {
+        try {
+          const buf = await getMapImageBuffer(user);
+          const att = new AttachmentBuilder(buf, { name: 'eastblue.png' });
+          if (message) {
+            await message.channel.send({ files: [att] });
+          } else {
+            await interaction.reply({ files: [att] });
+          }
+        } catch (e) {
+          console.error('Failed to send map image in isail:', e);
+        }
+      }
+
+      if (message) {
+        msg = await message.channel.send({ embeds: [embed], components });
+      } else {
+        if (sendMapFirst) {
+          msg = await interaction.followUp({ embeds: [embed], components, fetchReply: true });
+        } else {
+          msg = await interaction.reply({ embeds: [embed], components, fetchReply: true });
+        }
+      }
     battleStates.set(msg.id, state);
     // start inactivity timeout for first turn
     await setupTimeout(state, msg, user, discordUser);
@@ -996,6 +1277,71 @@ module.exports = {
       await user.save();
       console.log(`[isail_next] user ${userId} resumes at progress ${user.isailProgress}`);
 
+      // If the Next button includes story metadata (story|island|stage), resume the story stage
+      if (cardId && cardId.startsWith('story|')) {
+        const parts = cardId.split('|');
+        const storyKey = parts[1];
+        const nextStage = parseInt(parts[2], 10) || 1;
+
+        // cooldown check (1 minute on loss)
+        const now = new Date();
+        if (user.lastIsailFail) {
+          const diff = now - user.lastIsailFail;
+          const COOLDOWN_MS = 60_000;
+          if (diff < COOLDOWN_MS) {
+            const wait = Math.ceil((COOLDOWN_MS - diff) / 1000);
+            return interaction.followUp({ content: `You must wait ${wait}s before attempting Infinite Sail again.`, ephemeral: true });
+          }
+        }
+
+        // consume 1 cola from active ship (same rules as /sail)
+        user.ships = user.ships || {};
+        const shipDef2 = getShipById(user.activeShip) || getCardById(user.activeShip) || null;
+        const defaultCola2 = shipDef2 ? (shipDef2.cola !== undefined ? shipDef2.cola : (shipDef2.maxCola !== undefined ? shipDef2.maxCola : 0)) : 0;
+        if (!user.ships[user.activeShip]) {
+          user.ships[user.activeShip] = { cola: defaultCola2, maxCola: (shipDef2 && shipDef2.maxCola !== undefined) ? shipDef2.maxCola : defaultCola2 };
+        }
+        const shipState2 = user.ships[user.activeShip];
+        if (!shipState2 || (shipState2.cola || 0) <= 0) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
+
+        // consume cola
+        user.ships[user.activeShip].cola = Math.max(0, (user.ships[user.activeShip].cola || 0) - 1);
+        await user.save();
+
+        // build marines array for story stage (support known islands)
+        let marinesArr = [];
+        if (storyKey === 'fusha_village') {
+          if (nextStage === 1) {
+            marinesArr = [{ rank: 'Pistol Bandit', speed: 3, atk: 4, maxHP: 30, attribute: 'STR', emoji: '<:F0120:1494099609067323442>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/100/0120.png' }];
+          } else if (nextStage === 2) {
+            marinesArr = [{ rank: 'Higuma', speed: 4, atk: 8, maxHP: 70, attribute: 'QCK', emoji: '<:0027:1494100987856556204>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0027.png' }];
+          } else if (nextStage === 3) {
+            marinesArr = [{ rank: 'Master of the Near Sea', speed: 5, atk: 10, maxHP: 120, attribute: 'STR', emoji: '<:0028:1494101589550563338>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0028.png' }];
+          }
+        }
+
+        if (!marinesArr.length) return interaction.followUp({ content: 'This story stage is not implemented yet.', ephemeral: true });
+
+        try {
+          await startBattleWithMarines({ interaction, user, discordUser: interaction.user, marines: marinesArr, storyMode: true, storyKey, storyStage: nextStage });
+        } catch (e) {
+          console.error('Failed to start story next stage', e);
+          return interaction.followUp({ content: 'Failed to start next stage.', ephemeral: true });
+        }
+        return;
+      }
+
+      // If Next was a finish marker (island cleared), open sail map
+      if (cardId && cardId.startsWith('finish|')) {
+        try {
+          const sailCmd = require('./sail');
+          return await sailCmd.execute({ interaction });
+        } catch (e) {
+          console.error('Failed to open sail after island finish', e);
+          return interaction.followUp({ content: 'Failed to continue to sail.', ephemeral: true });
+        }
+      }
+
       // Start the next sail run by invoking execute with a message-style context (no duplicate interaction reply)
       const fakeMessage = {
         channel: interaction.channel,
@@ -1005,6 +1351,138 @@ module.exports = {
             return interaction.followUp({ content, ephemeral: true });
           }
           return interaction.followUp(content);
+        }
+        ,
+        // Start a battle using a pre-defined marines array (used for story mode / sail stages)
+        async startBattleWithMarines({ message, interaction, user, discordUser, marines, storyMode = false, storyKey = null, storyStage = null }) {
+          if (!user) return;
+          const userId = user.userId || user.userId;
+
+          // Check for active battle for this user
+          let activeIsail = null;
+          for (const [msgId, state] of battleStates) {
+            if (state.userId === userId && !state.finished) {
+              activeIsail = msgId;
+              break;
+            }
+          }
+          if (activeIsail) {
+            const reply = 'You already have an active Isail in progress!';
+            if (message) return message.reply(reply);
+            return interaction.reply({ content: reply, ephemeral: true });
+          }
+
+          if (!Array.isArray(user.team) || user.team.length === 0) {
+            const reply = 'Your team must have at least 1 card.';
+            if (message) return message.reply(reply);
+            return interaction.reply({ content: reply, ephemeral: true });
+          }
+
+          const teamDefs = user.team.slice(0, 3).map(id => cardDefs.find(c => c.id === id)).filter(Boolean);
+          if (teamDefs.length === 0) {
+            const reply = 'Your team must have at least 1 valid card.';
+            if (message) return message.reply(reply);
+            return interaction.reply({ content: reply, ephemeral: true });
+          }
+
+          const resolvedTeam = teamDefs.map(def => {
+            const entry = (user.ownedCards || []).find(e => e.cardId === def.id) || { cardId: def.id, level: 1, xp: 0 };
+            const scaled = resolveStats(entry, user.ownedCards || []);
+            return {
+              def,
+              userEntry: entry,
+              scaled: scaled || {
+                health: def.health,
+                power: def.power,
+                speed: def.speed,
+                attack_min: def.attack_min,
+                attack_max: def.attack_max,
+                special_attack: def.special_attack ? { min: def.special_attack.min_atk || def.special_attack.min, max: def.special_attack.max_atk || def.special_attack.max } : undefined
+              },
+              currentHP: (scaled && scaled.health) || def.health,
+              maxHP: (scaled && scaled.health) || def.health,
+              energy: 3,
+              alive: true,
+              turnsUntilRecharge: 0,
+              status: []
+            };
+          });
+
+          // Ensure marines array has currentHP fields
+          const safeMarines = (marines || []).map(m => {
+            const maxHP = m.maxHP || m.hp || 30;
+            return Object.assign({}, m, { currentHP: typeof m.currentHP === 'number' ? m.currentHP : maxHP, maxHP });
+          });
+
+          const state = {
+            userId,
+            marines: safeMarines,
+            cards: resolvedTeam,
+            turn: null,
+            startingPlayer: null,
+            log: '',
+            selected: null,
+            awaitingTarget: null,
+            finished: false,
+            lastUserAction: '',
+            lastMarineAction: '',
+            timeout: null,
+            embedImage: null,
+            storyMode: !!storyMode,
+            storyKey: storyKey || null,
+            storyStage: storyStage || null
+          };
+
+          // If the provided marines include a representative image, show it on the battle embed
+          if (safeMarines && safeMarines.length > 0) {
+            state.embedImage = safeMarines[0].image || safeMarines[0].image_url || null;
+          }
+
+          const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
+          const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
+          state.turn = userSpeed >= marineSpeed ? 'user' : 'marine';
+          state.startingPlayer = state.turn;
+          applyGlobalCut(state);
+
+          const embed = buildEmbed(state, user, discordUser);
+          const row = makeSelectionRow(state);
+          const components = [row];
+          let msg;
+          if (message) {
+            msg = await message.channel.send({ embeds: [embed], components });
+          } else {
+            try {
+              if (!interaction.deferred && !interaction.replied) {
+                msg = await interaction.reply({ embeds: [embed], components, fetchReply: true });
+              } else {
+                msg = await interaction.channel.send({ embeds: [embed], components });
+              }
+            } catch (e) {
+              msg = await interaction.channel.send({ embeds: [embed], components });
+            }
+          }
+          battleStates.set(msg.id, state);
+          await setupTimeout(state, msg, user, discordUser);
+
+          setTimeout(() => {
+            const expiredEmbed = buildEmbed(state, user, discordUser);
+            expiredEmbed.setFooter({ text: 'Expired' });
+            msg.edit({ embeds: [expiredEmbed], components: [] }).catch(() => {});
+          }, 180000);
+
+          if (state.turn === 'marine') {
+            marineAttack(state);
+            if (checkForDefeat(state)) {
+              await handleDefeat(state, msg, user, discordUser);
+              battleStates.delete(msg.id);
+              return;
+            }
+            state.turn = 'user';
+            applyGlobalCut(state);
+            msg = await refreshBattleMessage(msg, state, user, discordUser);
+            state.log = '';
+            await runSkipCycle(state, msg, user, discordUser);
+          }
         }
       };
 
@@ -1027,228 +1505,7 @@ module.exports = {
       const parts = rawAction.split('_');
       const type = parts[1]; // 'select' or 'action'
 
-    // handle target choice if user is choosing which enemy to hit
-    if (rawAction.startsWith('isail_target')) {
-      const targetIdx = parseInt(cardId, 10);
-      if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= state.marines.length) {
-        return interaction.followUp({ content: 'Invalid target.', ephemeral: true });
-      }
-      const action = state.awaitingTarget;
-      state.awaitingTarget = null;
-      const card = state.cards[state.selected];
-
-      // Check if card is locked by status effect
-      if (hasStatusLock(card)) {
-        const reason = getStatusLockReason(card);
-        appendLog(state, `${card.def.character} is ${reason} and cannot act!`);
-        state.selected = null;
-        const finished = await finalizeUserAction(state, interaction.message, interaction);
-        if (finished) battleStates.delete(msgId);
-        return safeDefer(interaction);
-      }
-
-      if (action === 'attack') {
-        // hard stun/freeze block
-        if (hasStatusLock(card)) {
-          return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
-        }
-        if (hasAttackDisabled(card)) {
-          return interaction.followUp({ content: `${card.def.character} cannot attack or special attack right now!`, ephemeral: true });
-        }
-        if (card.energy < 1) {
-          return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
-        }
-        card.energy -= 1;
-        card.turnsUntilRecharge = 2;
-        const user = await User.findOne({ userId: state.userId });
-        let dmg = calculateUserDamage(card, 'attack', user);
-        let m = state.marines[targetIdx];
-
-        // Check for confusion on attacker
-        const confusionStatus = card.status?.find(st => st.type === 'confusion');
-        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance ?? 50)) {
-          const selfDmg = Math.max(0, Math.floor(dmg * (1 + ((card.status?.find(st => st.type === 'attackup')?.amount || 0) - (card.status?.find(st => st.type === 'attackdown')?.amount || 0)) / 100)));
-          card.currentHP = Math.max(0, (card.currentHP || 0) - selfDmg);
-          const selfKo = handleKO(card);
-          if (selfKo) appendLog(state, selfKo);
-          state.lastUserAction = `${card.def.character} is confused and hits themselves for **${selfDmg} DMG**! <:energy:1478051414558118052> -1`;
-          const finished = await finalizeUserAction(state, interaction.message, interaction);
-          if (finished) battleStates.delete(msgId);
-          return safeDefer(interaction);
-        }
-
-        const drunkChance = getDrunkChance(card);
-        if (drunkChance > 0 && Math.random() * 100 <= drunkChance) {
-          const alternateTargets = state.marines.filter(c => c.alive && c !== m);
-          if (alternateTargets.length > 0) {
-            const wrongTarget = alternateTargets[Math.floor(Math.random() * alternateTargets.length)];
-            appendLog(state, `${card.def.character} is drunk and hits the wrong target!`);
-            m = wrongTarget;
-          } else {
-            state.lastUserAction = `${card.def.character} is drunk and misses the attack! <:energy:1478051414558118052> -1`;
-            const finished = await finalizeUserAction(state, interaction.message, interaction);
-            if (finished) battleStates.delete(msgId);
-            return safeDefer(interaction);
-          }
-        }
-
-        if (isCharmedAgainstTarget(card, m)) {
-          return interaction.followUp({ content: `${card.def.character} is charmed and cannot attack a same-attribute target!`, ephemeral: true });
-        }
-
-        // Apply attribute multiplier
-        const attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
-        const proneMultiplier = getProneMultiplier(card, m);
-
-        // Apply attack modifiers
-        const attackUp = card.status?.find(st => st.type === 'attackup');
-        const attackDown = card.status?.find(st => st.type === 'attackdown');
-        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount ?? 12) / 100));
-        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount ?? 12) / 100));
-
-        const finalDmg = Math.floor(dmg * attrMultiplier * proneMultiplier);
-        
-        const reflect = getReflectStatus(m);
-        if (reflect) {
-          card.currentHP = Math.max(0, (card.currentHP || 0) - finalDmg);
-          const reflectKO = handleKO(card);
-          if (reflectKO) appendLog(state, reflectKO);
-          appendLog(state, `${m.emoji} ${m.rank} reflects the attack back at ${card.def.character} for ${finalDmg} DMG!`);
-        } else {
-          m.currentHP -= finalDmg;
-          state.lastMarineTarget = m;
-          if (m.currentHP <= 0) {
-            m.currentHP = 0;
-            m.alive = false;
-          }
-        }
-
-        // no status effects on normal attack (special only)
-        // placeholder kept for symmetry
-        const effectLogs1 = [];
-        effectLogs1.forEach(l => appendLog(state, l));
-        
-        const effectivenessStr = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
-        state.lastUserAction = `${card.def.emoji} **${card.def.character}** attacked ${m.emoji} **${m.rank}** for **${finalDmg} DMG**${effectivenessStr}! **<:energy:1478051414558118052> -1**`;
-      } else if (action === 'special') {
-        if (card.energy < 3) {
-          return interaction.followUp({ content: 'Not enough energy.', ephemeral: true });
-        }
-        if (hasAttackDisabled(card)) {
-          return interaction.followUp({ content: `${card.def.character} cannot attack or special attack right now!`, ephemeral: true });
-        }
-        card.energy -= 3;
-        card.turnsUntilRecharge = 2;
-        const user = await User.findOne({ userId: state.userId });
-        // determine the actual range used
-        // use the pre-resolved special attack range from the card state
-        const rangeMin = card.scaled && card.scaled.special_attack ? card.scaled.special_attack.min : 0;
-        const rangeMax = card.scaled && card.scaled.special_attack ? card.scaled.special_attack.max : 0;
-        let dmg = calculateUserDamage(card, 'special', user);
-        let m = state.marines[targetIdx];
-
-        // Check for confusion on attacker
-        const confusionStatus = card.status?.find(st => st.type === 'confusion');
-        if (confusionStatus && Math.random() * 100 < (confusionStatus.chance ?? 50)) {
-          const selfDmg = Math.max(0, Math.floor(dmg * (1 + ((card.status?.find(st => st.type === 'attackup')?.amount || 0) - (card.status?.find(st => st.type === 'attackdown')?.amount || 0)) / 100)));
-          card.currentHP = Math.max(0, (card.currentHP || 0) - selfDmg);
-          const selfKo = handleKO(card);
-          if (selfKo) appendLog(state, selfKo);
-          state.lastUserAction = `${card.def.character} is confused and hits themselves for **${selfDmg} DMG**! <:energy:1478051414558118052> -3`;
-          const finished = await finalizeUserAction(state, interaction.message, interaction);
-          if (finished) battleStates.delete(msgId);
-          return safeDefer(interaction);
-        }
-
-        const drunkChance = getDrunkChance(card);
-        if (drunkChance > 0 && Math.random() * 100 <= drunkChance) {
-          const alternateTargets = state.marines.filter(c => c.alive && c !== m);
-          if (alternateTargets.length > 0) {
-            const wrongTarget = alternateTargets[Math.floor(Math.random() * alternateTargets.length)];
-            appendLog(state, `${card.def.character} is drunk and hits the wrong target!`);
-            m = wrongTarget;
-          } else {
-            state.lastUserAction = `${card.def.character} is drunk and misses the special attack! <:energy:1478051414558118052> -3`;
-            const finished = await finalizeUserAction(state, interaction.message, interaction);
-            if (finished) battleStates.delete(msgId);
-            return safeDefer(interaction);
-          }
-        }
-
-        if (isCharmedAgainstTarget(card, m)) {
-          return interaction.followUp({ content: `${card.def.character} is charmed and cannot attack a same-attribute target!`, ephemeral: true });
-        }
-
-        // Apply attribute multiplier
-        const attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute);
-        const proneMultiplier = getProneMultiplier(card, m);
-
-        // Apply attack modifiers
-        const attackUp = card.status?.find(st => st.type === 'attackup');
-        const attackDown = card.status?.find(st => st.type === 'attackdown');
-        if (attackUp) dmg = Math.floor(dmg * (1 + (attackUp.amount ?? 12) / 100));
-        if (attackDown) dmg = Math.floor(dmg * (1 - (attackDown.amount ?? 12) / 100));
-
-        const finalDmg = Math.floor(dmg * attrMultiplier * proneMultiplier);
-        
-        const reflect = getReflectStatus(m);
-        if (reflect) {
-          card.currentHP = Math.max(0, (card.currentHP || 0) - finalDmg);
-          const reflectKO = handleKO(card);
-          if (reflectKO) appendLog(state, reflectKO);
-          appendLog(state, `${m.emoji} ${m.rank} reflects the special attack back at ${card.def.character} for ${finalDmg} DMG!`);
-        } else {
-          m.currentHP -= finalDmg;
-          state.lastMarineTarget = m;
-          if (m.currentHP <= 0) {
-            m.currentHP = 0;
-            m.alive = false;
-          }
-          // only apply status from special attack
-          const effectTarget = card.def.all && !card.def.itself
-            ? state.marines.filter(marine => marine.currentHP > 0)
-            : card.def.all && card.def.itself
-              ? state.cards.filter(c => c.currentHP > 0)
-              : m;
-          const effectLogs2 = applyCardEffectShared(card, effectTarget);
-          effectLogs2.forEach(l => appendLog(state, l));
-        }
-        
-        if (card.def.special_attack?.gif) {
-          const gifUrl = normalizeGifUrl(card.def.special_attack.gif);
-          state.embedImage = gifUrl;
-          try {
-            let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
-            if (card.def.effect && card.def.effectDuration) {
-              const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration, !!card.def.itself, card.def.effectAmount, card.def.effectChance);
-              if (effectDesc) desc += `\n*${effectDesc}*`;
-            }
-            const gifEmbed = new EmbedBuilder()
-              .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
-              .setImage(gifUrl)
-              .setDescription(desc);
-            const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] });
-            state.gifMessageId = gifMsg.id;
-          } catch (e) {
-            console.error('Failed to send special attack GIF:', e);
-          }
-        } else {
-          state.embedImage = null;
-        }
-        const effectStr = getEffectString(card, m);
-        const effectivenessStr = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
-        state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} for **${finalDmg} DMG**${effectivenessStr}${effectStr}! **<:energy:1478051414558118052> -3**`;
-      }
-
-      state.selected = null;
-      const finished = await finalizeUserAction(state, interaction.message, interaction);
-      if (finished) battleStates.delete(msgId);
-      return safeDefer(interaction);
-    }
-
-    // end of target selection handling
-
-    if (type === 'select') {
+      if (type === 'select') {
       const idx = parseInt(cardId, 10);
       if (isNaN(idx) || idx < 0 || idx >= state.cards.length) {
         return interaction.followUp({ content: 'Invalid selection.', ephemeral: true });
@@ -1279,27 +1536,18 @@ module.exports = {
         return interaction.followUp({ content: 'The battle has already ended.', ephemeral: true });
       }
       
-      // Handle forfeit BEFORE checking card selection
-      if (act === 'forfeit') {
-        const user = await User.findOne({ userId: state.userId });
-        state.lastUserAction = `${user.username} forfeited.`;
-        await handleDefeat(state, interaction.message, user, discordUser);
-        battleStates.delete(msgId);
-        return safeDefer(interaction);
-      }
-      
-      const card = state.cards[state.selected];
-      if (!card || !card.alive) {
-        state.selected = null;
-        await safeUpdateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }), discordUser);
-        return interaction.followUp({ content: 'Selected card is unavailable.', ephemeral: true });
-      }
       if (state.turn !== 'user') {
         return interaction.followUp({ content: 'It is not your turn.', ephemeral: true });
       }
 
       // process user action (with optional target selection)
       if (act === 'attack' || act === 'special') {
+        const card = state.cards[state.selected];
+        if (!card || !card.alive) {
+          state.selected = null;
+          await safeUpdateBattleMessage(interaction.message, state, await User.findOne({ userId: state.userId }), discordUser);
+          return interaction.followUp({ content: 'Selected card is unavailable.', ephemeral: true });
+        }
         // block if the selected card is stunned/frozen
         if (hasStatusLock(card)) {
           return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
@@ -1379,14 +1627,29 @@ module.exports = {
               const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration, !!card.def.itself, card.def.effectAmount, card.def.effectChance);
               if (effectDesc) desc += `\n*${effectDesc}*`;
             }
-            const gifEmbed = new EmbedBuilder()
-              .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
-              .setImage(card.def.special_attack.gif)
-              .setDescription(desc);
-            const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] });
-            state.gifMessageId = gifMsg.id;
+            const normalizedGifUrl = normalizeGifUrl(card.def.special_attack.gif);
+            // fetch and send as attachment to avoid remote-host embed issues
+            try {
+              const gifBuf = await fetchBuffer(normalizedGifUrl);
+              const att = new AttachmentBuilder(gifBuf, { name: 'special.gif' });
+              const gifEmbed = new EmbedBuilder()
+                .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
+                .setImage('attachment://special.gif')
+                .setDescription(desc);
+              const gifMsg = await interaction.channel.send({ embeds: [gifEmbed], files: [att] });
+              state.gifMessageId = gifMsg.id;
+            } catch (innerErr) {
+              // fallback to URL embed if fetching fails
+              const gifEmbed = new EmbedBuilder()
+                .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
+                .setImage(normalizedGifUrl)
+                .setDescription(desc);
+              const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] }).catch(() => null);
+              if (gifMsg) state.gifMessageId = gifMsg.id;
+            }
           } catch (e) {
             console.error('Failed to send special attack GIF:', e);
+            // Continue with battle even if GIF fails
           }
         }
         const cost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
@@ -1401,11 +1664,16 @@ module.exports = {
         } else {
           state.lastUserAction = `${card.def.emoji} **${card.def.character}** attacked ${damageTarget.emoji} **${damageTarget.rank}** for **${dmg} DMG**!${effectivenessStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
         }
-      } else if (act === 'rest') {
-        // Rest action: restore card's energy to 3
-        card.energy = 3;
-        card.turnsUntilRecharge = 2;
-        state.lastUserAction = `${card.def.character} took a rest and restored energy!`;
+      }
+      else if (act === 'rest') {
+        // Rest action: heal all alive cards by 10% max HP, restore +2 energy to each
+        state.cards.forEach(c => {
+          if (c.alive) {
+            c.currentHP = Math.min(c.def.health, c.currentHP + Math.floor(c.def.health * 0.1));
+            c.energy = Math.min(3, c.energy + 2);
+          }
+        });
+        state.lastUserAction = `The team took a rest, healed 10% HP and restored +2 energy each!`;
       } else {
         return interaction.followUp({ content: 'Unknown action.', ephemeral: true });
       }
@@ -1418,6 +1686,142 @@ module.exports = {
         if (finished) battleStates.delete(msgId);
       } catch (e) {
         // If message was deleted or interaction expired, clean up gracefully
+        if (e.code === 10008 || e.code === 10062) {
+          battleStates.delete(msgId);
+          if (!interaction.deferred && !interaction.replied) {
+            try {
+              await interaction.reply({ content: 'Battle session ended (message deleted or expired).', ephemeral: true });
+            } catch {}
+          }
+        } else {
+          throw e;
+        }
+      }
+      return safeDefer(interaction);
+    }
+
+    if (type === 'target') {
+      const targetIdx = parseInt(cardId, 10);
+      if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= state.marines.length) {
+        return interaction.followUp({ content: 'Invalid target.', ephemeral: true });
+      }
+      const act = state.awaitingTarget;
+      state.awaitingTarget = null;
+      if (!act || (act !== 'attack' && act !== 'special')) {
+        return interaction.followUp({ content: 'Invalid target action.', ephemeral: true });
+      }
+      const card = state.cards[state.selected];
+      if (!card || !card.alive) {
+        return interaction.followUp({ content: 'Selected card is unavailable.', ephemeral: true });
+      }
+
+      // Full action logic mirroring the main attack/special handler
+      if (hasStatusLock(card)) {
+        return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
+      }
+      const aliveEnemies = state.marines.filter(m => m.currentHP > 0);
+      if (aliveEnemies.length === 0) {
+        return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+      }
+      const m = state.marines[targetIdx];
+      if (!m || m.currentHP <= 0) {
+        return interaction.followUp({ content: 'Target is already defeated.', ephemeral: true });
+      }
+
+      // Deduct energy
+      if (act === 'attack') {
+        card.energy -= 1;
+      } else if (act === 'special') {
+        card.energy -= 3;
+        // Set gif display for special attacks
+        if (card.def.special_attack && card.def.special_attack.gif) {
+          state.embedImage = normalizeGifUrl(card.def.special_attack.gif);
+        }
+      }
+
+      card.turnsUntilRecharge = 2;
+      const user = await User.findOne({ userId: state.userId });
+      const baseDmg = calculateUserDamage(card, act, user);
+      let attrMultiplier = 1;
+      let isDodgedByTruesight = false;
+      
+      if (hasTruesight(m)) {
+        isDodgedByTruesight = true;
+        consumeTruesight(m);
+        const dodgeMsg = `${m.def.character} dodges with truesight!`;
+        appendLog(state, dodgeMsg);
+        state.lastUserAction = `${card.def.character} tries to attack but ${m.def.character} evades with truesight!`;
+      } else {
+        attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute || m.def?.attribute);
+      }
+
+      const dmg = isDodgedByTruesight ? 0 : Math.floor(baseDmg * attrMultiplier);
+      if (!isDodgedByTruesight) {
+        m.currentHP -= dmg;
+        if (m.currentHP <= 0) {
+          m.currentHP = 0;
+          const ko = handleKO(m);
+          if (ko) appendLog(state, ko);
+        }
+      }
+
+      // Unfreeze the damage target if it was frozen
+      if (m.status) {
+        const freezeIdx = m.status.findIndex(st => st.type === 'freeze');
+        if (freezeIdx >= 0) {
+          m.status.splice(freezeIdx, 1);
+        }
+      }
+
+      // Apply effects for special attacks
+      const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, m) : [];
+      effectLogs.forEach(l => appendLog(state, l));
+
+      // Send GIF for special attacks
+      if (!isDodgedByTruesight && act === 'special' && card.def.special_attack?.gif) {
+        try {
+          let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
+          if (card.def.effect && card.def.effectDuration) {
+            const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration, !!card.def.itself, card.def.effectAmount, card.def.effectChance);
+            if (effectDesc) desc += `\n*${effectDesc}*`;
+          }
+          const normalizedGifUrl = normalizeGifUrl(card.def.special_attack.gif);
+          try {
+            const gifBuf = await fetchBuffer(normalizedGifUrl);
+            const att = new AttachmentBuilder(gifBuf, { name: 'special.gif' });
+            const gifEmbed = new EmbedBuilder()
+              .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
+              .setImage('attachment://special.gif')
+              .setDescription(desc);
+            const gifMsg = await interaction.channel.send({ embeds: [gifEmbed], files: [att] });
+            state.gifMessageId = gifMsg.id;
+          } catch (innerErr) {
+            const gifEmbed = new EmbedBuilder()
+              .setColor(state.startingPlayer === 'user' ? '#FFFFFF' : '#000000')
+              .setImage(normalizedGifUrl)
+              .setDescription(desc);
+            const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] }).catch(() => null);
+            if (gifMsg) state.gifMessageId = gifMsg.id;
+          }
+        } catch (e) {
+          console.error('Failed to send special attack GIF:', e);
+        }
+      }
+
+      const cost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
+      const effectivenessStr = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
+      const effectMessages = effectLogs.length > 0 ? ` *${effectLogs.join(', ')}*` : '';
+      if (act === 'special') {
+        state.lastUserAction = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack ? card.def.special_attack.name : 'Special Attack'} on ${m.emoji} **${m.rank}** for **${dmg} DMG**!${effectivenessStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
+      } else {
+        state.lastUserAction = `${card.def.emoji} **${card.def.character}** attacked ${m.emoji} **${m.rank}** for **${dmg} DMG**!${effectivenessStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
+      }
+
+      state.selected = null;
+      try {
+        const finished = await finalizeUserAction(state, interaction.message, interaction);
+        if (finished) battleStates.delete(msgId);
+      } catch (e) {
         if (e.code === 10008 || e.code === 10062) {
           battleStates.delete(msgId);
           if (!interaction.deferred && !interaction.replied) {
@@ -1445,4 +1849,6 @@ module.exports = {
     } catch {}
   }
 },
+startBattleWithMarines,
+battleStates
 }

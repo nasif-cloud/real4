@@ -36,6 +36,7 @@ const lootCmd = require('./commands/loot');
 const setShipCmd = require('./commands/setship');
 const depositCmd = require('./commands/deposit');
 const betCmd = require('./commands/bet');
+const forfeitCmd = require('./commands/forfeit');
 const User = require('./models/User');
 
 async function main() {
@@ -70,6 +71,35 @@ async function main() {
   client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
     await dropsModule.initializeDrops(client); // Initialize with client reference and restore any saved drop channel
+    // start a periodic checker for daily reminders (runs every minute)
+    const { EmbedBuilder } = require('discord.js');
+    setInterval(async () => {
+      try {
+        const now = new Date();
+        const dueUsers = await User.find({ nextDailyReminder: { $lte: now } });
+        for (const u of dueUsers) {
+          try {
+            const discordUser = await client.users.fetch(u.userId).catch(() => null);
+            if (discordUser) {
+              const embed = new EmbedBuilder()
+                .setColor('#FFFFFF')
+                .setTitle('Daily ready to claim')
+                .setDescription(`Hey **${discordUser.username}**, its been 24 hours since you last collected your daily! claim your daily with \`/daily\`.`)
+                .setThumbnail(client.user.displayAvatarURL());
+              await discordUser.send({ embeds: [embed] }).catch(() => {});
+            }
+          } catch (err) {
+            console.error('Error sending daily reminder DM', err);
+          } finally {
+            // clear reminder so we only remind once unless they claim again
+            u.nextDailyReminder = null;
+            await u.save().catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.error('Daily reminder check failed', err);
+      }
+    }, 60 * 1000);
   });
 
   // simple lock to prevent rapid button spam causing race conditions
@@ -95,6 +125,12 @@ async function main() {
         }
         if (action === 'trivia_diff') {
           return triviaCmd.handleDifficultySelect(interaction);
+        }
+        if (action === 'badge_equip') {
+          return require('./commands/badges').handleSelect(interaction);
+        }
+        if (action === 'sail_select') {
+          return require('./commands/sail').handleSelect(interaction);
         }
       }
 
@@ -130,8 +166,10 @@ async function main() {
         if (commandName === 'deposit') return depositCmd.execute({ interaction });
         if (commandName === 'card') return require('./commands/card').execute({ interaction });
         if (commandName === 'upgrade') return require('./commands/upgrade').execute({ interaction });
-        if (commandName === 'balance') return require('./commands/balance').execute({ interaction });
+        if (commandName === 'forfeit') return forfeitCmd.execute({ interaction });
         if (commandName === 'isail') return require('./commands/isail').execute({ interaction });
+        if (commandName === 'sail') return require('./commands/sail').execute({ interaction });
+        if (commandName === 'fuel') return require('./commands/fuel').execute({ interaction });
         if (commandName === 'fish') return require('./commands/fish').execute({ interaction });
         if (commandName === 'feed') return require('./commands/feed').execute({ interaction });
         if (commandName === 'equip') return equipCmd.execute({ interaction });
@@ -198,6 +236,10 @@ async function main() {
         if (action && action.startsWith('isail')) {
           return require('./commands/isail').handleButton(interaction, action, cardId);
         }
+        // handle story sail interactions
+        if (action && action.startsWith('sail')) {
+          return require('./commands/sail').handleButton(interaction, action, cardId);
+        }
 
         if (action === 'fish_catch') {
           return require('./commands/fish').handleCatch(interaction, cardId);
@@ -227,9 +269,14 @@ async function main() {
           return triviaCmd.handleButton(interaction);
         }
 
-        // handle collection navigation
-        if (action && (action.startsWith('collection_next') || action.startsWith('collection_prev') || action === 'collection_sort' || action === 'collection_sort_select')) {
+        // handle collection navigation and boost
+        if (action && (action.startsWith('collection_next') || action.startsWith('collection_prev') || action === 'collection_sort' || action === 'collection_sort_select' || action === 'collection_boost')) {
           return require('./commands/collection').handleButton(interaction, interaction.customId);
+        }
+
+        // handle badges navigation
+        if (action && action.startsWith('badges_nav')) {
+          return require('./commands/badges').handleButton(interaction, interaction.customId);
         }
 
         // handle info card navigation
@@ -308,6 +355,7 @@ async function main() {
     if (cmd === 'p') cmd = 'pull';
     if (cmd === 'opp') cmd = 'pull';
     if (cmd === 'inv') cmd = 'inventory';
+    if (cmd === 'dep') cmd = 'deposit';
     if (cmd === 't') cmd = 'timers';
     if (cmd === 'col') cmd = 'collection';
     try {
@@ -328,12 +376,14 @@ async function main() {
       if (cmd === 'user') return await userCmd.execute({ message, args });
       if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message, args });
       if (cmd === 'daily') return await dailyCmd.execute({ message });
+      if (cmd === 'wanted') return await require('./commands/wanted').execute({ message, args });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });
       if (cmd === 'claim') return await claimCmd.execute({ message, args });
       if (cmd === 'bulksell') return await bulksellCmd.execute({ message, args });
       if (cmd === 'rob') return await robCmd.execute({ message, args });
       if (cmd === 'stoprob') return await stopRobCmd.execute({ message });
+      if (cmd === 'forfeit') return await forfeitCmd.execute({ message });
       if (cmd === 'loot') return await lootCmd.execute({ message });
       if (cmd === 'timers') return await timersCmd.execute({ message });
       if (cmd === 'trivia') return await triviaCmd.execute({ message });
@@ -343,6 +393,8 @@ async function main() {
       if (cmd === 'set' || cmd === 'setship') return await setShipCmd.execute({ message, args });
       if (cmd === 'deposit') return await depositCmd.execute({ message, args });
       if (cmd === 'isail') return await require('./commands/isail').execute({ message });
+      if (cmd === 'sail') return await require('./commands/sail').execute({ message, args });
+      if (cmd === 'fuel') return await require('./commands/fuel').execute({ message, args });
       if (cmd === 'fish') return await require('./commands/fish').execute({ message });
       if (cmd === 'feed') return await require('./commands/feed').execute({ message, args });
       if (cmd === 'equip') return await equipCmd.execute({ message, args });
@@ -350,6 +402,8 @@ async function main() {
       if (cmd === 'help' || cmd === 'h') return await require('./commands/help').execute({ message });
       if (cmd === 'ownerlist') return await require('./commands/owner').list({ message });
       if (cmd === 'owner') return await require('./commands/owner').execute({ message, args });
+      if (cmd === 'removebadge') return await require('./commands/removebadge').execute({ message, args });
+      if (cmd === 'badges') return await require('./commands/badges').execute({ message, args });
       return; // unknown command - don't respond
     } catch (err) {
       console.error(err);

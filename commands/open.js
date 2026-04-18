@@ -6,6 +6,16 @@ const crews = require('../data/crews');
 const { levelers } = require('../data/levelers');
 const { getChestByQuery, getChestById } = require('../data/chests');
 
+// Special loot emojis
+const COLA_EMOJI = '<:cola:1494106165955792967>';
+const SHARD_EMOJIS = {
+  Red: '<:RedShard:1494106374492131439>',
+  Blue: '<:Blueshard:1494106500149411980>',
+  Green: '<:GreenShard:1494106686963581039>',
+  Yellow: '<:YellowShard:1494106825627406530>',
+  Purple: '<:PurpleShard:1494106958582776008>'
+};
+
 function normalizeName(name) {
   return name ? name.toLowerCase().replace(/\s+/g, '') : '';
 }
@@ -115,6 +125,34 @@ module.exports = {
           user.resetTokens = (user.resetTokens || 0) + resetCount;
           rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] = (rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] || 0) + resetCount;
         }
+
+        // C-Chest special 30% chance extra drop: Cola, Beli(30), Gem(1), or Random Shard
+        if (chest.id === 'c_chest' && Math.random() < 0.30) {
+          const choices = ['cola', 'beli30', 'gem1', 'shard'];
+          const pick = choices[Math.floor(Math.random() * choices.length)];
+          if (pick === 'cola') {
+            user.items = user.items || [];
+            const it = user.items.find(itm => itm.itemId === 'cola');
+            if (it) it.quantity = (it.quantity || 0) + 1;
+            else user.items.push({ itemId: 'cola', quantity: 1 });
+            rewardTotals['Cola'] = (rewardTotals['Cola'] || 0) + 1;
+          } else if (pick === 'beli30') {
+            user.balance = (user.balance || 0) + 30;
+            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + 30;
+          } else if (pick === 'gem1') {
+            user.gems = (user.gems || 0) + 1;
+            rewardTotals['Gems'] = (rewardTotals['Gems'] || 0) + 1;
+          } else if (pick === 'shard') {
+            const colors = Object.keys(SHARD_EMOJIS);
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            const shardId = `${color.toLowerCase()}_shard`;
+            user.items = user.items || [];
+            const it = user.items.find(itm => itm.itemId === shardId);
+            if (it) it.quantity = (it.quantity || 0) + 1;
+            else user.items.push({ itemId: shardId, quantity: 1 });
+            rewardTotals[`${color} Shard`] = (rewardTotals[`${color} Shard`] || 0) + 1;
+          }
+        }
       }
 
       await user.save();
@@ -122,6 +160,13 @@ module.exports = {
       const rewardLines = Object.entries(rewardTotals).map(([key, value]) => {
         if (key === 'Beli') return `<:beri:1490738445319016651> ${value} Beli`;
         if (key === 'Gems') return `<:gem:1490741488081043577> ${value}x gem${value > 1 ? 's' : ''}`;
+        if (key === 'Cola') return `${COLA_EMOJI} ${value}x Cola`;
+        // color shard lines like 'Red Shard'
+        if (key && key.endsWith('Shard')) {
+          const color = key.split(' ')[0];
+          const emoji = SHARD_EMOJIS[color] || '';
+          return `${emoji} ${value}x ${key}`;
+        }
         return `${key} x${value}`;
       });
 
@@ -174,11 +219,19 @@ module.exports = {
     const shipCandidates = cards.filter(c => c.ship && c.pullable && normalizeName(c.faculty) === normalizedPack);
     let shipCard = null;
     let shipSlot = -1;
-    if (shipCandidates.length > 0 && Math.random() < 0.10) {
-      shipCard = shipCandidates[Math.floor(Math.random() * shipCandidates.length)];
-      shipSlot = Math.floor(Math.random() * 5);
-      if (isStrawhatPack(matchedPack) && shipSlot === 0 && strawhatArtifact) {
-        shipSlot = 1;
+    if (shipCandidates.length > 0) {
+      // If this pack has an artifact, give the artifact spot a 10% chance to be a ship
+      if (strawhatArtifact && Math.random() < 0.10) {
+        shipCard = shipCandidates[Math.floor(Math.random() * shipCandidates.length)];
+        shipSlot = 0;
+      } else if (Math.random() < 0.10) {
+        shipCard = shipCandidates[Math.floor(Math.random() * shipCandidates.length)];
+        // If we didn't place into artifact slot, avoid replacing the artifact (choose slots 1-4)
+        if (strawhatArtifact) {
+          shipSlot = Math.floor(Math.random() * 4) + 1;
+        } else {
+          shipSlot = Math.floor(Math.random() * 5);
+        }
       }
     }
 

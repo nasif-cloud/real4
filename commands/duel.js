@@ -17,6 +17,7 @@ const { cards: cardDefs } = require('../data/cards');
 const { resolveStats } = require('../utils/statResolver');
 const { getEffectDescription, normalizeGifUrl } = require('../utils/cards');
 const { getDamageMultiplier, getAttributeDescription } = require('../utils/attributeSystem');
+const { getNextPullResetDate } = require('../src/stock');
 
 const statusManager = require('../src/battle/statusManager');
 const STATUS_EMOJIS = statusManager.STATUS_EMOJIS;
@@ -300,6 +301,9 @@ function buildEmbed(state) {
     embed.addFields({ name: `${state.discordUser2.username}`, value: 'All cards defeated!', inline: false });
   }
 
+  // footer: forfeit hint
+  embed.setFooter({ text: 'Use /forfeit to forfeit the battle' });
+
   // action columns
   if (state.lastP1Action || state.lastP2Action) {
     embed.addFields(
@@ -325,14 +329,13 @@ function makeSelectionRow(state, isPlayer1Turn) {
         .setDisabled(disabled)
     );
   });
-  // Add forfeit button to character row only if not awaiting target
-  if (!state.awaitingTarget) {
+  // Rest button - only shown when no card is currently selected
+  if (state.selected === null) {
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId('duel_action:forfeit')
-        .setLabel('Forfeit')
-        .setStyle(ButtonStyle.Danger)
-        .setDisabled(state.finished)
+        .setCustomId('duel_action:rest')
+        .setLabel('Rest')
+        .setStyle(ButtonStyle.Success)
     );
   }
   return row;
@@ -361,13 +364,6 @@ function makeActionRow(state, isPlayer1Turn) {
         .setDisabled(isUndead)
     );
   }
-  // Rest button - reset energy to 3
-  row.addComponents(
-    new ButtonBuilder()
-      .setCustomId('duel_action:rest')
-      .setLabel('Rest')
-      .setStyle(ButtonStyle.Success)
-  );
   return row;
 }
 
@@ -525,6 +521,12 @@ async function finalizeAction(state, msg, timedOut = false) {
       if (bountyGain > 0) {
         winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
         await winnerUser.save();
+        try {
+          const { checkAndAwardAll } = require('../utils/achievements');
+          await checkAndAwardAll(winnerUser, msg.client, { event: 'bounty_gain', amount: bountyGain });
+        } catch (err) {
+          console.error('Achievement check after duel bounty gain failed', err);
+        }
       }
     }
     
@@ -538,13 +540,14 @@ async function finalizeAction(state, msg, timedOut = false) {
       
       winnerUser.balance = (winnerUser.balance || 0) + beliGain;
       winnerUser.activeBountyTarget = null;
-      winnerUser.bountyCooldownUntil = null;
+      // set bounty cooldown until next pull reset so users can't immediately re-claim
+      winnerUser.bountyCooldownUntil = getNextPullResetDate();
       await winnerUser.save();
     } else if (state.isBountyDuel && loserId === state.bountyHunter) {
       // Hunter lost, reset cooldown but keep target
       const hunterUser = await User.findOne({ userId: state.bountyHunter });
       if (hunterUser) {
-        hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        hunterUser.bountyCooldownUntil = getNextPullResetDate();
         await hunterUser.save();
       }
     }
@@ -619,8 +622,14 @@ async function finalizeAction(state, msg, timedOut = false) {
         }
         
         if (bountyGain > 0) {
-          winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
-          await winnerUser.save();
+            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+            await winnerUser.save();
+            try {
+              const { checkAndAwardAll } = require('../utils/achievements');
+              await checkAndAwardAll(winnerUser, msg.client, { event: 'bounty_gain', amount: bountyGain });
+            } catch (err) {
+              console.error('Achievement check after duel bounty gain failed', err);
+            }
         }
       }
       
@@ -663,6 +672,7 @@ module.exports = {
     { name: 'opponent', type: 6, description: 'The player to duel', required: true }
   ],
   clearUserState,
+  duelStates,
   async execute({ message, interaction, args }) {
     const userId = message ? message.author.id : interaction.user.id;
     let user1 = await User.findOne({ userId });
@@ -795,7 +805,18 @@ module.exports = {
     }
 
     // Send acceptance message
-    const challengerTeamLines = p1Team.map(c => `${c.def.emoji || '•'} ${c.def.character} (${c.def.rank})`).join('\n');
+    const crews = require('../data/crews');
+    const challengerTeamLines = p1Team.map(c => {
+      let emoji = c.def.emoji || '•';
+      // For ships, prefer faculty icon if available
+      if (!emoji || emoji === '•') {
+        if (c.def.ship && c.def.faculty) {
+          const crew = crews.find(cr => cr.name === c.def.faculty);
+          if (crew && crew.icon) emoji = crew.icon;
+        }
+      }
+      return `${emoji} ${c.def.character} (${c.def.rank})`;
+    }).join('\n');
     const starterUser = disc1.username; // disc1 has higher speed
     const acceptEmbed = new EmbedBuilder()
       .setColor('#FFFFFF')
@@ -1195,82 +1216,6 @@ module.exports = {
     // Handle action
     if (rawAction === 'duel_action') {
       const act = cardId;
-
-      // handle forfeit immediately before card logic
-      if (act === 'forfeit') {
-        state.finished = true;
-        const winnerId = isPlayer1 ? state.player2Id : state.player1Id;
-        const loserId = isPlayer1 ? state.player1Id : state.player2Id;
-        const winner = isPlayer1 ? state.discordUser2 : state.discordUser1;
-        const loser = isPlayer1 ? state.discordUser1 : state.discordUser2;
-        
-        // Load user documents and calculate bounty change
-        let winnerUser = await User.findOne({ userId: winnerId });
-        let loserUser = await User.findOne({ userId: loserId });
-        let bountyGain = 0;
-        
-        if (winnerUser && loserUser) {
-          const winnerBounty = winnerUser.bounty || 100;
-          const loserBounty = loserUser.bounty || 100;
-          
-          // Calculate bounty gain based on the rules:
-          // If Winner's Bounty >= Loser's Bounty: 0 Bounty gain
-          // If Loser's Bounty > Winner's Bounty: Winner gains 3% of the Loser's bounty
-          // Cap: If the Loser has > 3x the Winner's bounty, the Winner earns 0 Bounty
-          if (loserBounty > winnerBounty) {
-            if (loserBounty > winnerBounty * 3) {
-              bountyGain = 0; // Cap reached
-            } else {
-              bountyGain = Math.floor(loserBounty * 0.03);
-            }
-          }
-          
-          if (bountyGain > 0) {
-            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
-            await winnerUser.save();
-          }
-        }
-        
-        // Handle bounty rewards
-        let xpGain = 0;
-        let beliGain = 0;
-        if (state.isBountyDuel && winnerId === state.bountyHunter) {
-          const targetBounty = loserUser.bounty || 100;
-          xpGain = 0;
-          beliGain = Math.floor(targetBounty / 12);
-          
-          winnerUser.balance = (winnerUser.balance || 0) + beliGain;
-          winnerUser.activeBountyTarget = null;
-          winnerUser.bountyCooldownUntil = null;
-          await winnerUser.save();
-        } else if (state.isBountyDuel && loserId === state.bountyHunter) {
-          // Hunter lost, reset cooldown but keep target
-          const hunterUser = await User.findOne({ userId: state.bountyHunter });
-          if (hunterUser) {
-            hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            await hunterUser.save();
-          }
-        }
-        
-        // Create victory embed with bounty information
-        let description = `${interaction.user.username} forfeited.\n${winner.username} wins!`;
-        if (bountyGain > 0) {
-          description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
-        }
-        if (beliGain > 0) {
-          description += `\n\nBounty Claimed! Earned ¥**${formatAmount(beliGain)}**!`;
-        }
-        
-        const forfeitEmbed = new EmbedBuilder()
-          .setColor('#FFFFFF')
-          .setTitle('Duel Victory!')
-          .setDescription(description)
-          .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
-        try { await interaction.message.delete(); } catch {}
-        await interaction.channel.send({ embeds: [forfeitEmbed] });
-        duelStates.delete(msgId);
-        return safeDefer(interaction);
-      }
 
       if (state.finished) {
         return interaction.reply({ content: 'The duel has already ended.', ephemeral: true });

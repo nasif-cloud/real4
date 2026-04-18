@@ -71,6 +71,9 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    // reserve a placeholder state synchronously to prevent race-starts
+    fishingStates.set(userId, { pending: true, message: null, interaction });
+
     if (!currentRodItem) {
       currentRodItem = user.items?.find(
         it => rodIds.includes(it.itemId) && it.durability !== undefined && it.durability > 0
@@ -81,6 +84,8 @@ module.exports = {
       }
     }
     if (!currentRodItem) {
+      // cleanup placeholder and inform user
+      fishingStates.delete(userId);
       const reply = "You don't have a **fishing rod** to fish with! Buy one in the shop with `op buy <rodname>` or `buy`";
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
@@ -95,6 +100,8 @@ module.exports = {
     // Check cooldown
     if (user.lastFishFail && Date.now() - user.lastFishFail.getTime() < 120000) {
       const remainingSeconds = Math.ceil((120000 - (Date.now() - user.lastFishFail.getTime())) / 1000);
+      // cleanup placeholder and inform user
+      fishingStates.delete(userId);
       const reply = `You scared the fish away... Wait another \`${formatDuration(remainingSeconds)}\` before fishing again`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
@@ -118,6 +125,11 @@ module.exports = {
       await interaction.reply({ embeds: [embed], components: [] });
       replyMsg = null;
     }
+    // update placeholder with the message reference (will be replaced when interval starts)
+    const existing = fishingStates.get(userId) || {};
+    existing.message = replyMsg;
+    existing.interaction = interaction;
+    fishingStates.set(userId, existing);
 
     // Random delay 1-10 seconds adjusted by rod speed multiplier
     const rodMultiplier = currentRodData?.multiplier || 1;
@@ -217,10 +229,10 @@ module.exports = {
         }
       }, 1500); // 1.5 seconds per tick
 
-      // Store additional info for message-based commands
-      fishingStates.set(userId, { 
-        interval, 
-        position: () => position, 
+      // Store/replace with the real active state for the running session
+      fishingStates.set(userId, {
+        interval,
+        position: () => position,
         targetIndex,
         clear: () => clearInterval(interval),
         message: replyMsg,
@@ -240,6 +252,11 @@ module.exports = {
     const state = fishingStates.get(userId);
     if (!state) {
       return interaction.reply({ content: 'Your fishing session has expired. Try fishing again!', ephemeral: true });
+    }
+
+    // If the interval hasn't started yet (still warming up), inform the user
+    if (!state.interval) {
+      return interaction.reply({ content: 'Your fishing session is still starting. Wait a moment and try again.', ephemeral: true });
     }
 
     state.clear();
@@ -302,11 +319,13 @@ module.exports = {
     const levelerQualityModifier = rodMultiplier * qualityPenalty;
 
     if (isCard) {
-      const card = simulatePull(0, null, { rodMultiplier: cardRankModifier, mastery: 1 });
-      if (card) {
-        // Check if user owns U2 or U3/U4
+      // Fishing now only yields artifact cards
+      const artifactPool = cards.filter(c => c.artifact && c.pullable);
+      if (artifactPool.length) {
+        const card = artifactPool[Math.floor(Math.random() * artifactPool.length)];
+        // Determine target id (artifacts typically have no higher mastery but keep logic for safety)
         let targetCardId = card.id;
-        let targetMastery = 1;
+        let targetMastery = card.mastery || 1;
         for (let i = 2; i <= 4; i++) {
           const higherCard = cards.find(c => c.character === card.character && c.mastery === i);
           if (higherCard && user.ownedCards.some(oc => oc.cardId === higherCard.id)) {
@@ -316,7 +335,7 @@ module.exports = {
         }
 
         const targetCard = cards.find(c => c.id === targetCardId);
-        const emoji = targetCard.emoji || '🃏';
+        const emoji = targetCard.emoji || '<:artifact:1492550000000000000>';
         lootLines.push(`${emoji} ${targetCard.character} (U${targetMastery})`);
 
         const existing = user.ownedCards.find(c => c.cardId === targetCardId);
