@@ -11,7 +11,7 @@
 // Emoji: <:undead:1485300491930959882>
 
 const type = 'undead';
-const emoji = '<:undead:1485300491930959882>';
+const emoji = '<:1000048291:1497961722533646366>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   addEffectToTarget(target, type, dur);

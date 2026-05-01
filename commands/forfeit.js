@@ -4,7 +4,7 @@ const isailCmd = require('./isail');
 
 module.exports = {
   name: 'forfeit',
-  description: 'Forfeit your current duel or isail battle',
+  description: 'Forfeit your currentbattle',
   async execute({ message, interaction }) {
     const userId = message ? message.author.id : interaction.user.id;
     const user = await User.findOne({ userId });
@@ -42,7 +42,7 @@ module.exports = {
     }
 
     if (!state) {
-      const reply = 'You are not in an active duel or isail battle.';
+      const reply = 'You are not in an active battle.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -113,9 +113,9 @@ module.exports = {
 
       const { EmbedBuilder } = require('discord.js');
       const embed = new EmbedBuilder()
-        .setTitle('Isail Forfeited')
-        .setDescription(`${displayName} forfeited the isail battle.`)
-        .setColor('#ff0000');
+        .setTitle('Sail forfeited')
+        .setDescription(`${displayName} forfeited the sail battle.`)
+        .setColor('#ff8686');
 
       if (message) return message.channel.send({ embeds: [embed] });
       return interaction.reply({ embeds: [embed] });

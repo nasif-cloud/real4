@@ -11,7 +11,7 @@
 // Emoji: <:blessed:placeholder>
 
 const type = 'blessed';
-const emoji = '<:blessed:placeholder>';
+const emoji = '<:1000048295:1497961716733050950>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   addEffectToTarget(target, type, dur);

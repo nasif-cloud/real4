@@ -53,33 +53,38 @@ module.exports = {
       reply = `You attempted to loot the **${crew.icon} ${crew.name}** Ship but got caught and lost **<:beri:1490738445319016651> ${loss}**...`;
     } else {
       user.balance = (user.balance || 0) + amount;
-      let packText = '';
+      const extras = [];
+
       if (Math.random() < 0.3) {
         user.packInventory = user.packInventory || {};
         user.packInventory[crew.name] = (user.packInventory[crew.name] || 0) + 1;
         user.markModified('packInventory');
-        packText = ` and \`1x\` **${crew.packEmoji} ${crew.name} pack**`;
+        extras.push(`\`1x\` ${crew.packEmoji ? crew.packEmoji + ' ' : ''}**${crew.name} pack**`);
       }
 
       const chestRoll = Math.random();
-      let chestText = '';
       if (chestRoll < 0.8) {
         const chestCount = Math.floor(Math.random() * 2) + 1;
         user.items = user.items || [];
         const existingChest = user.items.find(it => it.itemId === 'c_chest');
         if (existingChest) existingChest.quantity += chestCount;
         else user.items.push({ itemId: 'c_chest', quantity: chestCount });
-        chestText = ` and ${chestCount}x <:Cchest:1492559506868146307> **C Chest**`;
+        extras.push(`${chestCount}x <:Cchest:1492559506868146307> **C Chest**`);
       } else if (chestRoll < 0.9) {
         user.items = user.items || [];
         const existingChest = user.items.find(it => it.itemId === 'b_chest');
         if (existingChest) existingChest.quantity += 1;
         else user.items.push({ itemId: 'b_chest', quantity: 1 });
-        chestText = ' and 1x <:Bchest:1492559568738451567> **B Chest**';
+        extras.push(`1x <:Bchest:1492559568738451567> **B Chest**`);
       }
 
       await user.save();
-      reply = `You looted the **${crew.icon} ${crew.name}** pirate ship for **<:beri:1490738445319016651> ${amount} Berries**${packText}${chestText}${packText || chestText ? ' !' : '!'}`;
+
+      let extrasText = '';
+      if (extras.length === 1) extrasText = ' and ' + extras[0];
+      else if (extras.length > 1) extrasText = ', ' + extras.slice(0, -1).join(', ') + ', and ' + extras[extras.length - 1];
+
+      reply = `You looted the **${crew.icon} ${crew.name}** pirate ship for **<:beri:1490738445319016651> ${amount} Berries**${extrasText}!`;
     }
 
     if (message) return message.channel.send(reply);

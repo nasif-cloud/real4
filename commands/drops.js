@@ -141,7 +141,8 @@ async function _spawnDrop() {
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const dropContent = `A wild **${card.emoji} ${card.character} (${card.rank})** appeared!`;
+    const displayEmoji = card && card.ship ? '' : (card && card.emoji ? `${card.emoji} ` : '');
+    const dropContent = `A wild **${displayEmoji}${card.character} (${card.rank})** appeared!`;
     const imageUrl = card.image_url;
     let msg;
 

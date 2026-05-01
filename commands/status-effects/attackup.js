@@ -17,6 +17,6 @@ function applyEffect(target, duration, data = {}) {
 
 module.exports = {
   type: 'attackup',
-  emoji: '<:atkup:1485295694053900328>',
+  emoji: '<:1000048307:1497961719094444217>',
   applyEffect,
 };

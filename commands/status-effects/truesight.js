@@ -11,7 +11,7 @@
 // Emoji: <:truesight:1485299663879012484>
 
 const type = 'truesight';
-const emoji = '<:truesight:1485299663879012484>';
+const emoji = '<:1000048290:1497961702464163970>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   addEffectToTarget(target, type, dur);

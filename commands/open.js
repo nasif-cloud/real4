@@ -5,6 +5,7 @@ const { cards } = require('../data/cards');
 const crews = require('../data/crews');
 const { levelers } = require('../data/levelers');
 const { getChestByQuery, getChestById } = require('../data/chests');
+const { PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
 
 // Special loot emojis
 const COLA_EMOJI = '<:cola:1494106165955792967>';
@@ -51,7 +52,7 @@ module.exports = {
   name: 'open',
   description: 'Open a pack or chest to get cards or rewards',
   options: [
-    { name: 'pack', type: 3, description: 'Pack or chest name (e.g., Strawhat Pirates, B Chest)', required: true },
+    { name: 'item', type: 3, description: 'Pack or chest name (e.g., Strawhat Pirates, B Chest)', required: true },
     { name: 'amount', type: 4, description: 'Amount to open (only supported for chests)', required: false }
   ],
   async execute({ message, interaction, args }) {
@@ -114,21 +115,15 @@ module.exports = {
           rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + amount;
         }
 
-        if (contents.gems && Math.random() < (contents.gems.chance || 1)) {
-          const gemAmount = randomInt(contents.gems.count[0], contents.gems.count[1]);
-          user.gems = (user.gems || 0) + gemAmount;
-          rewardTotals['Gems'] = (rewardTotals['Gems'] || 0) + gemAmount;
-        }
-
         if (contents.resetTokens && Math.random() < (contents.resetTokens.chance || 0)) {
           const resetCount = randomInt(contents.resetTokens.count[0], contents.resetTokens.count[1]);
           user.resetTokens = (user.resetTokens || 0) + resetCount;
           rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] = (rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] || 0) + resetCount;
         }
 
-        // C-Chest special 30% chance extra drop: Cola, Beli(30), Gem(1), or Random Shard
+        // C-Chest special 30% chance extra drop: Cola, Beli(30), or Random Shard
         if (chest.id === 'c_chest' && Math.random() < 0.30) {
-          const choices = ['cola', 'beli30', 'gem1', 'shard'];
+          const choices = ['cola', 'beli30', 'shard'];
           const pick = choices[Math.floor(Math.random() * choices.length)];
           if (pick === 'cola') {
             user.items = user.items || [];
@@ -139,9 +134,6 @@ module.exports = {
           } else if (pick === 'beli30') {
             user.balance = (user.balance || 0) + 30;
             rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + 30;
-          } else if (pick === 'gem1') {
-            user.gems = (user.gems || 0) + 1;
-            rewardTotals['Gems'] = (rewardTotals['Gems'] || 0) + 1;
           } else if (pick === 'shard') {
             const colors = Object.keys(SHARD_EMOJIS);
             const color = colors[Math.floor(Math.random() * colors.length)];
@@ -211,42 +203,162 @@ module.exports = {
       return normalized.includes('strawhat') && normalized.includes('pirates');
     };
     const normalizedPack = normalizeName(matchedPack);
-    let strawhatArtifact = cards.find(c => c.artifact && normalizeName(c.faculty) === normalizedPack);
-    if (!strawhatArtifact && isStrawhatPack(matchedPack)) {
-      strawhatArtifact = cards.find(c => c.artifact && normalizeName(c.faculty).includes('strawhat'));
-    }
 
-    const shipCandidates = cards.filter(c => c.ship && c.pullable && normalizeName(c.faculty) === normalizedPack);
-    let shipCard = null;
-    let shipSlot = -1;
-    if (shipCandidates.length > 0) {
-      // If this pack has an artifact, give the artifact spot a 10% chance to be a ship
-      if (strawhatArtifact && Math.random() < 0.10) {
-        shipCard = shipCandidates[Math.floor(Math.random() * shipCandidates.length)];
-        shipSlot = 0;
-      } else if (Math.random() < 0.10) {
-        shipCard = shipCandidates[Math.floor(Math.random() * shipCandidates.length)];
-        // If we didn't place into artifact slot, avoid replacing the artifact (choose slots 1-4)
-        if (strawhatArtifact) {
-          shipSlot = Math.floor(Math.random() * 4) + 1;
-        } else {
-          shipSlot = Math.floor(Math.random() * 5);
-        }
-      }
+    // Build pools for this pack faculty
+    let artifactCandidates = cards.filter(c => c.artifact && c.pullable && normalizeName(c.faculty) === normalizedPack);
+    if (!artifactCandidates.length && isStrawhatPack(matchedPack)) {
+      artifactCandidates = cards.filter(c => c.artifact && normalizeName(c.faculty).includes('strawhat'));
     }
+    let shipCandidates = cards.filter(c => c.ship && c.pullable && normalizeName(c.faculty) === normalizedPack);
+
+    // fallback to global pools if faculty-specific none
+    if (!artifactCandidates.length) artifactCandidates = cards.filter(c => c.artifact && c.pullable);
+    if (!shipCandidates.length) shipCandidates = cards.filter(c => c.ship && c.pullable);
+
+    const pickRandom = (arr) => (arr && arr.length) ? arr[Math.floor(Math.random() * arr.length)] : null;
+
+    const pickRankFromRatesWithAllowed = (rates, allowedSet) => {
+      const entries = Object.entries(rates).filter(([rk, wt]) => allowedSet.has(rk) && wt > 0);
+      if (!entries.length) return null;
+      const total = entries.reduce((s, [, wt]) => s + wt, 0);
+      let r = Math.random() * total;
+      for (const [rk, wt] of entries) {
+        r -= wt;
+        if (r <= 0) return rk;
+      }
+      return entries[entries.length - 1][0];
+    };
+
+    const getRankForUser = (user, pool) => {
+      const allowedRanks = new Set((pool || []).map(c => c.rank));
+      if (!allowedRanks.size) return null;
+      // If pity active, try pity distribution first
+      if (user.pityCount >= PITY_TARGET) {
+        const fromPity = pickRankFromRatesWithAllowed(PITY_DISTRIBUTION, allowedRanks);
+        if (fromPity) return fromPity;
+        const fromPull = pickRankFromRatesWithAllowed(PULL_RATES, allowedRanks);
+        if (fromPull) return fromPull;
+      }
+      const fromPull = pickRankFromRatesWithAllowed(PULL_RATES, allowedRanks);
+      if (fromPull) return fromPull;
+      // fallback: random allowed rank
+      return Array.from(allowedRanks)[Math.floor(Math.random() * allowedRanks.size)];
+    };
+
+    const pickFromPoolByRank = (pool, rank) => {
+      if (!pool || !pool.length) return null;
+      const candidates = pool.filter(c => c.rank === rank);
+      if (candidates.length) return pickRandom(candidates);
+      return pickRandom(pool);
+    };
 
     const pulledCards = [];
+
+    // Determine first card: ALWAYS artifact (80%) or ship (20%)
+    let firstCategory = Math.random() < 0.8 ? 'artifact' : 'ship';
+    // If chosen category has no candidates, try the other; if still none, fallback to card
+    if (firstCategory === 'artifact' && !artifactCandidates.length) {
+      firstCategory = shipCandidates.length ? 'ship' : 'card';
+    }
+    if (firstCategory === 'ship' && !shipCandidates.length) {
+      firstCategory = artifactCandidates.length ? 'artifact' : 'card';
+    }
+
     for (let i = 0; i < 5; i++) {
-      let card;
-      if (isStrawhatPack(matchedPack) && i === 0 && strawhatArtifact) {
-        card = strawhatArtifact;
-      } else if (shipCard && i === shipSlot) {
-        card = shipCard;
-      } else {
-        card = simulatePull(user.pityCount, matchedPack);
+      let card = null;
+
+      // First card: forced artifact/ship
+      if (i === 0) {
+        if (firstCategory === 'artifact') {
+          const rank = getRankForUser(user, artifactCandidates);
+          card = pickFromPoolByRank(artifactCandidates, rank);
+        } else if (firstCategory === 'ship') {
+          const rank = getRankForUser(user, shipCandidates);
+          card = pickFromPoolByRank(shipCandidates, rank);
+        } else {
+          // pick a normal card (exclude artifacts and ships) using the same pull rarity logic
+          let cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship && normalizeName(c.faculty) === normalizedPack);
+          if (!cardPool.length) cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
+          const rank = getRankForUser(user, cardPool);
+          card = pickFromPoolByRank(cardPool, rank) || pickRandom(cardPool) || simulatePull(user.pityCount, matchedPack);
+        }
         if (!card) {
           const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
-          if (message) return message.reply(reply);
+          if (message) return message.channel.send(reply);
+          return interaction.reply({ content: reply, ephemeral: true });
+        }
+      } else if (i === 4) {
+        // Last card: guaranteed S+ (ship/artifact -> Guaranteed S; card -> 90% S, 8% SS, 2% UR)
+        // First choose category by 97/2/1 weights (cards/artifact/ship)
+        const r = Math.random() * 100;
+        let cat = r < 97 ? 'card' : (r < 99 ? 'artifact' : 'ship');
+        // if chosen category empty, fallback to next available
+        if (cat === 'artifact' && !artifactCandidates.length) cat = shipCandidates.length ? 'ship' : 'card';
+        if (cat === 'ship' && !shipCandidates.length) cat = artifactCandidates.length ? 'artifact' : 'card';
+
+        if (cat === 'ship') {
+          // pick guaranteed S ship
+          const sPool = shipCandidates.filter(c => c.rank === 'S');
+          card = pickRandom(sPool.length ? sPool : shipCandidates);
+        } else if (cat === 'artifact') {
+          const sPool = artifactCandidates.filter(c => c.rank === 'S');
+          card = pickRandom(sPool.length ? sPool : artifactCandidates);
+        } else {
+          // card: choose rank among S/SS/UR with 90/8/2
+          const LAST_RATES = { S: 90, SS: 8, UR: 2 };
+          const pool = cards.filter(c => c.pullable && !c.artifact && !c.ship && normalizeName(c.faculty) === normalizedPack);
+          const allowed = new Set(pool.map(c => c.rank));
+          // pick rank from LAST_RATES but only allowed
+          const pickRankFromLastWithAllowed = (rates, allowedSet) => {
+            const entries = Object.entries(rates).filter(([rk, wt]) => allowedSet.has(rk) && wt > 0);
+            if (!entries.length) return null;
+            const total = entries.reduce((s, [, wt]) => s + wt, 0);
+            let rr = Math.random() * total;
+            for (const [rk, wt] of entries) {
+              rr -= wt;
+              if (rr <= 0) return rk;
+            }
+            return entries[entries.length - 1][0];
+          };
+          let chosenRank = pickRankFromLastWithAllowed(LAST_RATES, allowed);
+          if (!chosenRank) {
+            // fallback to highest rank available
+            const order = ['UR', 'SS', 'S'];
+            chosenRank = order.find(rk => allowed.has(rk)) || null;
+          }
+          if (chosenRank) card = pickFromPoolByRank(pool, chosenRank);
+          if (!card) card = simulatePull(user.pityCount, matchedPack);
+        }
+
+        if (!card) {
+          const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
+          if (message) return message.channel.send(reply);
+          return interaction.reply({ content: reply, ephemeral: true });
+        }
+      } else {
+        // Middle cards: choose category by 97% card, 2% artifact, 1% ship
+        const r = Math.random() * 100;
+        let cat = r < 97 ? 'card' : (r < 99 ? 'artifact' : 'ship');
+        if (cat === 'artifact' && !artifactCandidates.length) cat = 'card';
+        if (cat === 'ship' && !shipCandidates.length) cat = 'card';
+
+        if (cat === 'card') {
+          // pick a normal card (exclude artifacts and ships) using the same pull rarity logic
+          let cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship && normalizeName(c.faculty) === normalizedPack);
+          if (!cardPool.length) cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
+          const rank = getRankForUser(user, cardPool);
+          card = pickFromPoolByRank(cardPool, rank) || pickRandom(cardPool) || simulatePull(user.pityCount, matchedPack);
+        } else if (cat === 'artifact') {
+          const rank = getRankForUser(user, artifactCandidates);
+          card = pickFromPoolByRank(artifactCandidates, rank) || pickRandom(artifactCandidates);
+        } else if (cat === 'ship') {
+          const rank = getRankForUser(user, shipCandidates);
+          card = pickFromPoolByRank(shipCandidates, rank) || pickRandom(shipCandidates);
+        }
+
+        if (!card) {
+          const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
+          if (message) return message.channel.send(reply);
           return interaction.reply({ content: reply, ephemeral: true });
         }
       }

@@ -97,6 +97,17 @@ module.exports = {
           );
         components = [row];
       }
+
+      // Add IDs button for owner's view
+      if (targetId === currentUserId) {
+        // put IDs button on same row as Auto team
+        components[0].addComponents(
+          new ButtonBuilder()
+            .setCustomId('team_ids')
+            .setLabel('IDs')
+            .setStyle(ButtonStyle.Secondary)
+        );
+      }
       if (message) {
         return message.channel.send({ content: `${username}'s team`, files: [attachment], components });
       }
@@ -252,6 +263,14 @@ module.exports = {
             .setEmoji('<:autoteam:1489632891188019342>')
         );
 
+      // add IDs button to the same row
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId('team_ids')
+          .setLabel('IDs')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
       // Try to edit the original message (preferred) and follow up to the user.
       try {
         if (interaction.message && interaction.message.edit) {
@@ -268,6 +287,40 @@ module.exports = {
           console.error('Fallback channel send failed', e);
         }
         try { if (!interaction.replied) await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
+      }
+      return;
+    }
+    if (rawAction === 'team_ids') {
+      const userId = interaction.user.id;
+      let user = await User.findOne({ userId });
+      if (!user) {
+        return interaction.reply({ content: 'You don\'t have an account.', ephemeral: true });
+      }
+
+      const { cards } = require('../data/cards');
+      const lines = (user.team || []).map(id => {
+        const def = cards.find(c => c.id === id);
+        const emoji = def ? (def.emoji || '') : '';
+        return `${emoji} - ${id}`;
+      });
+      if (lines.length === 0) lines.push('None');
+      lines.push('-# to view info about a card, run /info <card_id>');
+
+      const embed = new EmbedBuilder()
+        .setTitle("Card ID's")
+        .setDescription(lines.join('\n'))
+        .setColor('#B0B0B0');
+
+      // Send as an ephemeral reply so only the clicking user sees it
+      try {
+        if (!interaction.deferred && !interaction.replied) {
+          await interaction.reply({ embeds: [embed], ephemeral: true });
+        } else {
+          await interaction.followUp({ embeds: [embed], ephemeral: true });
+        }
+      } catch (e) {
+        // Fallback to channel send if ephemeral reply fails
+        try { await interaction.channel.send({ embeds: [embed] }); } catch (e) {}
       }
       return;
     }

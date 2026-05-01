@@ -16,6 +16,6 @@ function applyEffect(target, duration, data = {}) {
 
 module.exports = {
   type: 'stun',
-  emoji: '<:Stun:1479135399573061751>',
+  emoji: '<:1000048308:1497961729219494099>',
   applyEffect,
 };

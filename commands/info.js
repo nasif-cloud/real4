@@ -222,10 +222,10 @@ function buildLevelerEmbed(levelerDef, discordUser, user) {
   return embed;
 }
 
-function buildPackEmbed(crewDef, discordUser) {
+function buildPackEmbed(crewDef, discordUser, pageIndex = 0) {
   const normalizedCrewName = normalizeCrewName(crewDef.name);
   const crewCards = cards.filter(c => normalizeCrewName(c.faculty) === normalizedCrewName || (c.artifact && normalizeCrewName(c.faculty).includes('strawhat') && normalizedCrewName.includes('strawhat')));
-  
+
   // Get unique cards by character for display, sorted by attribute then name
   const uniqueByCharacter = new Map();
   const typeOrder = card => (card.artifact ? 2 : card.ship ? 3 : 1);
@@ -235,10 +235,10 @@ function buildPackEmbed(crewDef, discordUser) {
       uniqueByCharacter.set(c.character, c);
     }
   });
-  
+
   // Attribute order: STR, DEX, QCK, PSY, INT
   const attributeOrder = ['STR', 'DEX', 'QCK', 'PSY', 'INT'];
-  
+
   // Sort by attribute, then by character name. Artifacts should always come last.
   const sortedCharacters = Array.from(uniqueByCharacter.values())
     .sort((a, b) => {
@@ -253,10 +253,10 @@ function buildPackEmbed(crewDef, discordUser) {
       }
       return a.character.localeCompare(b.character);
     });
-  
+
   // Count ALL cards including duplicates with same character but different titles
   const cardCount = crewCards.length;
-  
+
   // Define rank colors.
   const rankColors = {
     'D': '#f6efe9',    // Gray
@@ -267,7 +267,7 @@ function buildPackEmbed(crewDef, discordUser) {
     'SS': '#fce6fb',   // Purple
     'UR': '#f1ffff'    // Turquoise
   };
-  
+
   const rankEmojis = {
     'D': '<:D:1489355343262310401>',
     'C': '<:C:1489355299844235395>',
@@ -277,32 +277,56 @@ function buildPackEmbed(crewDef, discordUser) {
     'SS': '<:SS:1489355033819054121>',
     'UR': '<:UR:1489354976039927869>'
   };
-  
+
   const rankColor = crewDef.color || rankColors[crewDef.rank] || '#FFFFFF';
   const rankEmoji = rankEmojis[crewDef.rank] || '';
-  
+
   // Build character list: hide ship emoji and mark ships with (ship)
   const characterLines = sortedCharacters.map(card => {
     if (card.ship) return `${card.character} (ship)`;
     const emoji = card.emoji || '';
     return `${emoji} ${card.character}`;
   });
-  
+
   // Join all characters (no limit)
   const characterList = characterLines.join('\n');
-  
+
   const embed = new EmbedBuilder()
     .setTitle(`${crewDef.icon} ${crewDef.name}`)
     .setColor(rankColor)
     .setDescription(`**Rank:** ${crewDef.rank}\n**Cards:** ${cardCount}`)
     .setImage(crewDef.packImage || '')
     .setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
-  
-  if (characterList) {
+
+  // If the entire list fits in one field, return simple embed and no pages
+  const maxFieldLen = 1024;
+  if (!characterList) return { embed, pages: null };
+
+  if (characterList.length <= maxFieldLen) {
     embed.addFields({ name: 'Cards', value: characterList, inline: false });
+    return { embed, pages: null };
   }
-  
-  return embed;
+
+  // Otherwise, split into page chunks (each <= maxFieldLen)
+  const linesArr = characterList.split('\n');
+  const pages = [];
+  let chunk = '';
+  for (const line of linesArr) {
+    const nextLen = chunk ? chunk.length + 1 + line.length : line.length;
+    if (nextLen > maxFieldLen) {
+      pages.push(chunk);
+      chunk = line;
+    } else {
+      chunk = chunk ? chunk + '\n' + line : line;
+    }
+  }
+  if (chunk) pages.push(chunk);
+
+  // clamp pageIndex
+  const page = Math.max(0, Math.min(pages.length - 1, pageIndex || 0));
+  embed.addFields({ name: `Cards (page ${page + 1}/${pages.length})`, value: pages[page], inline: false });
+  embed.setFooter({ text: `Page ${page + 1}/${pages.length}` });
+  return { embed, pages };
 }
 
 module.exports = {
@@ -351,9 +375,31 @@ module.exports = {
     // First, check if query matches a crew/pack name
     const crewDef = getCrewByName(query);
     if (crewDef) {
-      const packEmbed = buildPackEmbed(crewDef, discordUser);
-      if (message) return message.channel.send({ embeds: [packEmbed] });
-      return interaction.reply({ embeds: [packEmbed] });
+      const { embed: packEmbed, pages } = buildPackEmbed(crewDef, discordUser, 0);
+      if (!pages || pages.length <= 1) {
+        if (message) return message.channel.send({ embeds: [packEmbed] });
+        return interaction.reply({ embeds: [packEmbed] });
+      }
+
+      // Paginated pack info: store pages in a session and show navigation buttons
+      const userKey = `${userId}_packinfo`;
+      if (!global.packInfoSessions) global.packInfoSessions = new Map();
+      global.packInfoSessions.set(userKey, { userId, crewDef, pages });
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`info_packprev:${userId}:0`)
+          .setLabel('Previous')
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true),
+        new ButtonBuilder()
+          .setCustomId(`info_packnext:${userId}:0`)
+          .setLabel('Next')
+          .setStyle(ButtonStyle.Primary)
+      );
+
+      if (message) return message.channel.send({ embeds: [packEmbed], components: [row] });
+      return interaction.reply({ embeds: [packEmbed], components: [row] });
     }
 
     // Then check exact rod and leveler names only
@@ -416,6 +462,47 @@ module.exports = {
   },
 
   async handleButton(interaction, action, indexPart) {
+    // Handle pack info pagination buttons (customId: info_packnext:<ownerId>:<currentPage>)
+    if (action && action.startsWith('info_pack')) {
+      const parts = interaction.customId.split(':');
+      const act = parts[0];
+      const ownerId = parts[1];
+      const pageStr = parts[2] || '0';
+      const currentPage = parseInt(pageStr, 10) || 0;
+
+      const session = global.packInfoSessions?.get(`${ownerId}_packinfo`);
+      if (!session || session.userId !== ownerId) {
+        return interaction.reply({ content: 'Pack info session expired or not your session.', ephemeral: true });
+      }
+      if (interaction.user.id !== ownerId) {
+        return interaction.reply({ content: 'This pack info session is not for you.', ephemeral: true });
+      }
+
+      let newPage = currentPage;
+      if (act === 'info_packnext') newPage = Math.min(session.pages.length - 1, currentPage + 1);
+      if (act === 'info_packprev') newPage = Math.max(0, currentPage - 1);
+
+      const packInfo = buildPackEmbed(session.crewDef, interaction.user, newPage);
+      const embed = packInfo.embed || packInfo;
+
+      const prevDisabled = newPage <= 0;
+      const nextDisabled = newPage >= session.pages.length - 1;
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`info_packprev:${ownerId}:${newPage}`)
+          .setLabel('Previous')
+          .setStyle(prevDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
+          .setDisabled(prevDisabled),
+        new ButtonBuilder()
+          .setCustomId(`info_packnext:${ownerId}:${newPage}`)
+          .setLabel('Next')
+          .setStyle(nextDisabled ? ButtonStyle.Secondary : ButtonStyle.Primary)
+          .setDisabled(nextDisabled)
+      );
+
+      return interaction.update({ embeds: [embed], components: [row] });
+    }
+
     const session = global.infoSessions?.get(`${interaction.user.id}_info`);
     if (!session || session.userId !== interaction.user.id) {
       return interaction.reply({ content: 'Info session expired or not your session.', ephemeral: true });

@@ -129,7 +129,7 @@ module.exports = {
       for (let i = 0; i < Math.floor(count); i++) {
         const crew = getRandomCrewByRank(pack.rank);
         if (crew) {
-          packRewards.push(crew.name);
+          packRewards.push({ name: crew.name, emoji: crew.packEmoji || '' });
           user.packInventory[crew.name] = (user.packInventory[crew.name] || 0) + 1;
         }
       }
@@ -189,8 +189,9 @@ module.exports = {
     // Format pack rewards
     let packLines = [];
     if (packRewards.length > 0) {
-      for (const packName of packRewards) {
-        packLines.push(`${nextEmoji} 1x ${packName.toLowerCase()} pack`);
+      for (const pack of packRewards) {
+        const emoji = pack && pack.emoji ? `${pack.emoji} ` : '';
+        packLines.push(`${emoji}1x ${pack.name.toLowerCase()} pack`);
       }
     }
 

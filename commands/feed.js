@@ -12,6 +12,9 @@ function searchLevelers(query) {
     if (l.id.toLowerCase() === q) return true;
     if (l.name.toLowerCase() === q) return true; // exact match first
     if (l.name.toLowerCase().includes(q)) return true; // partial match
+    // support short alias formed by first letter of each word, e.g. "Red Armoured Crab" -> "rac"
+    const alias = (l.name || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map(w => w[0]).join('');
+    if (alias === q) return true;
     return false;
   });
   return matches;
@@ -63,8 +66,12 @@ module.exports = {
         return message.reply('Please specify a card name.');
       }
       cardQuery = cardArgs.join(' ');
-      if (cardArgs[cardArgs.length - 1] && !isNaN(parseInt(cardArgs[cardArgs.length - 1]))) {
-        amount = parseInt(cardArgs[cardArgs.length - 1]);
+      // If the last token looks like a number treat it as an amount ONLY when
+      // there is also a card identifier present before it. This prevents
+      // numeric card IDs like `0520` from being misinterpreted as the amount.
+      const lastToken = cardArgs[cardArgs.length - 1];
+      if (cardArgs.length > 1 && lastToken && !isNaN(parseInt(lastToken))) {
+        amount = parseInt(lastToken);
         cardQuery = cardArgs.slice(0, -1).join(' ');
       }
     } else {

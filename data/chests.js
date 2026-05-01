@@ -13,7 +13,6 @@ const chests = [
     price: 100,
     contents: {
       beli: [10, 100],
-      gems: { chance: 0.5, count: [1, 1] },
       itemRank: 'C',
       resetTokens: { chance: 0, count: [0, 0] }
     }
@@ -26,7 +25,6 @@ const chests = [
     price: 250,
     contents: {
       beli: [50, 250],
-      gems: { chance: 1, count: [1, 2] },
       itemRank: 'B',
       resetTokens: { chance: 0.5, count: [1, 1] }
     }
@@ -39,7 +37,6 @@ const chests = [
     price: 500,
     contents: {
       beli: [100, 300],
-      gems: { chance: 1, count: [1, 3] },
       itemRank: 'A',
       resetTokens: { chance: 1, count: [1, 2] }
     }

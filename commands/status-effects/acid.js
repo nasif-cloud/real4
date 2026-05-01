@@ -13,7 +13,7 @@
 // Emoji: <:acid:1492617822851829770>
 
 const type = 'acid';
-const emoji = '<:acid:1492617822851829770>';
+const emoji = '<:1000048293:1497961712958177400>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   const amount = def.effectAmount ?? 1;

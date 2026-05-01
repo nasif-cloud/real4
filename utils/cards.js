@@ -210,14 +210,14 @@ function buildDurabilityBar(current, max) {
   const filledSections = Math.floor(healthPercent * totalSections);
   const emptySections = totalSections - filledSections;
   const icons = [
-    emptySections > 0 ? '<:Healthemptyleft:1481750325151928391>' : '<:durabilltyleftfull:1491513785570033734>',
-    emptySections > 1 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 2 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 3 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 4 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 5 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 6 ? '<:Healthemptymiddle:1481750341489004596>' : '<:durabilitymiddlefulll:1491513816654155838>',
-    emptySections > 7 ? '<:healthemptyright:1481750363286667334>' : '<:durabilityrightfull:1491513801089093923>'
+    emptySections > 0 ? '<:Healthemptyleft:1481750325151928391>' : '<:1000048130:1497622896330408099>',
+    emptySections > 1 ? '<:Healthemptymiddle:1481750341489004596>' : '<:1000048131:1497622898603458570>',
+    emptySections > 2 ? '<:Healthemptymiddle:1481750341489004596>' : '<:1000048131:1497622898603458570>',
+    emptySections > 3 ? '<:Healthemptymiddle:1481750341489004596>' : '<:1000048131:1497622898603458570>',
+    emptySections > 4 ? '<:Healthemptymiddle:1481750341489004596>' : '<:1000048131:1497622898603458570>',
+    emptySections > 5 ? '<:Healthemptymiddle:1481750341489004596>' : '<:1000048131:1497622898603458570>',
+    emptySections > 6 ? '<:Healthemptymiddle:1481750341489004596>' : '<:1000048131:1497622898603458570>',
+    emptySections > 7 ? '<:healthemptyright:1481750363286667334>' : '<:1000048132:1497622899790713052>'
   ];
   return icons.join('');
 }
@@ -306,8 +306,15 @@ function resolveBoostsForCard(cardDef, user) {
         ) {
           const boostAmount = getEffectiveBoost(def.id, pct);
           if (stat) {
-            statBoosts[stat] = (statBoosts[stat] || 0) + boostAmount;
-            boostEntries.push({ source: def.character, pct: boostAmount, stat });
+            // Normalize stat names to canonical keys so boosts reliably
+            // apply regardless of capitalization or synonyms (e.g. "Health", "HP", "Attack", "Atk").
+            let statKey = stat.toLowerCase().trim();
+            if (statKey === 'hp') statKey = 'health';
+            if (statKey === 'atk') statKey = 'attack';
+            if (statKey === 'att') statKey = 'attack';
+            // record using canonical key
+            statBoosts[statKey] = (statBoosts[statKey] || 0) + boostAmount;
+            boostEntries.push({ source: def.character, pct: boostAmount, stat: statKey });
           } else {
             totalBoostPct += boostAmount;
             boostEntries.push({ source: def.character, pct: boostAmount });
@@ -575,6 +582,26 @@ function getEmojiImageUrl(emoji) {
   return match ? `https://cdn.discordapp.com/emojis/${match[1]}.png` : null;
 }
 
+// Consume 1 cola from user's active ship.
+// Returns true if cola was consumed, false if no cola available or no active ship.
+function consumeShipCola(user) {
+  if (!user) return false;
+  user.ships = user.ships || {};
+  const shipId = user.activeShip;
+  if (!shipId) return false;
+  const shipDef = getShipById(shipId) || getCardById(shipId) || null;
+  const defaultCola = shipDef ? (shipDef.cola !== undefined ? shipDef.cola : (shipDef.maxCola !== undefined ? shipDef.maxCola : 0)) : 0;
+  if (!user.ships[shipId]) {
+    user.ships[shipId] = { cola: defaultCola, maxCola: (shipDef && shipDef.maxCola !== undefined) ? shipDef.maxCola : defaultCola };
+  }
+  const shipState = user.ships[shipId];
+  if (!shipState || (shipState.cola || 0) <= 0) return false;
+  user.ships[shipId].cola = Math.max(0, (user.ships[shipId].cola || 0) - 1);
+  // mark modified so mongoose will persist nested changes
+  if (typeof user.markModified === 'function') user.markModified('ships');
+  return true;
+}
+
 function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   const attributeColors = {
     STR: '#ff4b4b',
@@ -583,7 +610,15 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     PSY: '#f5df4d',
     INT: '#9b59b6'
   };
-  const color = cardDef.ship ? (cardDef.color || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31') : (attributeColors[cardDef.attribute] || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31');
+  let color;
+  if (cardDef.ship) {
+    color = cardDef.color || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31';
+  } else if (cardDef.artifact) {
+    // Info embeds for artifacts should be white
+    color = '#ffffff';
+  } else {
+    color = attributeColors[cardDef.attribute] || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31';
+  }
   let iconText = crewIcons[cardDef.faculty];
   let iconUrl = iconText;
   if (iconText && iconText.startsWith && iconText.startsWith('<:')) {
@@ -650,7 +685,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   }
 
   if (isArtifactCard(cardDef)) {
-    const attributeIcon = getAttributeEmoji(cardDef.attribute);
+    const attributeIcon = cardDef.attribute ? getAttributeEmoji(cardDef.attribute) : null;
     const boostSummary = getArtifactBoostSummary(cardDef, lvl);
     const signatureLines = getArtifactSignatureLines(cardDef);
     const wielderLine = exactEntry && exactEntry.equippedTo
@@ -661,11 +696,8 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       })()
       : null;
 
-    const descLines = [
-      cardDef.title || '',
-      '',
-      `**Attribute:** ${attributeIcon}`
-    ];
+    const descLines = [cardDef.title || ''];
+    if (attributeIcon) descLines.push('', `**Attribute:** ${attributeIcon}`);
     if (wielderLine) descLines.push(wielderLine);
     if (boostSummary) descLines.push(`**Boost:** \`${boostSummary}\` Of all stats`);
     if (exactEntry) {
@@ -675,6 +707,62 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     descLines.push(`**Rank:** ${cardDef.rank}`);
     if (signatureLines.length) {
       descLines.push('', '**Signature(s)**', ...signatureLines);
+    }
+    // Also show explicit per-target/stat boost lines for artifacts so users
+    // can see something like: "Boosts Usopp — Health by `5%`" on the info
+    // embed. Use the same parser as other boost helpers to remain consistent
+    // with how boosts are authored in `data/cards.js`.
+    const parsedBoosts = parseBoostTargets(cardDef.boost);
+    if (parsedBoosts.length) {
+      const capitalize = (s) => String(s || '').trim().replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+      // If there's only one signature, omit repeating the target name and
+      // show only the stat/amount (e.g. "All stats by `20%`" or "Attack by `10%`").
+      if (parsedBoosts.length === 1) {
+        const b = parsedBoosts[0];
+        if (!b.stat) {
+          descLines.push('', '**Boost(s)**', `All stats by \`${b.pct}%\``);
+        } else {
+          descLines.push('', '**Boost(s)**', `${capitalize(b.stat)} by \`${b.pct}%\``);
+        }
+      } else {
+        // If all parsed boosts share the same stat (or all-stats) AND the same
+        // percentage, collapse into a single line like "Attack by `20%`".
+        const normalizeStatKey = (s) => {
+          if (!s) return 'all';
+          const k = String(s).toLowerCase().trim();
+          if (k === 'hp') return 'health';
+          if (k === 'atk' || k === 'att') return 'attack';
+          return k;
+        };
+        const firstKey = normalizeStatKey(parsedBoosts[0].stat);
+        const firstPct = parsedBoosts[0].pct;
+        const allSame = parsedBoosts.every(b => normalizeStatKey(b.stat) === firstKey && b.pct === firstPct);
+        if (allSame) {
+          if (firstKey === 'all') {
+            descLines.push('', '**Boost(s)**', `All stats by \`${firstPct}%\``);
+          } else {
+            const label = capitalize(firstKey);
+            descLines.push('', '**Boost(s)**', `${label} by \`${firstPct}%\``);
+          }
+        } else {
+          const boostLines = parsedBoosts.map(b => {
+            const statLabel = b.stat ? capitalize(b.stat) : 'All';
+            // target emoji if available
+            let emoji = '';
+            const crew = crews.find(cr => cr.name.toLowerCase().replace(/[- ]/g, '') === b.target.toLowerCase().replace(/[- ]/g, ''));
+            if (crew && crew.icon) emoji = `${crew.icon} `;
+            else {
+              const targetCard = cards.find(c => c.character.toLowerCase() === b.target.toLowerCase());
+              if (targetCard && targetCard.emoji) emoji = `${targetCard.emoji} `;
+            }
+            if (!b.stat) {
+              return `${emoji}All ${b.target}'s stats by \`${b.pct}%\``;
+            }
+            return `${emoji}${b.target}'s ${statLabel} by \`${b.pct}%\``;
+          });
+          descLines.push('', '**Boost(s)**', ...boostLines);
+        }
+      }
     }
 
     const artifactEmbed = new EmbedBuilder()
@@ -997,4 +1085,5 @@ module.exports = {
   getShipById,
   updateShipBalance,
   formatCardId,
+  consumeShipCola,
 };

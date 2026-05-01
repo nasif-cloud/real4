@@ -33,7 +33,9 @@ function getMapImageUrl(user) {
       return MAP_URLS[id] || MAP_URLS.all_unlocked;
     }
     // if user hasn't completed boss (stage 3) yet, show that island image
-    if (!prog.includes(3)) return MAP_URLS[id] || MAP_URLS.all_unlocked;
+    // be tolerant of numeric strings stored in DB
+    const hasBoss = prog.some(s => Number(s) === 3);
+    if (!hasBoss) return MAP_URLS[id] || MAP_URLS.all_unlocked;
   }
   // everything complete
   return MAP_URLS.all_unlocked;

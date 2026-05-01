@@ -240,6 +240,7 @@ module.exports = {
   getStockCountdownString,
   getPullCountdownString,
   getNextStockResetDate,
+  getNextPullResetDate,
   getPreviousPullResetDate,
   getTimeUntilNextPullReset,
   ensureStockUpToDate,

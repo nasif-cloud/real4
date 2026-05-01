@@ -17,6 +17,6 @@ function applyEffect(target, duration, data = {}) {
 
 module.exports = {
   type: 'attackdown',
-  emoji: '<:attackdown:1485296830295314492>',
+  emoji: '<:1000048289:1497961703810400347>',
   applyEffect,
 };

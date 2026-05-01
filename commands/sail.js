@@ -1,11 +1,12 @@
 const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder, StringSelectMenuBuilder } = require('discord.js');
 const isail = require('./isail');
-const { getShipById, getCardById } = require('../utils/cards');
+const { getShipById, getCardById, consumeShipCola } = require('../utils/cards');
 const { getMapImageBuffer } = require('../utils/mapImage');
+const { moreCards } = require('../data/morecards');
+const { cards: baseCards } = require('../data/cards');
 
 // map images are chosen from static assets (see utils/mapImage)
-
 const ISLANDS = [
   { id: 'fusha_village', name: 'Fusha Village', image: 'https://files.catbox.moe/3e2yh0.webp', defaultUnlocked: true },
   { id: 'alvidas_hideout', name: 'Alvidas Hideout', image: 'https://files.catbox.moe/oqujkr.webp' },
@@ -27,12 +28,35 @@ function isIslandUnlocked(user, idx) {
   const prevProg = user.storyProgress[prev.id];
   if (!Array.isArray(prevProg)) return false;
   // unlock next island when boss (stage 3) of previous island completed
-  return prevProg.includes(3);
+  return prevProg.some(s => Number(s) === 3);
 }
 
 async function renderMapImage(user) {
   // Return a map image buffer chosen by user progress
   return getMapImageBuffer(user);
+}
+
+function findEnemyDef(name) {
+  if (!name) return null;
+  const n = name.toLowerCase();
+  let def = (moreCards || []).find(c => (c.character && c.character.toLowerCase() === n) || (Array.isArray(c.alias) && c.alias.some(a => a.toLowerCase() === n)));
+  if (def) return def;
+  def = (baseCards || []).find(c => (c.character && c.character.toLowerCase() === n) || (Array.isArray(c.alias) && c.alias.some(a => a.toLowerCase() === n)));
+  return def || null;
+}
+
+function makeMarineFromDef(def, hpMultiplier = 3) {
+  if (!def) return null;
+  const atk = (def.attack_min && def.attack_max) ? Math.floor((def.attack_min + def.attack_max) / 2) : (def.power || 1);
+  return {
+    rank: def.character || def.title || 'Enemy',
+    speed: def.speed || 1,
+    atk,
+    maxHP: (def.health || def.hp || 1) * hpMultiplier,
+    attribute: def.attribute || 'STR',
+    emoji: def.emoji || '',
+    image: def.image_url || def.image || null
+  };
 }
 
 module.exports = {
@@ -86,6 +110,8 @@ module.exports = {
           options.push({ label: isl.name, value: isl.id });
         }
       });
+      // add infinite sail / isail as last option (Navy base)
+      options.push({ label: 'Navy base', value: 'navy_base', emoji: '<:Marines:1480016473794805760>' });
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId(`sail_select:${userId}`)
@@ -96,7 +122,10 @@ module.exports = {
       if (message) {
         return message.channel.send({ components: [row], files: [attachment] });
       }
-      return interaction.reply({ components: [row], files: [attachment] });
+      if (!interaction.deferred && !interaction.replied) {
+        return interaction.reply({ components: [row], files: [attachment] });
+      }
+      return interaction.followUp({ components: [row], files: [attachment] });
   },
 
   // handle button interactions (sail_ready and sail_stage)
@@ -119,6 +148,9 @@ module.exports = {
             options.push({ label: isl.name, value: isl.id });
           }
         });
+
+        // add Navy base as last option
+        options.push({ label: 'Navy base', value: 'navy_base', emoji: '<:Marines:1480016473794805760>' });
 
         const menu = new StringSelectMenuBuilder()
           .setCustomId(`sail_select:${interaction.user.id}`)
@@ -150,23 +182,16 @@ module.exports = {
         if (!user.ships[user.activeShip]) {
           user.ships[user.activeShip] = { cola: defaultCola2, maxCola: (shipDef2 && shipDef2.maxCola !== undefined) ? shipDef2.maxCola : defaultCola2 };
         }
-        const shipState2 = user.ships[user.activeShip];
-        if (!shipState2 || (shipState2.cola || 0) <= 0) return interaction.reply({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
-
-        // consume 1 cola
-        user.ships[user.activeShip].cola = Math.max(0, (user.ships[user.activeShip].cola || 0) - 1);
+        if (!consumeShipCola(user)) return interaction.reply({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
         await user.save();
 
-        // build marines array for stage
+        // build marines array for stage by looking up story enemy defs
         let marines = [];
         if (islandId === 'fusha_village') {
-          if (stageNum === 1) {
-            marines = [{ rank: 'Pistol Bandit', speed: 3, atk: 4, maxHP: 5, attribute: 'STR', emoji: '<:F0120:1494099609067323442>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/100/0120.png' }];
-          } else if (stageNum === 2) {
-            marines = [{ rank: 'Higuma', speed: 4, atk: 8, maxHP: 10, attribute: 'QCK', emoji: '<:0027:1494100987856556204>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0027.png' }];
-          } else if (stageNum === 3) {
-            marines = [{ rank: 'Master of the Near Sea', speed: 5, atk: 10, maxHP: 15, attribute: 'STR', emoji: '<:0028:1494101589550563338>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0028.png' }];
-          }
+          const name = stageNum === 1 ? 'Pistol Bandit' : stageNum === 2 ? 'Higuma' : 'Master of the Near Sea';
+          const def = findEnemyDef(name);
+          const m = makeMarineFromDef(def, 3);
+          if (m) marines.push(m);
         }
 
         // Start battle via isail engine in story mode
@@ -197,6 +222,41 @@ module.exports = {
     const islandId = interaction.values && interaction.values[0];
     if (!islandId) return interaction.reply({ content: 'No island selected.', ephemeral: true });
 
+    // If user selected the Navy base, forward to infinite sail (isail)
+    if (islandId === 'navy_base') {
+      // Acknowledge and consume cola similarly to story stages, then start isail
+      await interaction.deferUpdate();
+      const user = await User.findOne({ userId: interaction.user.id });
+      if (!user) return interaction.followUp({ content: 'User not found.', ephemeral: true });
+      if (!Array.isArray(user.team) || user.team.length === 0) return interaction.followUp({ content: 'Please set your team first.', ephemeral: true });
+      if (!user.activeShip) return interaction.followUp({ content: 'Please set a ship first.', ephemeral: true });
+      user.ships = user.ships || {};
+      const shipDef2 = getShipById(user.activeShip) || getCardById(user.activeShip) || null;
+      const defaultCola2 = shipDef2 ? (shipDef2.cola !== undefined ? shipDef2.cola : (shipDef2.maxCola !== undefined ? shipDef2.maxCola : 0)) : 0;
+      if (!user.ships[user.activeShip]) {
+        user.ships[user.activeShip] = { cola: defaultCola2, maxCola: (shipDef2 && shipDef2.maxCola !== undefined) ? shipDef2.maxCola : defaultCola2 };
+      }
+      const shipState2 = user.ships[user.activeShip];
+      if (!shipState2 || (shipState2.cola || 0) <= 0) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
+
+      if (!consumeShipCola(user)) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
+      await user.save();
+
+      // Use a message-style call so isail.execute uses channel send rather than interaction.reply
+      const fakeMessage = {
+        channel: interaction.channel,
+        author: interaction.user,
+        reply: async (content) => interaction.followUp(content)
+      };
+      try {
+        await isail.execute({ message: fakeMessage, skipMapFirst: true });
+      } catch (e) {
+        console.error('Failed to open Navy base from sail select', e);
+        return interaction.followUp({ content: 'Failed to open Navy base.', ephemeral: true });
+      }
+      return;
+    }
+
     const island = ISLANDS.find(i => i.id === islandId);
     if (!island) return interaction.reply({ content: 'Island not found.', ephemeral: true });
 
@@ -205,36 +265,23 @@ module.exports = {
     const user = await User.findOne({ userId: interaction.user.id });
     if (!user) return interaction.followUp({ content: 'User not found.', ephemeral: true });
 
-    // consume 1 cola for starting the stage (same rules as sail_stage)
-    user.ships = user.ships || {};
-    const shipDef2 = getShipById(user.activeShip) || getCardById(user.activeShip) || null;
-    const defaultCola2 = shipDef2 ? (shipDef2.cola !== undefined ? shipDef2.cola : (shipDef2.maxCola !== undefined ? shipDef2.maxCola : 0)) : 0;
-    if (!user.ships[user.activeShip]) {
-      user.ships[user.activeShip] = { cola: defaultCola2, maxCola: (shipDef2 && shipDef2.maxCola !== undefined) ? shipDef2.maxCola : defaultCola2 };
-    }
-    const shipState2 = user.ships[user.activeShip];
-    if (!shipState2 || (shipState2.cola || 0) <= 0) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
-
-    // consume 1 cola
-    user.ships[user.activeShip].cola = Math.max(0, (user.ships[user.activeShip].cola || 0) - 1);
+    // consume 1 cola for starting the stage (centralized)
+    if (!consumeShipCola(user)) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
     await user.save();
     const islandProg = (user.storyProgress && Array.isArray(user.storyProgress[island.id])) ? user.storyProgress[island.id] : [];
     let stageToStart = 1;
     for (let s = 1; s <= 3; s++) {
-      if (!islandProg.includes(s)) { stageToStart = s; break; }
+      if (!islandProg.some(x => Number(x) === s)) { stageToStart = s; break; }
     }
     if (!stageToStart) stageToStart = 3;
 
-    // build marines for the chosen island/stage (currently supports Fusha Village)
+    // build marines for the chosen island/stage (data-driven)
     let marines = [];
     if (island.id === 'fusha_village') {
-      if (stageToStart === 1) {
-        marines = [{ rank: 'Pistol Bandit', speed: 3, atk: 4, maxHP: 5, attribute: 'STR', emoji: '<:F0120:1494099609067323442>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/100/0120.png' }];
-      } else if (stageToStart === 2) {
-        marines = [{ rank: 'Higuma', speed: 4, atk: 8, maxHP: 10, attribute: 'QCK', emoji: '<:0027:1494100987856556204>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0027.png' }];
-      } else if (stageToStart === 3) {
-        marines = [{ rank: 'Master of the Near Sea', speed: 5, atk: 10, maxHP: 15, attribute: 'STR', emoji: '<:0028:1494101589550563338>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0028.png' }];
-      }
+      const name = stageToStart === 1 ? 'Pistol Bandit' : stageToStart === 2 ? 'Higuma' : 'Master of the Near Sea';
+      const def = findEnemyDef(name);
+      const m = makeMarineFromDef(def, 3);
+      if (m) marines.push(m);
     }
 
     try {

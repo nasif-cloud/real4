@@ -11,7 +11,7 @@
 // Emoji: <:doomed:placeholder>
 
 const type = 'doomed';
-const emoji = '<:doomed:placeholder>';
+const emoji = '<:1000048297:1497961709388824798>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   addEffectToTarget(target, type, dur);

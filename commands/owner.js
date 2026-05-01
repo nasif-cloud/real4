@@ -21,7 +21,7 @@ async function list({ message }) {
     .setColor(0xFF0000)
     .setDescription('Available prefix commands for the bot owner/developer')
     .addFields(
-      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack, memerod\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
+      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack, memerod, item\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
       { name: 'op owner setdrops <#channel>', value: 'Enable card drops in a channel (spawns every 5 min, expires in 10 min)', inline: false },
       { name: 'op owner unsetdrops', value: 'Disable card drops globally', inline: false },
@@ -141,6 +141,23 @@ async function execute({ message, args }) {
         else tgt.items.push({ itemId: chestDef.id, quantity: amtParsed });
         await tgt.save();
         return message.reply(`Given ${amtParsed} ${chestDef.name}(s) to <@${targetId}>`);
+      }
+
+      if (type === 'item') {
+        // syntax: op owner give item <itemId> <amount> <@user>
+        const itemId = args[2];
+        const amtParsed = parseInt(args[3], 10);
+        const mention = args[4];
+        targetId = parseMention(mention);
+        if (!itemId || isNaN(amtParsed) || !targetId) return message.reply('Usage: op owner give item <itemId> <amount> <@user>');
+        let tgt = await User.findOne({ userId: targetId });
+        if (!tgt) return message.reply('Target user does not have an account.');
+        tgt.items = tgt.items || [];
+        const existing = tgt.items.find(it => it.itemId === itemId);
+        if (existing) existing.quantity += amtParsed;
+        else tgt.items.push({ itemId, quantity: amtParsed });
+        await tgt.save();
+        return message.reply(`Given ${amtParsed} ${itemId}(s) to <@${targetId}>`);
       }
 
       // fallback for simple two-arg give

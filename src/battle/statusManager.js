@@ -73,7 +73,11 @@ function getProneMultiplier(attacker, defender) {
   if (!defender || !defender.status || !attacker) return 1;
   const prone = defender.status.find(st => st.type === 'prone');
   if (!prone) return 1;
-  const attrMultiplier = getDamageMultiplier(attacker.def.attribute, defender.def.attribute);
+  // attacker/defender may be card objects (with .def.attribute) or simple
+  // marine objects (with .attribute). Fall back safely to avoid undefined.
+  const attackerAttr = attacker?.def?.attribute || attacker?.attribute || 'STR';
+  const defenderAttr = defender?.def?.attribute || defender?.attribute || 'STR';
+  const attrMultiplier = getDamageMultiplier(attackerAttr, defenderAttr);
   if (attrMultiplier > 1) {
     const extra = (prone.amount ?? 20) / 100;
     return 1 + extra;
@@ -158,10 +162,43 @@ function applyStartOfTurnEffects(teamArray) {
 // Apply card effect (stun, freeze, cut, bleed, team_stun)
 // Mutates target(s) by adding statuses and returns array of log strings.
 // Duration 0 = permanent effect; duration > 0 = ticks down each action/turn.
-function applyCardEffect(attacker, target) {
+function applyCardEffect(attacker, target, context = {}) {
   const logs = [];
   if (!attacker || !attacker.def || !attacker.def.effect) return logs;
   const def = attacker.def;
+  // Attempt to resolve a team target when `def.all` is set but a single
+  // entity was passed. Callers may provide `context` with helpful team
+  // arrays: `playerTeam`, `opponentTeam`, `marines` or `cards`.
+  const isAlive = (e) => {
+    if (!e) return false;
+    if (typeof e.currentHP === 'number') return e.currentHP > 0;
+    if (typeof e.alive === 'boolean') return e.alive;
+    return true;
+  };
+  let resolvedTarget = target;
+  if (def.all && !Array.isArray(target)) {
+    // Debugging: log resolution attempt for `all:true` effects (include def id/all)
+    try {
+      const attackerName = (attacker && attacker.def && (attacker.def.character || attacker.def.id)) || 'unknown';
+      console.log(`[statusManager] resolving all:true for ${attackerName} defId=${def.id} defAll=${!!def.all} (effect=${def.effect}) - targetIsArray=${Array.isArray(target)}`);
+    } catch (e) {}
+    if (Array.isArray(context.playerTeam) && Array.isArray(context.opponentTeam)) {
+      if (context.playerTeam.includes(attacker)) {
+        resolvedTarget = context.opponentTeam.filter(isAlive);
+      } else if (context.opponentTeam.includes(attacker)) {
+        resolvedTarget = context.playerTeam.filter(isAlive);
+      } else {
+        resolvedTarget = context.opponentTeam.filter(isAlive);
+      }
+    } else if (Array.isArray(context.marines)) {
+      resolvedTarget = context.marines.filter(isAlive);
+    } else if (Array.isArray(context.cards)) {
+      resolvedTarget = context.cards.filter(isAlive);
+    }
+    try {
+      console.log(`[statusManager] resolvedTarget for defId=${def.id} defAll=${!!def.all} length=${Array.isArray(resolvedTarget)?resolvedTarget.length:'N/A'}`);
+    } catch (e) {}
+  }
   // Store original duration for message display
   const origDur = def.effectDuration ?? (def.effect === 'doomed' ? 3 : 1);
   // If duration is 0 or -1, effect is permanent (use Infinity internally)
@@ -172,19 +209,15 @@ function applyCardEffect(attacker, target) {
 
   const selfEffects = ['truesight', 'undead'];
   const applyTo = def.effect === 'team_stun'
-    ? target
-    : (def.all && Array.isArray(target))
-      ? target
+    ? resolvedTarget
+    : (def.all && Array.isArray(resolvedTarget))
+      ? resolvedTarget
       : (def.itself || selfEffects.includes(def.effect))
         ? attacker
-        : target;
+        : resolvedTarget;
 
-  // locking statuses tick down twice per round (once after each action), so
-  // we multiply by two to ensure the intended number of victim turns are
-  // blocked.  This pattern applies to stun, freeze, team_stun and truesight.
-  if (dur !== Infinity && (def.effect === 'stun' || def.effect === 'freeze' || def.effect === 'team_stun' || def.effect === 'truesight')) {
-    dur = dur * 2;
-  }
+  // Stun, freeze, team_stun and truesight use the duration as the number of
+  // turns they remain active, without additional multipliers.
 
   const statusMessage = () => {
     if (def.effect === 'freeze' || def.effect === 'hungry') return ` (permanent)`;
@@ -239,8 +272,8 @@ function applyCardEffect(attacker, target) {
       break;
     }
     case 'team_stun':
-      if (Array.isArray(target)) {
-        addEffectToTarget(target, 'stun', dur);
+      if (Array.isArray(resolvedTarget)) {
+        addEffectToTarget(resolvedTarget, 'stun', dur);
         logs.push(`All opponents are stunned${statusMessage()}!`);
       }
       break;
@@ -395,6 +428,7 @@ module.exports = {
   getConfusionChance,
   getProneMultiplier,
   getDrunkChance,
+  applyBleedOnEnergyUse,
   removeStatusTypes,
   hasTruesight,
   consumeTruesight,

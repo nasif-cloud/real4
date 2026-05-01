@@ -13,24 +13,13 @@
 // Emoji: <:1000043584:1479138154572156928>
 
 function applyEffect(target, duration, data = {}) {
+  // Bleed applied as "damage when spending energy". The engine will
+  // call a shared helper when a card spends energy to apply bleed damage.
   return { type: 'bleed', remaining: duration, stacks: 1, amount: data.amount ?? data.effectAmount ?? 2, ...data };
-}
-
-function onStartOfTurn(entity, status, logs, handleKO) {
-  const amount = status.amount ?? 2;
-  entity.currentHP = Math.max(0, (entity.currentHP || 0) - amount);
-  logs.push(`${entity.def?.character || entity.rank || 'Entity'} suffers bleed for -${amount} HP!`);
-  const ko = handleKO(entity);
-  if (ko) logs.push(ko);
-  if (status.remaining !== Infinity) {
-    status.remaining -= 1;
-  }
-  return status.remaining > 0 || status.remaining === Infinity;
 }
 
 module.exports = {
   type: 'bleed',
-  emoji: '<:1000043584:1479138154572156928>',
-  applyEffect,
-  onStartOfTurn
+  emoji: '<:1000048306:1497961727336386641>',
+  applyEffect
 };

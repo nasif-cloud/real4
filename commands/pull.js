@@ -46,35 +46,73 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // determine rank with pity logic (only for prefix pulls)
+    // determine category first (Cards / Artifacts / Ships) then roll rank per-category
+    // Category weights (treated as relative weights and normalized)
+    // Use percentages: cards 97%, artifacts 2%, ships 1%
+    const CATEGORY_WEIGHTS = { cards: 97, artifacts: 2, ships: 1 };
+    const CARD_RATES = { D: 45, C: 30, B: 15, A: 6.5, S: 2.5, SS: 0.8, UR: 0.2 };
+    const ARTIFACT_SHIP_RATES = { D: 30, C: 30, B: 20, A: 12, S: 8 };
+
     let rank;
     let pityTriggered = false;
+    let category = 'cards';
+    // If pity triggered (prefix pulls only), force an SS card from the card pool
     if (message && user.pityCount >= PITY_TARGET) {
-      // pity guaranteed SS drop for prefix pulls
       rank = 'SS';
+      category = 'cards';
       user.pityCount = 0;
       pityTriggered = true;
     } else {
-      const r = Math.random() * 100;
-      let running = 0;
-      for (const [rk, pct] of Object.entries(PULL_RATES)) {
-        running += pct;
-        if (r <= running) {
-          rank = rk;
-          break;
+      // choose category by weights (normalize in case they don't sum to 100)
+      const catTotal = Object.values(CATEGORY_WEIGHTS).reduce((s, v) => s + v, 0) || 1;
+      let rc = Math.random() * catTotal;
+      for (const [k, w] of Object.entries(CATEGORY_WEIGHTS)) {
+        rc -= w;
+        if (rc <= 0) { category = k; break; }
+      }
+
+      // pick rank according to selected category's distribution
+      const pickFromDist = (dist) => {
+        const total = Object.values(dist).reduce((s, v) => s + v, 0) || 1;
+        let r = Math.random() * total;
+        for (const [rk, pct] of Object.entries(dist)) {
+          r -= pct;
+          if (r <= 0) return rk;
         }
-      }
-      if (message) {
-        user.pityCount += 1;
-      }
+        return Object.keys(dist)[Object.keys(dist).length - 1];
+      };
+
+      if (category === 'cards') rank = pickFromDist(CARD_RATES);
+      else rank = pickFromDist(ARTIFACT_SHIP_RATES);
+
+      if (message) user.pityCount += 1;
     }
 
     const pityProgress = message ? `Pity: ${user.pityCount}/${PITY_TARGET}` : '';
 
-    // select card
+    // select card from pool matching category and rank with category-safe fallbacks
     const pullable = cards.filter(c => c.pullable);
-    let pool = pullable.filter(c => c.rank === rank);
-    if (pool.length === 0) pool = pullable;
+    let pool = [];
+    if (category === 'cards') {
+      // prefer non-ship, non-artifact cards of the given rank
+      pool = pullable.filter(c => c.rank === rank && !c.ship && !c.artifact);
+      // fallback: any non-ship/non-artifact regardless of rank
+      if (!pool || pool.length === 0) pool = pullable.filter(c => !c.ship && !c.artifact);
+    } else if (category === 'artifacts') {
+      // prefer artifacts of the given rank
+      pool = pullable.filter(c => c.rank === rank && c.artifact);
+      // fallback: any artifact regardless of rank
+      if (!pool || pool.length === 0) pool = pullable.filter(c => c.artifact);
+    } else if (category === 'ships') {
+      // prefer ships of the given rank
+      pool = pullable.filter(c => c.rank === rank && c.ship);
+      // fallback: any ship regardless of rank
+      if (!pool || pool.length === 0) pool = pullable.filter(c => c.ship);
+    }
+
+    // final fallback: anything pullable (should be very rare)
+    if (!pool || pool.length === 0) pool = pullable;
+
     const card = pool[Math.floor(Math.random() * pool.length)];
 
     // Get all versions in this card group

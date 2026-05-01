@@ -13,7 +13,7 @@
 // Emoji: <:hungry:placeholder>
 
 const type = 'hungry';
-const emoji = '<:hungry:placeholder>';
+const emoji = '<:1000048299:1497961706721116383>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   const amount = def.effectAmount ?? 1;

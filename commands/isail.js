@@ -34,7 +34,32 @@ const { getEffectDescription, normalizeGifUrl } = require('../utils/cards');
 const { getDamageMultiplier, getAttributeDescription } = require('../utils/attributeSystem');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 const { fetchBuffer, getMapImageBuffer } = require('../utils/mapImage');
-const { getShipById, getCardById } = require('../utils/cards');
+const { getShipById, getCardById, consumeShipCola } = require('../utils/cards');
+const { moreCards } = require('../data/morecards');
+const { cards: baseCards } = require('../data/cards');
+
+function findEnemyDef(name) {
+  if (!name) return null;
+  const n = name.toLowerCase();
+  let def = (moreCards || []).find(c => (c.character && c.character.toLowerCase() === n) || (Array.isArray(c.alias) && c.alias.some(a => a.toLowerCase() === n)));
+  if (def) return def;
+  def = (baseCards || []).find(c => (c.character && c.character.toLowerCase() === n) || (Array.isArray(c.alias) && c.alias.some(a => a.toLowerCase() === n)));
+  return def || null;
+}
+
+function makeMarineFromDef(def, hpMultiplier = 3) {
+  if (!def) return null;
+  const atk = (def.attack_min && def.attack_max) ? Math.floor((def.attack_min + def.attack_max) / 2) : (def.power || 1);
+  return {
+    rank: def.character || def.title || 'Enemy',
+    speed: def.speed || 1,
+    atk,
+    maxHP: (def.health || def.hp || 1) * hpMultiplier,
+    attribute: def.attribute || 'STR',
+    emoji: def.emoji || '',
+    image: def.image_url || def.image || null
+  };
+}
 
 
 
@@ -55,6 +80,8 @@ const {
   getDefenseMultiplier,
   getProneMultiplier,
   getDrunkChance,
+  applyBleedOnEnergyUse,
+  getConfusionChance,
   hasAttackDisabled,
   removeStatusTypes,
   hasTruesight,
@@ -65,6 +92,42 @@ const {
 
 
 const calculateUserDamage = calculateUserDamageShared;
+
+function resolveEffectTarget(card, state, damageTarget) {
+  if (!card) return damageTarget;
+  if (card.def.effect === 'team_stun') {
+    return state.marines.filter(m => m.currentHP > 0);
+  }
+  if (card.def.all) {
+    if (card.def.itself) {
+      return state.cards.filter(c => c.alive);
+    }
+    return state.marines.filter(m => m.currentHP > 0);
+  }
+  return damageTarget;
+}
+
+async function handleConfusionAction(state, interaction, card, action) {
+  const confusionChance = getConfusionChance(card);
+  if (confusionChance > 0 && randomInt(1, 100) <= confusionChance) {
+    const cost = action === 'special' ? 3 : 1;
+    if (card.energy >= cost) {
+      card.energy -= cost;
+      card.turnsUntilRecharge = 2;
+    }
+    const baseDmg = calculateUserDamage(card, action);
+    const attackMod = getAttackModifier(card);
+    const selfDmg = Math.max(0, Math.floor(baseDmg * attackMod));
+    card.currentHP = Math.max(0, (card.currentHP || 0) - selfDmg);
+    const selfKo = handleKO(card);
+    if (selfKo) appendLog(state, selfKo);
+    state.lastUserAction = `${card.def.character} is confused and hits themselves for **${selfDmg} DMG**! <:energy:1478051414558118052> -${cost}`;
+    state.selected = null;
+    await finalizeUserAction(state, interaction.message, interaction);
+    return true;
+  }
+  return false;
+}
 
 function getReflectStatus(entity) {
   return entity?.status?.find(st => st.type === 'reflect');
@@ -417,42 +480,39 @@ function makeSelectionRow(state) {
         .setDisabled(disabled)
     );
   });
-  // Rest button - reset energy to 3, only if no card selected
-  if (state.selected === null) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId('isail_action:rest')
-        .setLabel('Rest')
-        .setStyle(ButtonStyle.Success)
-    );
-  }
   return row;
-
 }
 
 function makeActionRow(state) {
-  if (state.selected === null || state.awaitingTarget) return null;
-  const card = state.cards[state.selected];
-  const isUndead = card.status && card.status.some(st => st.type === 'undead');
+  if (state.awaitingTarget) return null;
   const row = new ActionRowBuilder();
-  // Attack
-  row.addComponents(
-    new ButtonBuilder()
-      .setCustomId('isail_action:attack')
-      .setLabel('Attack')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(isUndead)
-  );
-  // Special Attack (only if definition provides one and energy is available)
-  if (card.def.special_attack && card.energy >= 3) {
+  if (state.selected !== null) {
+    const card = state.cards[state.selected];
+    const isUndead = card.status && card.status.some(st => st.type === 'undead');
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId('isail_action:special')
-        .setLabel('Special Attack')
+        .setCustomId('isail_action:attack')
+        .setLabel('Attack')
         .setStyle(ButtonStyle.Primary)
-        .setDisabled(isUndead)
+        .setDisabled(isUndead || card.energy < 1)
     );
+    if (card.def.special_attack) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId('isail_action:special')
+          .setLabel('Special Attack')
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(isUndead || card.energy < 3)
+      );
+    }
   }
+  row.addComponents(
+    new ButtonBuilder()
+      .setCustomId('isail_action:rest')
+      .setLabel('Rest')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(state.turn !== 'user')
+  );
   return row;
 }
 
@@ -698,6 +758,7 @@ async function handleVictory(state, msg, user, discordUser) {
   // calculate rewards
   let belis = 0;
   let bountyGain = 0;
+  let stageRuns = 0;
   if (state.storyMode) {
     // Story-mode: only give island completion rewards when the boss (stage 3) is cleared.
     const key = state.storyKey || 'story';
@@ -706,7 +767,13 @@ async function handleVictory(state, msg, user, discordUser) {
     // ensure containers exist
     user.storyProgress = user.storyProgress || {};
     user.storyCompletions = user.storyCompletions || {};
+    user.storyStageRuns = user.storyStageRuns || {};
     user.storyProgress[key] = user.storyProgress[key] || [];
+    user.storyStageRuns[key] = user.storyStageRuns[key] || {};
+    stageRuns = Number(user.storyStageRuns[key][stage] || 0);
+    const isRepeatStage = stageRuns > 0;
+    user.storyStageRuns[key][stage] = stageRuns + 1;
+    if (typeof user.markModified === 'function') user.markModified('storyStageRuns');
 
     // compute marine bounty contribution
     let marineBounty = 0;
@@ -715,13 +782,27 @@ async function handleVictory(state, msg, user, discordUser) {
     }
 
     if (stage < 3) {
-      // Intermediate stages: mark progress but do not award island rewards yet
-      if (!user.storyProgress[key].includes(stage)) user.storyProgress[key].push(stage);
-      belis = 0;
-      bountyGain = 0;
+      if (stageRuns === 0) {
+        // First clear of a non-boss stage: record progress only
+        if (!user.storyProgress[key].some(x => Number(x) === stage)) {
+          user.storyProgress[key].push(stage);
+          if (typeof user.markModified === 'function') user.markModified('storyProgress');
+        }
+        belis = 0;
+        bountyGain = 0;
+      } else if (stageRuns === 1) {
+        // Second completion of the same stage: 1 gem repeat reward
+        user.gems = (user.gems || 0) + 1;
+        belis = 0;
+        bountyGain = 0;
+      } else {
+        // Third+ completion of the same stage: 50 beli
+        belis = 50;
+        bountyGain = 0;
+      }
     } else {
       // Boss stage cleared -> island completion logic
-      const prevCount = user.storyCompletions[key] || 0;
+      const prevCount = Number(user.storyCompletions[key] || 0);
       if (prevCount === 0) {
         // First time completing this island: big bounty + 5 gems
         user.gems = (user.gems || 0) + 5;
@@ -733,13 +814,17 @@ async function handleVictory(state, msg, user, discordUser) {
         bountyGain = marineBounty;
         belis = 0;
       } else {
-        // Subsequent completions: small beli reward
+        // Subsequent completions: small beli reward (50 beli, no bounty)
         belis = 50;
-        bountyGain = marineBounty;
+        bountyGain = 0;
       }
       // increment completion counter and persist stage if not recorded
       user.storyCompletions[key] = prevCount + 1;
-      if (!user.storyProgress[key].includes(3)) user.storyProgress[key].push(3);
+      if (!user.storyProgress[key].some(x => Number(x) === 3)) {
+        user.storyProgress[key].push(3);
+        if (typeof user.markModified === 'function') user.markModified('storyProgress');
+      }
+      if (typeof user.markModified === 'function') user.markModified('storyCompletions');
     }
   } else {
     // Infinite sail rewards (legacy behavior)
@@ -773,7 +858,12 @@ async function handleVictory(state, msg, user, discordUser) {
 
   // ===== XP & level-up handling =====
   // give each active team member XP and handle level ups.
-  const xpGain = 30;
+  const key = state.storyKey || 'story';
+  let xpGain = 30;
+  if (state.storyMode) {
+    const completions = Number((user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0);
+    if (stageRuns > 0 || completions > 0) xpGain = 0;
+  }
   const levelUpLines = [];
   if (Array.isArray(user.team)) {
     // Only give XP to cards that were actually used in this battle
@@ -813,12 +903,12 @@ async function handleVictory(state, msg, user, discordUser) {
   const descLines = [];
   if (state.storyMode && state.storyStage === 3) {
     const key = state.storyKey || 'story';
-    const completions = (user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0;
+    const completions = Number((user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0);
     const gemIcon = '<:gem:1490741488081043577>';
     if (completions === 1) {
       // first time island clear
       descLines.push(`• Earned ${gemIcon} 5 Gems`);
-      descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+      if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
       // compute next island name for unlock message
       const ISLAND_ORDER = ['fusha_village','alvidas_hideout','shells_town','orange_town','syrup_village','baratie','arlong_park','loguetown'];
       const idx = ISLAND_ORDER.indexOf(key);
@@ -830,14 +920,23 @@ async function handleVictory(state, msg, user, discordUser) {
       }
     } else if (completions === 2) {
       descLines.push(`• Earned ${gemIcon} 1 Gem`);
-      descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+      if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+    } else {
+      if (belis > 0) descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
+      if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+    }
+  } else if (state.storyMode && state.storyStage < 3) {
+    const gemIcon = '<:gem:1490741488081043577>';
+    if (stageRuns === 0) {
+      // first clear of a non-boss stage has no reward beyond XP
+    } else if (stageRuns === 1) {
+      descLines.push(`• Earned ${gemIcon} 1 Gem`);
     } else {
       descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
-      descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
     }
   } else {
-    descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
-    descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+    if (belis > 0) descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
+    if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
   }
   descLines.push(`• team members gained **${xpGain} XP**`);
   victoryEmbed.setDescription(descLines.join('\n'));
@@ -876,23 +975,8 @@ async function handleDefeat(state, msg, user, discordUser) {
     defeatEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   }
   
-  let nextCustomId = 'isail_next';
-  if (state.storyMode) {
-    // on defeat allow retrying the same stage
-    const retryStage = state.storyStage || 1;
-    nextCustomId = `isail_next:story|${state.storyKey}|${retryStage}`;
-  }
-  const retryLabel = nextCustomId.startsWith('isail_next:story|') ? 'Retry Stage' : 'Next Stage';
-  const nextSailRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(nextCustomId)
-      .setLabel(retryLabel)
-      .setEmoji('<:nextsail:1490397191125209119>')
-      .setStyle(ButtonStyle.Secondary)
-  );
-  
   try { await msg.delete(); } catch {}
-  await msg.channel.send({ embeds: [defeatEmbed], components: [nextSailRow] });
+  await msg.channel.send({ embeds: [defeatEmbed] });
 }
 
 function clearBattleTimeout(state) {
@@ -955,6 +1039,21 @@ async function startBattleWithMarines({ message, interaction, user, discordUser,
   if (!user) return;
   const userId = user.userId || user.userId;
 
+  const safeInteractionReply = async (payload) => {
+    if (message) return message.reply(payload);
+    if (!interaction) return;
+    try {
+      if (!interaction.deferred && !interaction.replied) return await interaction.reply(payload);
+      return await interaction.followUp(payload);
+    } catch (err) {
+      try {
+        return await interaction.channel.send(payload);
+      } catch (sendErr) {
+        console.error('Failed safe interaction reply:', sendErr);
+      }
+    }
+  };
+
   // Check for active battle for this user
   let activeIsail = null;
   for (const [msgId, state] of battleStates) {
@@ -964,22 +1063,22 @@ async function startBattleWithMarines({ message, interaction, user, discordUser,
     }
   }
   if (activeIsail) {
-    const reply = 'You already have an active Isail in progress!';
+    const reply = 'You already have an active sail in progress!';
     if (message) return message.reply(reply);
-    return interaction.reply({ content: reply, ephemeral: true });
+    return safeInteractionReply({ content: reply, ephemeral: true });
   }
 
   if (!Array.isArray(user.team) || user.team.length === 0) {
     const reply = 'Your team must have at least 1 card.';
     if (message) return message.reply(reply);
-    return interaction.reply({ content: reply, ephemeral: true });
+    return safeInteractionReply({ content: reply, ephemeral: true });
   }
 
   const teamDefs = user.team.slice(0, 3).map(id => cardDefs.find(c => c.id === id)).filter(Boolean);
   if (teamDefs.length === 0) {
     const reply = 'Your team must have at least 1 valid card.';
     if (message) return message.reply(reply);
-    return interaction.reply({ content: reply, ephemeral: true });
+    return safeInteractionReply({ content: reply, ephemeral: true });
   }
 
   const resolvedTeam = teamDefs.map(def => {
@@ -1086,7 +1185,7 @@ module.exports = {
   name: 'isail',
   description: 'Begin the Infinite Sail interactive battle',
   options: [],
-  async execute({ message, interaction }) {
+  async execute({ message, interaction, skipMapFirst = false }) {
     const userId = message ? message.author.id : interaction.user.id;
     const discordUser = message ? message.author : interaction.user;
     let user = await User.findOne({ userId });
@@ -1108,7 +1207,7 @@ module.exports = {
     }
     
     if (activeIsail) {
-      const reply = 'You already have an active Isail in progress!';
+      const reply = 'You already have an active sail in progress!';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -1195,7 +1294,7 @@ module.exports = {
       let msg;
 
       // If this is not the user's first Infinite Sail run, send the map image first
-      const sendMapFirst = !!(user && user.isailProgress && user.isailProgress > 1);
+      const sendMapFirst = !skipMapFirst && !!(user && user.isailProgress && user.isailProgress > 1);
       if (sendMapFirst) {
         try {
           const buf = await getMapImageBuffer(user);
@@ -1294,30 +1393,17 @@ module.exports = {
           }
         }
 
-        // consume 1 cola from active ship (same rules as /sail)
-        user.ships = user.ships || {};
-        const shipDef2 = getShipById(user.activeShip) || getCardById(user.activeShip) || null;
-        const defaultCola2 = shipDef2 ? (shipDef2.cola !== undefined ? shipDef2.cola : (shipDef2.maxCola !== undefined ? shipDef2.maxCola : 0)) : 0;
-        if (!user.ships[user.activeShip]) {
-          user.ships[user.activeShip] = { cola: defaultCola2, maxCola: (shipDef2 && shipDef2.maxCola !== undefined) ? shipDef2.maxCola : defaultCola2 };
-        }
-        const shipState2 = user.ships[user.activeShip];
-        if (!shipState2 || (shipState2.cola || 0) <= 0) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
-
-        // consume cola
-        user.ships[user.activeShip].cola = Math.max(0, (user.ships[user.activeShip].cola || 0) - 1);
+        // consume 1 cola from active ship (centralized)
+        if (!consumeShipCola(user)) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
         await user.save();
 
-        // build marines array for story stage (support known islands)
+        // build marines array for story stage (support known islands) using card defs
         let marinesArr = [];
         if (storyKey === 'fusha_village') {
-          if (nextStage === 1) {
-            marinesArr = [{ rank: 'Pistol Bandit', speed: 3, atk: 4, maxHP: 30, attribute: 'STR', emoji: '<:F0120:1494099609067323442>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/100/0120.png' }];
-          } else if (nextStage === 2) {
-            marinesArr = [{ rank: 'Higuma', speed: 4, atk: 8, maxHP: 70, attribute: 'QCK', emoji: '<:0027:1494100987856556204>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0027.png' }];
-          } else if (nextStage === 3) {
-            marinesArr = [{ rank: 'Master of the Near Sea', speed: 5, atk: 10, maxHP: 120, attribute: 'STR', emoji: '<:0028:1494101589550563338>', image: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0028.png' }];
-          }
+          const name = nextStage === 1 ? 'Pistol Bandit' : nextStage === 2 ? 'Higuma' : 'Master of the Near Sea';
+          const def = findEnemyDef(name);
+          const m = makeMarineFromDef(def, 3);
+          if (m) marinesArr.push(m);
         }
 
         if (!marinesArr.length) return interaction.followUp({ content: 'This story stage is not implemented yet.', ephemeral: true });
@@ -1341,6 +1427,10 @@ module.exports = {
           return interaction.followUp({ content: 'Failed to continue to sail.', ephemeral: true });
         }
       }
+
+      // Consume 1 cola from active ship before starting next infinite sail run
+      if (!consumeShipCola(user)) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
+      await user.save();
 
       // Start the next sail run by invoking execute with a message-style context (no duplicate interaction reply)
       const fakeMessage = {
@@ -1367,7 +1457,7 @@ module.exports = {
             }
           }
           if (activeIsail) {
-            const reply = 'You already have an active Isail in progress!';
+            const reply = 'You already have an active sail in progress!';
             if (message) return message.reply(reply);
             return interaction.reply({ content: reply, ephemeral: true });
           }
@@ -1486,7 +1576,7 @@ module.exports = {
         }
       };
 
-      await module.exports.execute({ message: fakeMessage });
+      await module.exports.execute({ message: fakeMessage, skipMapFirst: true });
       return;
     }
 
@@ -1574,8 +1664,15 @@ module.exports = {
             state.embedImage = normalizeGifUrl(card.def.special_attack.gif);
           }
         }
-        const energyCost = act === 'attack' ? 1 : act === 'special' ? 3 : 1;
+        // Apply bleed if present when energy is spent
+        try {
+          const energySpent = act === 'special' ? 3 : (act === 'attack' ? 1 : 0);
+          const bleedLogs = applyBleedOnEnergyUse(card, energySpent);
+          bleedLogs.forEach(l => appendLog(state, l));
+        } catch (e) {}
         card.turnsUntilRecharge = 2;
+        const confusionResolved = await handleConfusionAction(state, interaction, card, act);
+        if (confusionResolved) return safeDefer(interaction);
         // recalc damage with user context so boosts are always included
         const user = await User.findOne({ userId: state.userId });
         const baseDmg = calculateUserDamage(card, act, user);
@@ -1588,13 +1685,18 @@ module.exports = {
         } else {
           const m = state.marines[targetIdx];
           damageTarget = m;
-          effectTarget = m;
+          effectTarget = resolveEffectTarget(card, state, m);
         }
-        // calculate final damage with attribute multiplier
+        // calculate final damage with attribute multiplier and modifiers
         let attrMultiplier = 1;
         let isDodgedByTruesight = false;
+        let attackMod = getAttackModifier(card);
+        let proneMultiplier = 1;
+        let defenseMultiplier = 1;
         if (damageTarget) {
           attrMultiplier = getDamageMultiplier(card.def.attribute, damageTarget.attribute || damageTarget.def?.attribute);
+          proneMultiplier = getProneMultiplier(card, damageTarget);
+          defenseMultiplier = getDefenseMultiplier(card, damageTarget);
           if (hasTruesight(damageTarget)) {
             isDodgedByTruesight = true;
             consumeTruesight(damageTarget);
@@ -1604,7 +1706,7 @@ module.exports = {
           }
         }
 
-        const dmg = isDodgedByTruesight ? 0 : Math.floor(baseDmg * attrMultiplier);
+        const dmg = isDodgedByTruesight ? 0 : Math.max(0, Math.floor(baseDmg * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier));
         if (damageTarget && !isDodgedByTruesight) {
           damageTarget.currentHP -= dmg;
           if (damageTarget.currentHP <= 0) damageTarget.currentHP = 0;
@@ -1618,7 +1720,12 @@ module.exports = {
             damageTarget.status.splice(freezeIdx, 1);
           }
         }
-        const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, effectTarget) : [];
+        if (!isDodgedByTruesight && act === 'special') {
+          try {
+            console.log(`[isail] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
+          } catch (e) {}
+        }
+        const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, effectTarget, { playerTeam: state.cards, opponentTeam: state.marines, marines: state.marines, cards: state.cards }) : [];
         effectLogs.forEach(l => appendLog(state, l));
         if (!isDodgedByTruesight && act === 'special' && card.def.special_attack?.gif) {
           try {
@@ -1669,7 +1776,7 @@ module.exports = {
         // Rest action: heal all alive cards by 10% max HP, restore +2 energy to each
         state.cards.forEach(c => {
           if (c.alive) {
-            c.currentHP = Math.min(c.def.health, c.currentHP + Math.floor(c.def.health * 0.1));
+            c.currentHP = Math.min(c.maxHP || c.def.health, c.currentHP + Math.floor((c.maxHP || c.def.health) * 0.1));
             c.energy = Math.min(3, c.energy + 2);
           }
         });
@@ -1738,12 +1845,24 @@ module.exports = {
           state.embedImage = normalizeGifUrl(card.def.special_attack.gif);
         }
       }
+      // Apply bleed if present when energy is spent
+      try {
+        const energySpent = act === 'special' ? 3 : (act === 'attack' ? 1 : 0);
+        const bleedLogs = applyBleedOnEnergyUse(card, energySpent);
+        bleedLogs.forEach(l => appendLog(state, l));
+      } catch (e) {}
 
       card.turnsUntilRecharge = 2;
+      const confusionResolved = await handleConfusionAction(state, interaction, card, act);
+      if (confusionResolved) return safeDefer(interaction);
       const user = await User.findOne({ userId: state.userId });
       const baseDmg = calculateUserDamage(card, act, user);
       let attrMultiplier = 1;
       let isDodgedByTruesight = false;
+      let attackMod = getAttackModifier(card);
+      let proneMultiplier = getProneMultiplier(card, m);
+      let defenseMultiplier = getDefenseMultiplier(card, m);
+      let effectTarget = resolveEffectTarget(card, state, m);
       
       if (hasTruesight(m)) {
         isDodgedByTruesight = true;
@@ -1755,7 +1874,7 @@ module.exports = {
         attrMultiplier = getDamageMultiplier(card.def.attribute, m.attribute || m.def?.attribute);
       }
 
-      const dmg = isDodgedByTruesight ? 0 : Math.floor(baseDmg * attrMultiplier);
+      const dmg = isDodgedByTruesight ? 0 : Math.max(0, Math.floor(baseDmg * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier));
       if (!isDodgedByTruesight) {
         m.currentHP -= dmg;
         if (m.currentHP <= 0) {
@@ -1774,7 +1893,12 @@ module.exports = {
       }
 
       // Apply effects for special attacks
-      const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, m) : [];
+        if (!isDodgedByTruesight && act === 'special') {
+          try {
+            console.log(`[isail] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
+          } catch (e) {}
+        }
+      const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, effectTarget, { playerTeam: state.cards, opponentTeam: state.marines, marines: state.marines, cards: state.cards }) : [];
       effectLogs.forEach(l => appendLog(state, l));
 
       // Send GIF for special attacks

@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { cards } = require('../data/cards');
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { rods } = require('../data/rods');
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 const { PULL_LIMIT } = require('../config');
@@ -46,7 +46,21 @@ module.exports = {
       );
     applyDefaultEmbedStyle(embed, discordUser);
 
-    if (message) return message.channel.send({ embeds: [embed] });
-    return interaction.reply({ embeds: [embed] });
+    const runTutorialRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('tutorial_run')
+        .setLabel('Run Tutorial')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    if (message) {
+      await message.channel.send({ embeds: [embed] });
+      await message.channel.send({ content: "Would you like to run the tutorial? Click below or run `op tutorial`.", components: [runTutorialRow] });
+      return;
+    }
+
+    await interaction.reply({ embeds: [embed] });
+    await interaction.followUp({ content: "Would you like to run the tutorial? Click below or run `/tutorial`.", components: [runTutorialRow] });
+    return;
   }
 };

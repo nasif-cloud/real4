@@ -162,12 +162,13 @@ async function main() {
         if (commandName === 'loot') return lootCmd.execute({ interaction });
         if (commandName === 'timers') return timersCmd.execute({ interaction });
         if (commandName === 'info') return require('./commands/info').execute({ interaction });
+        if (commandName === 'tutorial') return require('./commands/tutorial').execute({ interaction });
         if (commandName === 'setship') return setShipCmd.execute({ interaction });
         if (commandName === 'deposit') return depositCmd.execute({ interaction });
         if (commandName === 'card') return require('./commands/card').execute({ interaction });
         if (commandName === 'upgrade') return require('./commands/upgrade').execute({ interaction });
         if (commandName === 'forfeit') return forfeitCmd.execute({ interaction });
-        if (commandName === 'isail') return require('./commands/isail').execute({ interaction });
+        // `/isail` command disabled; use the Sail menu to access Infinite Sail (Navy base)
         if (commandName === 'sail') return require('./commands/sail').execute({ interaction });
         if (commandName === 'fuel') return require('./commands/fuel').execute({ interaction });
         if (commandName === 'fish') return require('./commands/fish').execute({ interaction });
@@ -183,6 +184,13 @@ async function main() {
         // handle help back button
         if (action === 'help_back') {
           return require('./commands/help').handleBack(interaction);
+        }
+        // handle tutorial run button (from start prompt) or navigation
+        if (action === 'tutorial_run') {
+          return require('./commands/tutorial').execute({ interaction });
+        }
+        if (action && (action.startsWith('tutorial_nav') || action === 'tutorial_about')) {
+          return require('./commands/tutorial').handleButton(interaction, interaction.customId);
         }
         
         // existing card pager buttons
@@ -309,6 +317,10 @@ async function main() {
         if (action === 'team_autoteam') {
           return require('./commands/team').handleButton(interaction, action, cardId);
         }
+        // handle team ids
+        if (action === 'team_ids') {
+          return require('./commands/team').handleButton(interaction, action, cardId);
+        }
 
         if (action && action.startsWith('bulksell_confirm')) {
           const [, token, choice] = interaction.customId.split(':');
@@ -360,6 +372,7 @@ async function main() {
     if (cmd === 'col') cmd = 'collection';
     try {
       if (cmd === 'start') return await startCmd.execute({ message });
+    if (cmd === 'tutorial') return await require('./commands/tutorial').execute({ message });
       if (cmd === 'pull') return await pullCmd.execute({ message });
       if (cmd === 'reset') return await resetCmd.execute({ message });
       if (cmd === 'team') return await teamCmd.execute({ message, args });
@@ -392,7 +405,7 @@ async function main() {
       if (cmd === 'upgrade') return await require('./commands/upgrade').execute({ message, args });
       if (cmd === 'set' || cmd === 'setship') return await setShipCmd.execute({ message, args });
       if (cmd === 'deposit') return await depositCmd.execute({ message, args });
-      if (cmd === 'isail') return await require('./commands/isail').execute({ message });
+      // Prefix `isail` disabled; use `sail` to access Infinite Sail (Navy base)
       if (cmd === 'sail') return await require('./commands/sail').execute({ message, args });
       if (cmd === 'fuel') return await require('./commands/fuel').execute({ message, args });
       if (cmd === 'fish') return await require('./commands/fish').execute({ message });

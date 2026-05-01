@@ -11,7 +11,7 @@
 // Emoji: <:charmed:placeholder>
 
 const type = 'charmed';
-const emoji = '<:charmed:placeholder>';
+const emoji = '<:1000048296:1497961707832610938>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   addEffectToTarget(target, type, dur);

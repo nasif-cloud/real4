@@ -32,7 +32,7 @@ function onStartOfTurn(entity, status, logs) {
 
 module.exports = {
   type: 'regen',
-  emoji: '<:regen:1485292289827016734>',
+  emoji: '<:1000048286:1497963088992010362>',
   applyEffect,
   onStartOfTurn
 };

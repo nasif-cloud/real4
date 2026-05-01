@@ -12,7 +12,7 @@
 // Emoji: <:prone:1492621344825937970>
 
 const type = 'prone';
-const emoji = '<:prone:1492621344825937970>';
+const emoji = '<:1000048294:1497961715009327225>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   const amount = def.effectAmount ?? 20;

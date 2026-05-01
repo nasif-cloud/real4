@@ -29,7 +29,7 @@ function onStartOfTurn(entity, status, logs, handleKO) {
 
 module.exports = {
   type: 'cut',
-  emoji: '<:Cut:1479136751397109771>',
+  emoji: '<:1000048305:1497961725788426301>',
   applyEffect,
   onStartOfTurn
 };

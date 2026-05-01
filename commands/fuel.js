@@ -3,11 +3,28 @@ const { findBestOwnedShip, getShipById } = require('../utils/cards');
 
 module.exports = {
   name: 'fuel',
-  description: 'Consume a Cola item to add +1 Cola to a ship',
+  description: 'Consume Cola items to refill a ship\'s Cola (supports bulk amount in prefix mode)',
   options: [{ name: 'ship', type: 3, description: 'Ship name (optional; uses active ship if omitted)', required: false }],
   async execute({ message, interaction, args }) {
     const userId = message ? message.author.id : interaction.user.id;
-    const shipQuery = message ? (args && args.length ? args.join(' ') : '') : interaction.options.getString('ship');
+    let quantity = 1;
+    let shipQuery = '';
+
+    if (message) {
+      const rawArgs = args || [];
+      if (rawArgs.length > 0) {
+        const lastArg = String(rawArgs[rawArgs.length - 1]).toLowerCase();
+        const parsedNumber = Number(lastArg);
+        if (lastArg === 'all' || (!Number.isNaN(parsedNumber) && parsedNumber > 0)) {
+          quantity = lastArg === 'all' ? 'all' : parsedNumber;
+          shipQuery = rawArgs.slice(0, -1).join(' ').trim();
+        } else {
+          shipQuery = rawArgs.join(' ').trim();
+        }
+      }
+    } else {
+      shipQuery = interaction.options.getString('ship') || '';
+    }
 
     let user = await User.findOne({ userId });
     if (!user) {
@@ -17,9 +34,10 @@ module.exports = {
     }
 
     let shipDef = null;
-    if (shipQuery && shipQuery.trim()) {
+    if (shipQuery) {
       shipDef = await findBestOwnedShip(userId, shipQuery);
-    } else if (user.activeShip) {
+    }
+    if (!shipDef && user.activeShip) {
       shipDef = getShipById(user.activeShip);
     }
 
@@ -38,18 +56,16 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // consume one cola item
-    colaEntry.quantity -= 1;
-    if (colaEntry.quantity <= 0) {
-      user.items = user.items.filter(it => it.itemId !== 'cola');
-    }
+    const requestedAmount = quantity === 'all' ? colaEntry.quantity : quantity;
+    const fuelAmount = Math.max(0, Math.min(requestedAmount, colaEntry.quantity));
 
-    // ensure per-user ship state exists
+    // ensure per-user ship state exists; determine a sane default maxCola
     user.ships = user.ships || {};
-    user.ships[shipDef.id] = user.ships[shipDef.id] || { cola: 0, maxCola: shipDef.maxCola || 0 };
+    const defaultMaxCola = (shipDef && shipDef.maxCola !== undefined) ? shipDef.maxCola : ((shipDef && shipDef.cola !== undefined) ? shipDef.cola : 0);
+    user.ships[shipDef.id] = user.ships[shipDef.id] || { cola: 0, maxCola: defaultMaxCola };
 
-    const maxCola = user.ships[shipDef.id].maxCola || shipDef.maxCola || 0;
-    const before = user.ships[shipDef.id].cola || 0;
+    const maxCola = (user.ships[shipDef.id].maxCola !== undefined) ? user.ships[shipDef.id].maxCola : defaultMaxCola;
+    const before = (user.ships[shipDef.id].cola !== undefined) ? user.ships[shipDef.id].cola : 0;
     if (before >= maxCola) {
       await user.save();
       const reply = `**${shipDef.character}** already has full Cola (${before}/${maxCola}).`;
@@ -57,10 +73,26 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    user.ships[shipDef.id].cola = Math.min(maxCola, before + 1);
+    const amountToFuel = Math.min(fuelAmount, maxCola - before);
+    if (amountToFuel <= 0) {
+      const reply = `**${shipDef.character}** already has full Cola (${before}/${maxCola}).`;
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    colaEntry.quantity -= amountToFuel;
+    if (colaEntry.quantity <= 0) {
+      user.items = user.items.filter(it => it.itemId !== 'cola');
+    }
+
+    user.ships[shipDef.id].cola = before + amountToFuel;
+    if (typeof user.markModified === 'function') {
+      user.markModified('ships');
+      user.markModified('items');
+    }
     await user.save();
 
-    const reply = `Fueled **${shipDef.character}** with <:cola:1494106165955792967> +1. Current Cola: ${user.ships[shipDef.id].cola}/${maxCola}`;
+    const reply = `Fueled **${shipDef.character}** with <:cola:1494106165955792967> +${amountToFuel}. Current Cola: ${user.ships[shipDef.id].cola}/${maxCola}`;
     if (message) return message.reply(reply);
     return interaction.reply({ content: reply });
   }

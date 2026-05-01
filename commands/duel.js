@@ -34,6 +34,7 @@ const {
   getConfusionChance,
   getProneMultiplier,
   getDrunkChance,
+  applyBleedOnEnergyUse,
   removeStatusTypes,
   hasTruesight,
   consumeTruesight,
@@ -59,6 +60,17 @@ function getReflectStatus(entity) {
 function isCharmedAgainstTarget(attacker, target) {
   if (!attacker || !target || !attacker.status) return false;
   return attacker.status.some(st => st.type === 'charmed') && attacker.def.attribute === target.def.attribute;
+}
+
+function resolveDuelEffectTarget(card, myTeam, opponentTeam, selectedTarget) {
+  if (!card) return selectedTarget;
+    if (card.def.effect === 'team_stun') {
+    return opponentTeam.filter(c => c.currentHP > 0);
+  }
+  if (card.def.all) {
+    return card.def.itself ? myTeam.filter(c => c.alive) : opponentTeam.filter(c => c.currentHP > 0);
+  }
+  return selectedTarget;
 }
 
 const calculateUserDamage = calculateUserDamageShared;
@@ -485,12 +497,12 @@ function canTeamAct(team) {
   return team.some(c => c.alive && !hasStatusLock(c) && c.energy > 0);
 }
 
-async function finalizeAction(state, msg, timedOut = false) {
+async function finalizeAction(state, msg, timedOut = false, appliedCut = false) {
   // Check if player's team is defeated
   const currentTeam = state.turn === 'player1' ? state.player1Cards : state.player2Cards;
   const opponentTeam = state.turn === 'player1' ? state.player2Cards : state.player1Cards;
 
-  if (checkTeamDefeated(currentTeam)) {
+    if (checkTeamDefeated(currentTeam)) {
     state.finished = true;
     const winnerId = state.turn === 'player1' ? state.player2Id : state.player1Id;
     const loserId = state.turn === 'player1' ? state.player1Id : state.player2Id;
@@ -582,14 +594,14 @@ async function finalizeAction(state, msg, timedOut = false) {
     state.embedImage = null; // Clear special attack gif
     state.gifMessageId = null; // Clear special attack gif message
 
-    // Apply start-of-turn effects to ALL cards (both teams)
-    applyGlobalCut(state);
+    // Apply start-of-turn effects to ALL cards (both teams) unless already applied
+    if (!appliedCut) applyGlobalCut(state);
 
     // Check if current player can act; if not, automatically skip their turn
     const activeTeam = state.turn === 'player1' ? state.player1Cards : state.player2Cards;
     if (!canTeamAct(activeTeam)) {
       appendLog(state, `${state.turn === 'player1' ? state.discordUser1.username : state.discordUser2.username} has no valid moves. Turn skipped.`);
-      return finalizeAction(state, msg, false);
+      return finalizeAction(state, msg, false, true);
     }
 
     // refresh message instead of editing
@@ -1077,6 +1089,10 @@ module.exports = {
         }
         card.energy -= 1;
         card.turnsUntilRecharge = 2;
+        try {
+          const bleedLogsLocal = applyBleedOnEnergyUse(card, 1);
+          if (bleedLogsLocal && bleedLogsLocal.length) bleedLogsLocal.forEach(l => logs.push(l));
+        } catch (e) {}
 
         let baseDmg = calculateUserDamage(card, 'attack');
         const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
@@ -1114,6 +1130,10 @@ module.exports = {
         }
         card.energy -= 3;
         card.turnsUntilRecharge = 2;
+        try {
+          const bleedLogsLocal = applyBleedOnEnergyUse(card, 3);
+          if (bleedLogsLocal && bleedLogsLocal.length) bleedLogsLocal.forEach(l => logs.push(l));
+        } catch (e) {}
 
         let baseDmg = calculateUserDamage(card, 'special');
         const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
@@ -1138,16 +1158,11 @@ module.exports = {
           }
         }
 
-        let effectLogsD2 = [];
-        if (card.def.effect === 'team_stun' || (card.def.all && !card.def.itself)) {
-          const allAlive = opponentTeam.filter(c => c.currentHP > 0);
-          effectLogsD2 = applyCardEffectShared(card, allAlive);
-        } else if (card.def.all && card.def.itself) {
-          const allAlive = myTeam.filter(c => c.currentHP > 0);
-          effectLogsD2 = applyCardEffectShared(card, allAlive);
-        } else {
-          effectLogsD2 = applyCardEffectShared(card, target);
-        }
+        const effectTarget = resolveDuelEffectTarget(card, myTeam, opponentTeam, target);
+        try {
+          console.log(`[duel] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
+        } catch (e) {}
+        const effectLogsD2 = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
         effectLogsD2.forEach(l => appendLog(state, l));
 
         const effectStr = getEffectString(card, target);
@@ -1221,6 +1236,22 @@ module.exports = {
         return interaction.reply({ content: 'The duel has already ended.', ephemeral: true });
       }
 
+      // Allow team Rest without a selected card (match isail behavior)
+      if (act === 'rest') {
+        myTeam.forEach(c => {
+          if (c.alive) {
+            c.currentHP = Math.min(c.maxHP || c.def.health, c.currentHP + Math.floor((c.maxHP || c.def.health) * 0.1));
+            c.energy = Math.min(3, c.energy + 2);
+          }
+        });
+        const actionText = `The team took a rest, healed 10% HP and restored +2 energy each!`;
+        if (isPlayer1) state.lastP1Action = actionText;
+        else state.lastP2Action = actionText;
+        state.log = '';
+        await finalizeAction(state, interaction.message);
+        return safeDefer(interaction);
+      }
+
       const card = myTeam[state.selected];
       if (!card || !card.alive) {
         state.selected = null;
@@ -1253,9 +1284,11 @@ module.exports = {
         if (act === 'attack') {
           if (card.energy < 1) return interaction.reply({ content: 'Not enough energy for attack.', ephemeral: true });
           card.energy -= 1;
+          try { const bleedLocal = applyBleedOnEnergyUse(card, 1); if (bleedLocal && bleedLocal.length) bleedLocal.forEach(l => logs.push(l)); } catch (e) {}
         } else if (act === 'special') {
           if (card.energy < 3) return interaction.reply({ content: 'Special attack requires 3 energy.', ephemeral: true });
           card.energy -= 3;
+          try { const bleedLocal = applyBleedOnEnergyUse(card, 3); if (bleedLocal && bleedLocal.length) bleedLocal.forEach(l => logs.push(l)); } catch (e) {}
         }
 
         card.turnsUntilRecharge = 2;
@@ -1270,14 +1303,19 @@ module.exports = {
         } else {
           const target = opponentTeam[targetIdx];
           damageTarget = target;
-          effectTarget = target;
+          effectTarget = resolveDuelEffectTarget(card, myTeam, opponentTeam, target);
         }
-        // calculate final damage with attribute multiplier
+        // calculate final damage with attribute and status modifiers
         let attrMultiplier = 1;
+        let proneMultiplier = 1;
+        let attackMod = getAttackModifier(card);
+        let defenseMultiplier = 1;
         if (damageTarget) {
           attrMultiplier = getDamageMultiplier(card.def.attribute, damageTarget.def.attribute);
+          proneMultiplier = getProneMultiplier(card, damageTarget);
+          defenseMultiplier = getDefenseMultiplier(card, damageTarget);
         }
-        const dmg = Math.floor(baseDmg * attrMultiplier);
+        const dmg = Math.floor(baseDmg * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier);
         if (damageTarget) {
           damageTarget.currentHP -= dmg;
           if (damageTarget.currentHP <= 0) {
@@ -1297,7 +1335,10 @@ module.exports = {
         let effectLogs = [];
         let effectSummary = '';
         if (act === 'special') {
-          effectLogs = applyCardEffectShared(card, effectTarget);
+          try {
+            console.log(`[duel] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
+          } catch (e) {}
+          effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
           // Build effect summary for GIF embed (e.g., "and stuns Roronoa Zoro")
           if (card.def.effect === 'team_stun') {
             effectSummary = ' and stunned the whole team';

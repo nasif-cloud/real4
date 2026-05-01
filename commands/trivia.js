@@ -146,18 +146,18 @@ async function applySessionRewards(user, session) {
 }
 
 function addPerQuestionReward(session) {
-  if (session.difficulty === 'hard') {
-    const amount = Math.floor(Math.random() * 76) + 25;
-    const chestCount = Math.floor(Math.random() * 2) + 1;
-    session.totalBeli += amount;
-    session.cChestCount += chestCount;
-    return `You earned **<:beri:1490738445319016651> ${amount}** and **${chestCount}x** <:Cchest:1492559506868146307> **C Chest**.`;
+  const amount = session.difficulty === 'hard'
+    ? Math.floor(Math.random() * 76) + 25
+    : Math.floor(Math.random() * 50) + 1;
+  session.totalBeli += amount;
+  const chestAwarded = session.correctCount % 2 === 0;
+
+  if (chestAwarded) {
+    session.cChestCount += 1;
+    return `You earned **<:beri:1490738445319016651> ${amount}** and **1x** <:Cchest:1492559506868146307> **C Chest**.`;
   }
 
-  const amount = Math.floor(Math.random() * 50) + 1;
-  session.totalBeli += amount;
-  session.cChestCount += 1;
-  return `You earned **<:beri:1490738445319016651> ${amount}** and **1x** <:Cchest:1492559506868146307> **C Chest**.`;
+  return `You earned **<:beri:1490738445319016651> ${amount}**.`;
 }
 
 function applyPerfectBonus(session) {
@@ -166,13 +166,11 @@ function applyPerfectBonus(session) {
     const bChestBonus = Math.floor(Math.random() * 2) + 1;
     session.aChestCount += 1;
     session.bChestCount += bChestBonus;
-    session.gems += 5;
-    return `Perfect run bonus: **1x** <:Achest:1492559635507450068> **A Chest**, **${bChestBonus}x** <:Bchest:1492559568738451567> **B Chest**, and **5 Gems**.`;
+    return `Perfect run bonus: **1x** <:Achest:1492559635507450068> **A Chest** and **${bChestBonus}x** <:Bchest:1492559568738451567> **B Chest**.`;
   }
 
   session.bChestCount += 1;
-  session.gems += 3;
-  return 'Perfect run bonus: **1x** <:Bchest:1492559568738451567> **B Chest** and **3 Gems**.';
+  return 'Perfect run bonus: **1x** <:Bchest:1492559568738451567> **B Chest**.';
 }
 
 module.exports = {

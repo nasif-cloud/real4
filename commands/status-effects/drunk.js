@@ -12,7 +12,7 @@
 // Emoji: <:drunk:placeholder>
 
 const type = 'drunk';
-const emoji = '<:drunk:placeholder>';
+const emoji = '<:1000048298:1497961711054094367>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   const chance = def.effectChance ?? def.effectAmount ?? 20;

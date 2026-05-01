@@ -17,6 +17,6 @@ function applyEffect(target, duration, data = {}) {
 
 module.exports = {
   type: 'confusion',
-  emoji: '<:confused:1485292931597209811>',
+  emoji: '<:1000048287:1497961705592848495>',
   applyEffect,
 };

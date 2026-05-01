@@ -60,6 +60,8 @@ const UserSchema = new Schema({
   badgesOwned: { type: [String], default: [] },
   // badges the user has equipped to profile (max 3)
   badgesEquipped: { type: [String], default: [] },
+  // whether the user has completed the in-app tutorial
+  tutorialCompleted: { type: Boolean, default: false },
   // fishing
   lastFishFail: { type: Date, default: null },
   // rods for fishing

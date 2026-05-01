@@ -11,7 +11,7 @@
 // Emoji: <:refelct:1492516882954190898>
 
 const type = 'reflect';
-const emoji = '<:refelct:1492516882954190898>';
+const emoji = '<:1000048292:1497961724018557040>';
 
 function applyEffect({ target, def, dur, origDur, addEffectToTarget, statusTargetName, statusMessage }) {
   addEffectToTarget(target, type, dur);
