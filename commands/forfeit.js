@@ -111,6 +111,19 @@ module.exports = {
       state.finished = true;
       state.lastUserAction = `${displayName} forfeited.`;
 
+      // Clean up battle state from the map to prevent blocking future sails
+      for (const [msgId, s] of isailCmd.battleStates) {
+        if (s && s.userId === userId) {
+          isailCmd.battleStates.delete(msgId);
+        }
+      }
+
+      // Clear any inactivity timeout
+      if (state.timeout) {
+        clearTimeout(state.timeout);
+        state.timeout = null;
+      }
+
       const { EmbedBuilder } = require('discord.js');
       const embed = new EmbedBuilder()
         .setTitle('Sail forfeited')

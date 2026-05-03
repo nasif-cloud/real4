@@ -942,11 +942,33 @@ async function handleVictory(state, msg, user, discordUser) {
     } else {
       // Boss (final) stage cleared -> island completion logic
       const prevCount = Number(user.storyCompletions[key] || 0);
+      const islandRewards = islandDef.rewards || {};
+      
       if (prevCount === 0) {
-        // First time completing this island: big bounty + 5 gems
-        user.gems = (user.gems || 0) + 5;
-        bountyGain = marineBounty + 100000;
+        // First time completing this island: use rewards from sailStages, default to 5 gems + bounty
+        const firstTimeRewards = islandRewards.firstTime || {};
+        const rewardGems = firstTimeRewards.gems || 5;
+        const rewardBounty = firstTimeRewards.bounty || 100000;
+        const rewardIdCard = firstTimeRewards.id_card || firstTimeRewards.id_card_1;
+        const rewardShip = firstTimeRewards.ship_card;
+        
+        user.gems = (user.gems || 0) + rewardGems;
+        bountyGain = marineBounty + rewardBounty;
         belis = 0;
+        
+        // Handle id_card and ship_card rewards if present
+        if (rewardIdCard) {
+          user.ownedCards = user.ownedCards || [];
+          if (!user.ownedCards.some(c => c.cardId === rewardIdCard)) {
+            user.ownedCards.push({ cardId: rewardIdCard, level: 1, xp: 0 });
+          }
+        }
+        if (rewardShip) {
+          user.ships = user.ships || [];
+          if (!user.ships.some(s => s === rewardShip)) {
+            user.ships.push(rewardShip);
+          }
+        }
       } else if (prevCount === 1) {
         // Second completion: 1 gem
         user.gems = (user.gems || 0) + 1;
@@ -1044,10 +1066,22 @@ async function handleVictory(state, msg, user, discordUser) {
     const key = state.storyKey || 'story';
     const completions = Number((user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0);
     const gemIcon = '<:gem:1490741488081043577>';
+    const islandDef = (sailStages || []).find(s => s.id === key) || {};
+    const islandRewards = islandDef.rewards || {};
+    
     if (completions === 1) {
-      // first time island clear
-      descLines.push(`• Earned ${gemIcon} 5 Gems`);
+      // first time island clear - use rewards from sailStages
+      const firstTimeRewards = islandRewards.firstTime || {};
+      const rewardGems = firstTimeRewards.gems || 5;
+      descLines.push(`• Earned ${gemIcon} ${rewardGems} Gems`);
       if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+      if (firstTimeRewards.id_card || firstTimeRewards.id_card_1) {
+        const cardId = firstTimeRewards.id_card || firstTimeRewards.id_card_1;
+        descLines.push(`• Obtained card **${cardId}**`);
+      }
+      if (firstTimeRewards.ship_card) {
+        descLines.push(`• Obtained ship **${firstTimeRewards.ship_card}**`);
+      }
       // compute next island name for unlock message
       const ISLAND_ORDER = ['fusha_village','alvidas_hideout','shells_town','orange_town','syrup_village','baratie','arlong_park','loguetown'];
       const idx = ISLAND_ORDER.indexOf(key);
@@ -1068,6 +1102,7 @@ async function handleVictory(state, msg, user, discordUser) {
     const gemIcon = '<:gem:1490741488081043577>';
     if (stageRuns === 0) {
       // first clear of a non-boss stage has no reward beyond XP
+      descLines.push('Stage cleared!');
     } else if (stageRuns === 1) {
       descLines.push(`• Earned ${gemIcon} 1 Gem`);
     } else {
@@ -1080,7 +1115,9 @@ async function handleVictory(state, msg, user, discordUser) {
   if (xpGain > 0) {
     descLines.push(`• team members gained **${xpGain} XP**`);
   }
-  victoryEmbed.setDescription(descLines.join('\n'));
+  // Ensure description is not empty - provide a default if no rewards
+  const descriptionText = descLines.length > 0 ? descLines.join('\n') : 'Victory!';
+  victoryEmbed.setDescription(descriptionText);
   if (discordUser) victoryEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   
   // build next button; if this was a story battle, attach story metadata so the handler resumes the correct stage
