@@ -218,6 +218,32 @@ async function execute({ message, args }) {
       return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');
     }
   if (sub === 'resetdata') {
+    const subArg = args[1];
+    if (!subArg) return message.reply('Usage: op owner resetdata <@user> | op owner resetdata all');
+
+    // Handle global reset request with confirmation
+    if (subArg === 'all') {
+      const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+      const count = await User.countDocuments();
+      const embed = new EmbedBuilder()
+        .setTitle('Confirm: Reset All User Data')
+        .setColor(0xFF0000)
+        .setDescription(`This will DELETE all user data (${count} user records). This action is irreversible. Are you sure you want to proceed?`);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('owner_reset_all:confirm')
+          .setLabel('Confirm Reset All')
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId('owner_reset_all:cancel')
+          .setLabel('Cancel')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      return message.channel.send({ embeds: [embed], components: [row] });
+    }
+
     const mention = args[1];
     const targetId = parseMention(mention);
     if (!targetId) return message.reply('Usage: op owner resetdata <@user>');
@@ -374,4 +400,47 @@ async function execute({ message, args }) {
   return message.reply('Unrecognized owner subcommand.');
 }
 
-module.exports = { list, execute };
+async function handleButton(interaction, customId) {
+  const parts = customId.split(':');
+  const key = parts[0];
+  const action = parts[1];
+
+  if (key !== 'owner_reset_all') return;
+
+  // Permission guard
+  if (interaction.user.id !== OWNER_ID) {
+    return interaction.reply({ content: 'You are not permitted to run owner commands.', ephemeral: true });
+  }
+
+  if (action === 'confirm') {
+    await interaction.update({ content: 'Resetting all user data... This may take a moment.', embeds: [], components: [] });
+
+    // Perform destructive action
+    let res;
+    try {
+      res = await User.deleteMany({});
+    } catch (err) {
+      console.error('Error deleting all users:', err);
+      return interaction.followUp({ content: 'Failed to delete user data. Check server logs.', ephemeral: true });
+    }
+
+    // Try clearing in-memory state where possible
+    try {
+      if (duelCmd && typeof duelCmd.clearAllStates === 'function') duelCmd.clearAllStates();
+    } catch (err) {
+      console.warn('duelCmd.clearAllStates failed', err);
+    }
+    if (global.badgeSessions && typeof global.badgeSessions.clear === 'function') global.badgeSessions.clear();
+    if (global.packSessions && typeof global.packSessions.clear === 'function') global.packSessions.clear();
+    if (global.packInfoSessions && typeof global.packInfoSessions.clear === 'function') global.packInfoSessions.clear();
+    if (global.duelStates && typeof global.duelStates.clear === 'function') global.duelStates.clear();
+    if (global.pendingDuelRequests && typeof global.pendingDuelRequests.clear === 'function') global.pendingDuelRequests.clear();
+
+    return interaction.followUp({ content: `Deleted ${res.deletedCount || 'all'} user records.` });
+  }
+
+  // cancel
+  return interaction.update({ content: 'Reset cancelled.', embeds: [], components: [] });
+}
+
+module.exports = { list, execute, handleButton };

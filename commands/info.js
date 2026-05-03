@@ -7,6 +7,62 @@ const { rods } = require('../data/rods');
 const { levelers } = require('../data/levelers');
 const crews = require('../data/crews');
 
+// Helpers to safely send/update interaction payloads and strip undefined fields
+function isBuilder(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  return typeof obj.toJSON === 'function' || obj instanceof EmbedBuilder || obj instanceof ActionRowBuilder;
+}
+
+function cleanPayload(obj) {
+  if (obj === undefined || obj === null) return undefined;
+  if (Array.isArray(obj)) {
+    const arr = obj.map(cleanPayload).filter(x => x !== undefined);
+    return arr.length ? arr : undefined;
+  }
+  if (isBuilder(obj)) return obj;
+  if (typeof obj !== 'object') return obj;
+  const out = {};
+  Object.keys(obj).forEach(k => {
+    const v = cleanPayload(obj[k]);
+    if (v !== undefined) out[k] = v;
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+
+async function safeReply(interaction, payload) {
+  try {
+    const cleaned = cleanPayload(payload) || {};
+    if (interaction.replied || interaction.deferred) {
+      if (typeof interaction.followUp === 'function') return interaction.followUp(cleaned).catch(() => null);
+      if (typeof interaction.editReply === 'function') return interaction.editReply(cleaned).catch(() => null);
+    }
+    return interaction.reply(cleaned).catch(() => null);
+  } catch (err) {
+    console.error('safeReply error', err);
+    try { return interaction.reply({ content: 'An error occurred.', ephemeral: true }); } catch (e) { return null; }
+  }
+}
+
+async function safeUpdate(interaction, payload) {
+  try {
+    const cleaned = cleanPayload(payload) || {};
+    if (typeof interaction.update === 'function') {
+      return interaction.update(cleaned).catch(async () => {
+        try { return interaction.reply(cleaned); } catch (e) { return null; }
+      });
+    }
+    if (typeof interaction.editReply === 'function') {
+      return interaction.editReply(cleaned).catch(async () => {
+        try { return interaction.reply(cleaned); } catch (e) { return null; }
+      });
+    }
+    return safeReply(interaction, cleaned);
+  } catch (err) {
+    console.error('safeUpdate error', err);
+    try { return interaction.reply({ content: 'An error occurred.', ephemeral: true }); } catch (e) { return null; }
+  }
+}
+
 function makeInfoRow(index, total, cardDef, isOwned) {
   const components = [];
   
@@ -116,7 +172,7 @@ async function renderInfoCard(interaction, session, user, index) {
   const isOwned = userEntry !== null;
   const rows = makeInfoRows(interaction.user.id, index, session.cards.length, cardDef, isOwned);
   session.currentIndex = index;
-  return interaction.update({ embeds: [embed], components: rows.length ? rows : [] });
+  return safeUpdate(interaction, { embeds: [embed], components: rows.length ? rows : undefined });
 }
 
 function normalizeCrewName(name) {
@@ -343,7 +399,7 @@ module.exports = {
     if (!query || !query.trim()) {
       const reply = 'Please state a card.';
       if (message) return message.channel.send(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
+      return safeReply(interaction, { content: reply, ephemeral: true });
     }
 
     // If the user asked simply for "ship" (or similar), show their active ship if set
@@ -352,13 +408,13 @@ module.exports = {
       if (!user || !user.activeShip) {
         const reply = 'You have no active ship set. Use `op setship` to set one.';
         if (message) return message.channel.send(reply);
-        return interaction.reply({ content: reply, ephemeral: true });
+        return safeReply(interaction, { content: reply, ephemeral: true });
       }
       const shipDef = getShipById(user.activeShip) || getCardById(user.activeShip);
       if (!shipDef) {
         const reply = 'Your active ship could not be found.';
         if (message) return message.channel.send(reply);
-        return interaction.reply({ content: reply, ephemeral: true });
+        return safeReply(interaction, { content: reply, ephemeral: true });
       }
       // ensure ship balance/related fields are up-to-date
       if (shipDef.ship && user && user.activeShip === shipDef.id) {
@@ -369,7 +425,7 @@ module.exports = {
       const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
       const embed = buildCardEmbed(shipDef, userEntry, avatarUrl, user);
       if (message) return message.channel.send({ embeds: [embed] });
-      return interaction.reply({ embeds: [embed] });
+      return safeReply(interaction, { embeds: [embed] });
     }
     
     // First, check if query matches a crew/pack name
@@ -378,7 +434,7 @@ module.exports = {
       const { embed: packEmbed, pages } = buildPackEmbed(crewDef, discordUser, 0);
       if (!pages || pages.length <= 1) {
         if (message) return message.channel.send({ embeds: [packEmbed] });
-        return interaction.reply({ embeds: [packEmbed] });
+        return safeReply(interaction, { embeds: [packEmbed] });
       }
 
       // Paginated pack info: store pages in a session and show navigation buttons
@@ -399,7 +455,7 @@ module.exports = {
       );
 
       if (message) return message.channel.send({ embeds: [packEmbed], components: [row] });
-      return interaction.reply({ embeds: [packEmbed], components: [row] });
+      return safeReply(interaction, { embeds: [packEmbed], components: [row] });
     }
 
     // Then check exact rod and leveler names only
@@ -407,14 +463,14 @@ module.exports = {
     if (rodDef) {
       const rodEmbed = buildRodEmbed(rodDef, discordUser, user);
       if (message) return message.channel.send({ embeds: [rodEmbed] });
-      return interaction.reply({ embeds: [rodEmbed] });
+      return safeReply(interaction, { embeds: [rodEmbed] });
     }
 
     const levelerDef = getLevelerByName(query);
     if (levelerDef) {
       const levelerEmbed = buildLevelerEmbed(levelerDef, discordUser, user);
       if (message) return message.channel.send({ embeds: [levelerEmbed] });
-      return interaction.reply({ embeds: [levelerEmbed] });
+      return safeReply(interaction, { embeds: [levelerEmbed] });
     }
 
     // Otherwise, fall back to card lookup
@@ -422,7 +478,7 @@ module.exports = {
     if (!matches.length) {
       const reply = `No card found matching **${query}**.`;
       if (message) return message.channel.send(reply);
-      return interaction.reply({ content: reply, ephemeral: true });
+      return safeReply(interaction, { content: reply, ephemeral: true });
     }
 
     const sortByStrength = (a, b) => {
@@ -458,7 +514,7 @@ module.exports = {
     const rows = makeInfoRows(session.userId, currentIndex, session.cards.length, cardDef, isOwned);
 
     if (message) return message.channel.send({ embeds: [embed], components: rows.length ? rows : [] });
-    return interaction.reply({ embeds: [embed], components: rows.length ? rows : [] });
+    return safeReply(interaction, { embeds: [embed], components: rows.length ? rows : [] });
   },
 
   async handleButton(interaction, action, indexPart) {
@@ -472,10 +528,10 @@ module.exports = {
 
       const session = global.packInfoSessions?.get(`${ownerId}_packinfo`);
       if (!session || session.userId !== ownerId) {
-        return interaction.reply({ content: 'Pack info session expired or not your session.', ephemeral: true });
+        return safeReply(interaction, { content: 'Pack info session expired or not your session.', ephemeral: true });
       }
       if (interaction.user.id !== ownerId) {
-        return interaction.reply({ content: 'This pack info session is not for you.', ephemeral: true });
+        return safeReply(interaction, { content: 'This pack info session is not for you.', ephemeral: true });
       }
 
       let newPage = currentPage;
@@ -500,12 +556,12 @@ module.exports = {
           .setDisabled(nextDisabled)
       );
 
-      return interaction.update({ embeds: [embed], components: [row] });
+      return safeUpdate(interaction, { embeds: [embed], components: [row] });
     }
 
     const session = global.infoSessions?.get(`${interaction.user.id}_info`);
     if (!session || session.userId !== interaction.user.id) {
-      return interaction.reply({ content: 'Info session expired or not your session.', ephemeral: true });
+      return safeReply(interaction, { content: 'Info session expired or not your session.', ephemeral: true });
     }
 
     const user = await User.findOne({ userId: interaction.user.id });
@@ -522,9 +578,9 @@ module.exports = {
       const cardDef = session.cards[currentIndex];
       const userEntry = user?.ownedCards?.find(e => e.cardId === cardDef.id) || null;
       const embed = buildBoostEmbed(cardDef, userEntry, user);
-      return interaction.reply({ embeds: [embed], ephemeral: true });
+      return safeReply(interaction, { embeds: [embed], ephemeral: true });
     }
 
-    return interaction.reply({ content: 'Unknown action.', ephemeral: true });
+    return safeReply(interaction, { content: 'Unknown action.', ephemeral: true });
   }
 };

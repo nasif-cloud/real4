@@ -126,7 +126,7 @@ module.exports = {
 
     const card = await findBestOwnedCard(userId, query);
     if (!card) {
-      const reply = `That isnt a card bruh`;
+      const reply = `**"${query}"** Is not in your team.`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

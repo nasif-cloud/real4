@@ -1,29 +1,13 @@
 // Centralized status and battle utilities shared by isail and duel
 const { getDamageMultiplier } = require('../../utils/attributeSystem');
 const statusEffects = require('../../commands/status-effects');
-const STATUS_EMOJIS = {
-  stun: '<:Stun:1479135399573061751>',
-  freeze: '<:Freeze:1479137305749880924>',
-  cut: '<:Cut:1479136751397109771>',
-  bleed: '<:1000043584:1479138154572156928>',
-  regen: '<:regen:1485292289827016734>',
-  confusion: '<:confused:1485292931597209811>',
-  attackup: '<:atkup:1485295694053900328>',
-  attackdown: '<:attackdown:1485296830295314492>',
-  defenseup: '<:defenseup:1485297398942269510>',
-  defensedown: '<:defensedown:1485297768535949524>',
-  truesight: '<:truesight:1485299663879012484>',
-  undead: '<:undead:1485300491930959882>',
-  reflect: '<:refelct:1492516882954190898>',
-  acid: '<:acid:1492617822851829770>',
-  prone: '<:prone:1492621344825937970>',
-  dissattack: '<:dissattack:1492623438160990343>',
-  blessed: '<:blessed:placeholder>',
-  charmed: '<:charmed:placeholder>',
-  doomed: '<:doomed:placeholder>',
-  drunk: '<:drunk:placeholder>',
-  hungry: '<:hungry:placeholder>'
-};
+// Build STATUS_EMOJIS from the centralized `commands/status-effects` module
+// so the authoritative emoji is defined in one place.
+const STATUS_EMOJIS = Object.keys(statusEffects || {}).reduce((acc, key) => {
+  const entry = statusEffects[key];
+  acc[key] = entry && entry.emoji ? entry.emoji : '';
+  return acc;
+}, {});
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;

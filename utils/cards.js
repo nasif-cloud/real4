@@ -17,6 +17,19 @@ const RANDOM_ENEMY_EMOJI_REMAP = {
   '<:randomenemypsy:1491937909060931847>': '<:fgcyb:1492280854767079494>'
 };
 
+// Safely apply an author object to an EmbedBuilder.
+// Discord's builders require `name` to be a non-empty string. Many cards
+// may not have a faculty or an icon; avoid calling `setAuthor` with
+// undefined fields which triggers shapeshift validation errors.
+function safeApplyAuthor(embed, author) {
+  if (!embed || !author || typeof author !== 'object') return;
+  const out = {};
+  if (typeof author.name === 'string' && author.name.trim()) out.name = author.name;
+  if (typeof author.iconURL === 'string' && author.iconURL.trim()) out.iconURL = author.iconURL;
+  if (typeof author.url === 'string' && author.url.trim()) out.url = author.url;
+  if (out.name) embed.setAuthor(out);
+}
+
 function getModifiedRates(baseRates, rodMultiplier = 1) {
   if (rodMultiplier === 1) return baseRates;
   const boostedRanks = new Set(['A', 'S', 'SS', 'UR']);
@@ -490,7 +503,7 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
     if (m) iconVal = `https://cdn.discordapp.com/emojis/${m[1]}.png`;
   }
   const author = {};
-  if (iconVal && pityText) { // Only set author for regular pulls, not pack opens
+  if (iconVal && pityText) {
     if (iconVal.startsWith && iconVal.startsWith('http')) author.iconURL = iconVal;
     else author.name = iconVal;
   }
@@ -516,9 +529,7 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
       .setImage(card.image_url || null)
       .setFooter({ text: `ID ${formatCardId(card.id)}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
 
-    if (author.name || author.iconURL) {
-      shipEmbed.setAuthor(author);
-    }
+    safeApplyAuthor(shipEmbed, author);
     return shipEmbed;
   }
 
@@ -552,9 +563,7 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
     embed.addFields({ name: 'Stats', value: statsText, inline: false });
   }
 
-  if (author.name || author.iconURL) {
-    embed.setAuthor(author);
-  }
+  safeApplyAuthor(embed, author);
 
   if (card.title !== 'Random enemy') {
     const emojiThumbnail = getEmojiImageUrl(card.emoji);
@@ -662,7 +671,6 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
     const shipEmbed = new EmbedBuilder()
       .setColor(color)
-      .setAuthor(author)
       .setTitle(cardDef.character)
       .setDescription(descLines.join('\n'))
       .setImage(cardDef.image_url || null)
@@ -671,6 +679,8 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     if (iconUrl) {
       shipEmbed.setThumbnail(iconUrl);
     }
+
+    safeApplyAuthor(shipEmbed, author);
 
     // Show Cola status for ships (per-user state if available, otherwise show card defaults)
     const shipState = user && user.ships ? (user.ships[cardDef.id] || null) : null;
@@ -767,7 +777,6 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
     const artifactEmbed = new EmbedBuilder()
       .setColor(color)
-      .setAuthor(author)
       .setTitle(cardDef.character)
       .setDescription(descLines.join('\n'))
       .setImage(cardDef.image_url || null)
@@ -784,6 +793,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       }
     }
 
+    safeApplyAuthor(artifactEmbed, author);
     return artifactEmbed;
   }
 
@@ -794,9 +804,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   // Dex/attribute emoji below title, above level
   const attributeIcon = getAttributeEmoji(cardDef.attribute);
   const descLines = [
-    titleLine,
-    '',
-    `**Attribute:** ${attributeIcon}`
+          `${titleLine}`,
+          '',
+          `**Attribute:** ${attributeIcon}`
   ];
   if (exactEntry) {
     descLines.push(`**Level:** ${lvl}${typeof exactEntry.xp === 'number' ? ` (XP: ${exactEntry.xp})` : ''}`);
@@ -806,11 +816,12 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
 
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setAuthor(author)
     .setTitle(cardDef.character)
     .setDescription(descLines.join('\n'))
     .setImage(cardDef.image_url || null)
     .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
+
+  safeApplyAuthor(embed, author);
 
   if (cardDef.title !== 'Random enemy') {
     const emojiThumbnail = getEmojiImageUrl(cardDef.emoji);
@@ -824,7 +835,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   }
 
   const statsLines = [
-    `**Health:** ${scaled.health}`
+      `**Health:** ${scaled.health}`,
   ];
   // Only show power if not a boost card, or if power > 1
   if (!cardDef.boost || scaled.power > 1) {

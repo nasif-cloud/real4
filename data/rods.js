@@ -3,7 +3,7 @@ const rods = [
     id: 'basic_rod',
     name: 'Basic Rod',
     emoji: '<:basicrod:1490066589729558568>',
-    cost: 0, // free starter
+    cost: 500,
     luckBonus: 0,
     multiplier: 1,
     thumbnail: 'https://files.catbox.moe/ck8x40.webp',

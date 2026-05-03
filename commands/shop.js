@@ -8,8 +8,7 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setColor('#f4e66c')
       .setTitle('Shop')
-      .setImage('https://files.catbox.moe/cogl6i.webp')
-      .setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+      .setImage('https://files.catbox.moe/2n5hhw.webp')
 
     if (message) return message.channel.send({ embeds: [embed] });
     return interaction.reply({ embeds: [embed] });

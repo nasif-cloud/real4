@@ -50,7 +50,7 @@ module.exports = {
     // Category weights (treated as relative weights and normalized)
     // Use percentages: cards 97%, artifacts 2%, ships 1%
     const CATEGORY_WEIGHTS = { cards: 97, artifacts: 2, ships: 1 };
-    const CARD_RATES = { D: 45, C: 30, B: 15, A: 6.5, S: 2.5, SS: 0.8, UR: 0.2 };
+    const CARD_RATES = { D: 45, C: 30, B: 16, A: 7.6, S: 2.2, SS: 0.5, UR: 0.05 };
     const ARTIFACT_SHIP_RATES = { D: 30, C: 30, B: 20, A: 12, S: 8 };
 
     let rank;

@@ -41,13 +41,3 @@ ALL CARDS BELOWS FACULTY IS "Faculty Name"
 (Rank - ID - Attribute - Card Emoji) "Character Name, Title, Image URL"
 "Special Attack Name, Special Attack GIF URL, Status Effect Description"
 ```
-
-## Output Format
-
-Return only:
-- ✅ Card added successfully to [filename]
-- 📊 Card stats: [rank, power, health, speed, attack values]
-- ⚡ Effect: [effect name, duration]
-- 🔗 Faculty: [faculty name] ([faculty rank])
-
-Do NOT output the full card object or raw JSON.

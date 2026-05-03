@@ -17,23 +17,8 @@ for (const c of allCards) {
 }
 
 const ACHIEVEMENTS = [
-  {
-    id: 'pull_100',
-    title: 'Collector',
-    icon: '<:100cards:1493739584234979338>',
-    check: (user) => (user.totalPulls || 0) >= 100,
-    reward: { beli: 100, chests: [{ id: 'c_chest', count: 1 }] },
-    reason: 'pulling 100 cards'
-  },
-  {
-    id: 'pull_1000',
-    title: 'Collector II',
-    icon: '<:1000cards:1493739865593090048>',
-    check: (user) => (user.totalPulls || 0) >= 1000,
-    reward: { beli: 1000, chests: [{ id: 'b_chest', count: 3 }, { id: 'a_chest', count: 1 }] },
-    reason: 'pulling 1000 cards'
-  },
-  {
+  // 1. Strawhat Pirate
+  (function() { return {
     id: 'strawhat_pirate',
     title: 'Strawhat Pirate',
     icon: '<:strawhatsbadge:1493740709537255426>',
@@ -45,35 +30,14 @@ const ACHIEVEMENTS = [
     },
     reward: { beli: 5000, chests: [{ id: 'a_chest', count: 5 }, { id: 'b_chest', count: 10 }, { id: 'c_chest', count: 25 }] },
     reason: 'collecting all Strawhat Pirates cards'
-  },
-  {
-    id: 'ur_card',
-    title: 'Adept Pirate',
-    icon: '<:UR:1493742900247531572>',
-    check: (user) => {
-      const owned = (user.ownedCards || []).map(e => e.cardId);
-      return owned.some(id => {
-        const def = allCards.find(c => c.id === id);
-        return def && def.rank === 'UR';
-      });
-    },
-    reward: { beli: 100, chests: [{ id: 'c_chest', count: 1 }] },
-    reason: 'obtaining a UR rank card'
-  },
-  {
-    id: 'bounty_5m',
-    title: 'Wanted Pirate',
-    icon: '<:5mbountybadge:1493757902370897930>',
-    check: (user) => (user.bounty || 0) >= 5000000,
-    reward: { beli: 100, chests: [{ id: 'c_chest', count: 1 }] },
-    reason: "obtaining a bounty of 5'000'000"
-  },
-  {
+  }; })(),
+
+  // 2. Powerful Pirate
+  (function() { return {
     id: 'powerful_pirate',
     title: 'Powerful Pirate',
     icon: '<:100powerbadge:1493745762620932127>',
     check: (user) => {
-      // compute team power
       const team = user.team || [];
       if (!team.length) return false;
       let total = 0;
@@ -86,8 +50,26 @@ const ACHIEVEMENTS = [
     },
     reward: { beli: 500, chests: [{ id: 'c_chest', count: 3 }, { id: 'b_chest', count: 1 }] },
     reason: 'forming a team with power 100 or more'
-  },
-  {
+  }; })(),
+
+  // 3. Adept Pirate (UR collector)
+  (function() { return {
+    id: 'ur_card',
+    title: 'Adept Pirate',
+    icon: '<:UR:1493742900247531572>',
+    check: (user) => {
+      const owned = (user.ownedCards || []).map(e => e.cardId);
+      return owned.some(id => {
+        const def = allCards.find(c => c.id === id);
+        return def && def.rank === 'UR';
+      });
+    },
+    reward: { beli: 100, chests: [{ id: 'c_chest', count: 1 }] },
+    reason: 'obtaining a UR rank card'
+  }; })(),
+
+  // 4. Expert Pirate (lvl 100)
+  (function() { return {
     id: 'lvl_100',
     title: 'Expert Pirate',
     icon: '<:LVL100badge:1493746306819162242>',
@@ -97,7 +79,126 @@ const ACHIEVEMENTS = [
     },
     reward: { beli: 1000, chests: [{ id: 'c_chest', count: 10 }, { id: 'b_chest', count: 3 }, { id: 'a_chest', count: 1 }] },
     reason: 'getting a card to level 100'
-  }
+  }; })(),
+
+  // 5. Collecter (was Collector)
+  (function() { return {
+    id: 'pull_100',
+    title: 'Collecter',
+    icon: '<:100cards:1493739584234979338>',
+    check: (user) => (user.totalPulls || 0) >= 100,
+    reward: { beli: 100, chests: [{ id: 'c_chest', count: 1 }] },
+    reason: 'pulling 100 cards'
+  }; })(),
+
+  // 6. collector 2 (was Collector II)
+  (function() { return {
+    id: 'pull_1000',
+    title: 'collector 2',
+    icon: '<:1000cards:1493739865593090048>',
+    check: (user) => (user.totalPulls || 0) >= 1000,
+    reward: { beli: 1000, chests: [{ id: 'b_chest', count: 3 }, { id: 'a_chest', count: 1 }] },
+    reason: 'pulling 1000 cards'
+  }; })(),
+
+  // 7. collector 3 (was Puller III)
+  (function() { return {
+    id: 'pull_10000',
+    title: 'collector 3',
+    icon: '',
+    check: (user) => (user.totalPulls || 0) >= 10000,
+    reward: { chests: [{ id: 'a_chest', count: 5 }, { id: 'b_chest', count: 10 }, { id: 'c_chest', count: 25 }] },
+    reason: "pulling 10'000 cards"
+  }; })(),
+
+  // 8. Explorer
+  (function() { return {
+    id: 'collect_100',
+    title: 'Explorer',
+    icon: '<:explorer:1499780242498130092>',
+    check: (user) => {
+      const owned = new Set((user.ownedCards || []).map(e => e.cardId));
+      return owned.size >= 100;
+    },
+    reward: { chests: [{ id: 'c_chest', count: 5 }] },
+    reason: 'collecting 100 unique cards'
+  }; })(),
+
+  // 9. explorer 2
+  (function() { return {
+    id: 'collect_1000',
+    title: 'explorer 2',
+    icon: '<:explorerII:1499780853260091473>',
+    check: (user) => {
+      const owned = new Set((user.ownedCards || []).map(e => e.cardId));
+      return owned.size >= 1000;
+    },
+    reward: { chests: [{ id: 'a_chest', count: 3 }, { id: 'b_chest', count: 5 }, { id: 'c_chest', count: 10 }] },
+    reason: 'collecting 1000 unique cards'
+  }; })(),
+
+  // 10. explorer 3
+  (function() { return {
+    id: 'collect_all',
+    title: 'explorer 3',
+    icon: '<:explorerIII:1499781477221535784>',
+    check: (user) => {
+      const owned = new Set((user.ownedCards || []).map(e => e.cardId));
+      return allCards.every(c => owned.has(c.id));
+    },
+    reward: { chests: [{ id: 'a_chest', count: 5 }, { id: 'b_chest', count: 10 }, { id: 'c_chest', count: 25 }] },
+    reason: 'collecting every unique card'
+  }; })(),
+
+  // 11. Wanted Pirate
+  (function() { return {
+    id: 'bounty_5m',
+    title: 'Wanted Pirate',
+    icon: '<:5mbountybadge:1493757902370897930>',
+    check: (user) => (user.bounty || 0) >= 5000000,
+    reward: { beli: 100, chests: [{ id: 'c_chest', count: 1 }] },
+    reason: "obtaining a bounty of 5'000'000"
+  }; })(),
+
+  // 12. wanted Pirate 2
+  (function() { return {
+    id: 'bounty_30m',
+    title: 'wanted Pirate 2',
+    icon: '<:wanted23:1499782547083886844>',
+    check: (user) => (user.bounty || 0) >= 30000000,
+    reward: { chests: [{ id: 'a_chest', count: 1 }, { id: 'b_chest', count: 3 }, { id: 'c_chest', count: 10 }] },
+    reason: "obtaining a bounty of 30'000'000"
+  }; })(),
+
+  // 13. Wanted pirate 3
+  (function() { return {
+    id: 'bounty_100m',
+    title: 'Wanted pirate 3',
+    icon: '<:wanted3:1499783183003025429>',
+    check: (user) => (user.bounty || 0) >= 100000000,
+    reward: { chests: [{ id: 'a_chest', count: 3 }, { id: 'b_chest', count: 5 }, { id: 'c_chest', count: 15 }] },
+    reason: "obtaining a bounty of 100'000'000"
+  }; })(),
+
+  // 14. Wors geeneration pirate (typo preserved)
+  (function() { return {
+    id: 'bounty_500m',
+    title: 'Wors geeneration pirate',
+    icon: '<:worstgen:1499785901469995008>',
+    check: (user) => (user.bounty || 0) >= 500000000,
+    reward: { chests: [{ id: 'a_chest', count: 5 }, { id: 'b_chest', count: 10 }, { id: 'c_chest', count: 20 }] },
+    reason: "obtaining a bounty of 500'000'000"
+  }; })(),
+
+  // 15. Emporor of the new world
+  (function() { return {
+    id: 'bounty_3b',
+    title: 'Emporor of the new world',
+    icon: '<:emporor:1499786580641189949>',
+    check: (user) => (user.bounty || 0) >= 3000000000,
+    reward: { chests: [{ id: 'a_chest', count: 10 }, { id: 'b_chest', count: 20 }, { id: 'c_chest', count: 30 }] },
+    reason: "obtaining a bounty of 3'000'000'000"
+  }; })()
 ];
 
 async function awardAchievement(user, achId, client) {

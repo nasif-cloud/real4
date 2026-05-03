@@ -1397,10 +1397,10 @@ module.exports = {
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;
       } else if (act === 'rest') {
-        // Rest action: restore card's energy to 3, heal 10% of max HP, and clear freeze/hungry
+        // Rest action: restore card's energy to 3, heal 15% of max HP, and clear freeze/hungry
         card.energy = 3;
         card.turnsUntilRecharge = 2;
-        const healAmount = Math.ceil(card.maxHP * 0.1);
+        const healAmount = Math.ceil(card.maxHP * 0.15);
         card.currentHP = Math.min(card.maxHP, card.currentHP + healAmount);
         const removed = card.status?.some(st => st.type === 'freeze' || st.type === 'hungry');
         if (removed) {

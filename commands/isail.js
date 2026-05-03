@@ -1773,14 +1773,32 @@ module.exports = {
         }
       }
       else if (act === 'rest') {
-        // Rest action: heal all alive cards by 10% max HP, restore +2 energy to each
-        state.cards.forEach(c => {
-          if (c.alive) {
-            c.currentHP = Math.min(c.maxHP || c.def.health, c.currentHP + Math.floor((c.maxHP || c.def.health) * 0.1));
-            c.energy = Math.min(3, c.energy + 2);
+        // If a specific card is selected, rest only that card (3 energy, 15% HP)
+        if (state.selected !== null) {
+          const card = state.cards[state.selected];
+          if (card && card.alive) {
+            card.energy = 3;
+            card.turnsUntilRecharge = 2;
+            const healAmount = Math.ceil((card.maxHP || card.def.health) * 0.15);
+            card.currentHP = Math.min(card.maxHP || card.def.health, (card.currentHP || 0) + healAmount);
+            const removed = card.status?.some(st => st.type === 'freeze' || st.type === 'hungry');
+            if (removed) {
+              removeStatusTypes(card, ['freeze', 'hungry']);
+            }
+            state.lastUserAction = `${card.def.character} took a rest, restored energy and healed for ${healAmount} HP${removed ? ', and recovered from freeze/hunger' : ''}!`;
+          } else {
+            state.lastUserAction = `Invalid selection for rest.`;
           }
-        });
-        state.lastUserAction = `The team took a rest, healed 10% HP and restored +2 energy each!`;
+        } else {
+          // Team rest: heal all alive cards by 10% max HP, restore +2 energy to each
+          state.cards.forEach(c => {
+            if (c.alive) {
+              c.currentHP = Math.min(c.maxHP || c.def.health, (c.currentHP || 0) + Math.floor((c.maxHP || c.def.health) * 0.1));
+              c.energy = Math.min(3, c.energy + 2);
+            }
+          });
+          state.lastUserAction = `The team took a rest, healed 10% HP and restored +2 energy each!`;
+        }
       } else {
         return interaction.followUp({ content: 'Unknown action.', ephemeral: true });
       }

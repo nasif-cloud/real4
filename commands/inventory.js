@@ -31,6 +31,10 @@ ITEM_DISPLAY_EMOJIS.yellow_shard = '<:YellowShard:1494106825627406530>';
 ITEM_DISPLAY_NAMES.purple_shard = 'Purple Shard';
 ITEM_DISPLAY_EMOJIS.purple_shard = '<:PurpleShard:1494106958582776008>';
 
+// God token display
+ITEM_DISPLAY_NAMES.god_token = 'God Token';
+ITEM_DISPLAY_EMOJIS.god_token = '<:godtoken:1499957056650608753>';
+
 const ITEMS_PER_PAGE = 20;
 
 function parseTargetIdFromArgs(args) {

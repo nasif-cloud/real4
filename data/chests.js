@@ -10,7 +10,7 @@ const chests = [
     name: 'C Chest',
     aliases: ['c chest', 'cchest'],
     emoji: CHEST_EMOJIS.c_chest,
-    price: 100,
+    price: 360,
     contents: {
       beli: [10, 100],
       itemRank: 'C',
@@ -22,9 +22,9 @@ const chests = [
     name: 'B Chest',
     aliases: ['b chest', 'bchest'],
     emoji: CHEST_EMOJIS.b_chest,
-    price: 250,
+    price: 930,
     contents: {
-      beli: [50, 250],
+      beli: [50, 100],
       itemRank: 'B',
       resetTokens: { chance: 0.5, count: [1, 1] }
     }
@@ -34,7 +34,7 @@ const chests = [
     name: 'A Chest',
     aliases: ['a chest', 'achest'],
     emoji: CHEST_EMOJIS.a_chest,
-    price: 500,
+    price: 3400,
     contents: {
       beli: [100, 300],
       itemRank: 'A',

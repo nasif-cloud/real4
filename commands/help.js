@@ -75,7 +75,6 @@ const COMMAND_CATEGORIES = {
       { name: 'fish', desc: 'Go fishing for levelers and cards (3% gem chance!)' },
       { name: 'feed <query> <item>', desc: 'Feed items to a card to level it up' },
       { name: 'trivia [difficulty]', desc: 'Play a trivia quiz to earn rewards' },
-      { name: 'drops', desc: 'View active card drops in the server' }
     ]
   },
   info: {

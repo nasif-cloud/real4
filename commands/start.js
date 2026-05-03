@@ -49,18 +49,18 @@ module.exports = {
     const runTutorialRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('tutorial_run')
-        .setLabel('Run Tutorial')
+        .setLabel('Start Tutorial')
         .setStyle(ButtonStyle.Primary)
     );
 
     if (message) {
       await message.channel.send({ embeds: [embed] });
-      await message.channel.send({ content: "Would you like to run the tutorial? Click below or run `op tutorial`.", components: [runTutorialRow] });
+      await message.channel.send({ content: "Would you like to start the tutorial? Click below or run `op tutorial`.", components: [runTutorialRow] });
       return;
     }
 
     await interaction.reply({ embeds: [embed] });
-    await interaction.followUp({ content: "Would you like to run the tutorial? Click below or run `/tutorial`.", components: [runTutorialRow] });
+    await interaction.followUp({ content: "Would you like to start the tutorial? Click below or run `/tutorial`.", components: [runTutorialRow] });
     return;
   }
 };

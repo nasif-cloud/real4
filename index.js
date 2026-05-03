@@ -29,6 +29,7 @@ const leaderboardCmd = require('./commands/leaderboard');
 const dailyCmd = require('./commands/daily');
 const stockCmd = require('./commands/stock');
 const openCmd = require('./commands/open');
+const tradeCmd = require('./commands/trade');
 const robCmd = require('./commands/rob');
 const stopRobCmd = require('./commands/stoprob');
 const timersCmd = require('./commands/timers');
@@ -155,6 +156,7 @@ async function main() {
         if (commandName === 'daily') return dailyCmd.execute({ interaction });
         if (commandName === 'stock') return stockCmd.execute({ interaction });
         if (commandName === 'open') return openCmd.execute({ interaction });
+        if (commandName === 'trade') return tradeCmd.execute({ interaction });
         if (commandName === 'claim') return claimCmd.execute({ interaction });
         if (commandName === 'bulksell') return bulksellCmd.execute({ interaction });
         if (commandName === 'rob') return robCmd.execute({ interaction });
@@ -261,6 +263,11 @@ async function main() {
         // handle pack opening interactions
         if (action && action.startsWith('open_next')) {
           return openCmd.handleButton(interaction, interaction.customId);
+        }
+
+        // handle trade accept/decline buttons
+        if (action === 'trade_confirm' || action === 'trade_cancel') {
+          return tradeCmd.handleButton(interaction, interaction.customId);
         }
 
         // handle stock button purchases
@@ -374,7 +381,9 @@ async function main() {
       if (cmd === 'start') return await startCmd.execute({ message });
     if (cmd === 'tutorial') return await require('./commands/tutorial').execute({ message });
       if (cmd === 'pull') return await pullCmd.execute({ message });
-      if (cmd === 'reset') return await resetCmd.execute({ message });
+      if (cmd === 'greset') return await resetCmd.execute({ message, args: ['god'] });
+      if (cmd === 'god' && args[0] && args[0].toLowerCase() === 'reset') return await resetCmd.execute({ message, args: ['god'] });
+      if (cmd === 'reset') return await resetCmd.execute({ message, args });
       if (cmd === 'team') return await teamCmd.execute({ message, args });
       if (cmd === 'teambg' || cmd === 'teambackground') return await teamBackgroundCmd.execute({ message, args });
       if (cmd === 'autoteam') return await require('./commands/autoteam').execute({ message });
@@ -392,6 +401,7 @@ async function main() {
       if (cmd === 'wanted') return await require('./commands/wanted').execute({ message, args });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });
+      if (cmd === 'trade') return await tradeCmd.execute({ message, args });
       if (cmd === 'claim') return await claimCmd.execute({ message, args });
       if (cmd === 'bulksell') return await bulksellCmd.execute({ message, args });
       if (cmd === 'rob') return await robCmd.execute({ message, args });

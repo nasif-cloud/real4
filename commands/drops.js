@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const User = require('../models/User');
 const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const { simulatePull, isArtifactCard } = require('../utils/cards');
+const { simulatePull, isArtifactCard, formatCardId } = require('../utils/cards');
 const { cards } = require('../data/cards');
 
 const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
@@ -142,7 +142,7 @@ async function _spawnDrop() {
     );
 
     const displayEmoji = card && card.ship ? '' : (card && card.emoji ? `${card.emoji} ` : '');
-    const dropContent = `A wild **${displayEmoji}${card.character} (${card.rank})** appeared!`;
+    const dropContent = `A wild **${displayEmoji}${card.character} (${card.rank})** appeared! \`${formatCardId(card.id)}\``;
     const imageUrl = card.image_url;
     let msg;
 

@@ -59,10 +59,11 @@ module.exports = {
     // Initialize session store
     if (!global.tutorialSessions) global.tutorialSessions = new Map();
 
-    // Try to DM the user the first page (send plain image URL so it's not an embed)
-    const components = buildComponentsForPage(0);
+    // Try to DM the user the first page (send image inside a blank embed)
+      const components = buildComponentsForPage(0);
     try {
-      const dmMessage = await user.send({ content: PAGES[0], components });
+        const firstEmbed = new EmbedBuilder().setImage(PAGES[0]);
+        const dmMessage = await user.send({ embeds: [firstEmbed], components });
       const session = { userId, pages: PAGES, current: 0, lastMessageId: dmMessage.id };
       global.tutorialSessions.set(`${userId}_tutorial`, session);
 
@@ -123,7 +124,8 @@ module.exports = {
         }
 
         const components = buildComponentsForPage(newIndex);
-        const newMsg = await lastMsg.reply({ content: PAGES[newIndex], components });
+        const pageEmbed = new EmbedBuilder().setImage(PAGES[newIndex]);
+        const newMsg = await lastMsg.reply({ embeds: [pageEmbed], components });
         session.lastMessageId = newMsg.id;
         global.tutorialSessions.set(sessionKey, session);
 
