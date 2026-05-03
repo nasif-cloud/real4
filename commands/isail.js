@@ -35,6 +35,7 @@ const { getDamageMultiplier, getAttributeDescription } = require('../utils/attri
 const { applyDefaultEmbedStyle } = require('../utils/embedStyle');
 const { fetchBuffer, getMapImageBuffer } = require('../utils/mapImage');
 const { getShipById, getCardById, consumeShipCola } = require('../utils/cards');
+const sailStages = require('../data/sailStages');
 const { moreCards } = require('../data/morecards');
 const { cards: baseCards } = require('../data/cards');
 
@@ -47,18 +48,55 @@ function findEnemyDef(name) {
   return def || null;
 }
 
-function makeMarineFromDef(def, hpMultiplier = 3) {
+function makeMarineFromDef(def, hpMultiplier = 3, atkMultiplier = 1) {
   if (!def) return null;
-  const atk = (def.attack_min && def.attack_max) ? Math.floor((def.attack_min + def.attack_max) / 2) : (def.power || 1);
+  const baseMin = (typeof def.attack_min === 'number') ? def.attack_min : (def.power || 1);
+  const baseMax = (typeof def.attack_max === 'number') ? def.attack_max : baseMin;
+  const mul = (typeof atkMultiplier === 'number') ? atkMultiplier : 1;
+  const newMin = Math.max(0, Math.floor(baseMin * mul));
+  const newMax = Math.max(newMin, Math.floor(baseMax * mul));
+  const avgAtk = Math.floor((newMin + newMax) / 2);
   return {
     rank: def.character || def.title || 'Enemy',
     speed: def.speed || 1,
-    atk,
+    atk: avgAtk,
+    attack_min: newMin,
+    attack_max: newMax,
     maxHP: (def.health || def.hp || 1) * hpMultiplier,
     attribute: def.attribute || 'STR',
     emoji: def.emoji || '',
     image: def.image_url || def.image || null
   };
+}
+
+// Build wave slices for a given story stage using data/sailStages.js
+function buildStageWaveSlices(storyKey, stageNum) {
+  const island = (sailStages || []).find(s => s.id === storyKey);
+  if (!island) return [];
+  const stageObj = (island.stages || []).find(s => Number(s.stage) === Number(stageNum));
+  if (!stageObj || !Array.isArray(stageObj.waves)) return [];
+  const slices = [];
+  for (const wave of stageObj.waves) {
+    const ids = Array.isArray(wave) ? wave.flat() : [wave];
+    for (let i = 0; i < ids.length; i += 3) {
+      const chunk = ids.slice(i, i + 3);
+      const marineObjs = [];
+        for (const id of chunk) {
+          const def = getCardById(id) || null;
+          if (!def) continue;
+          const hpMultiplier = chunk.length === 1 ? 3 : chunk.length === 2 ? 2 : 1;
+          const atkMultiplier = chunk.length === 1 ? 2 : chunk.length === 2 ? 1.5 : 1;
+          const m = makeMarineFromDef(def, hpMultiplier, atkMultiplier);
+          if (m) marineObjs.push(m);
+        }
+      if (marineObjs.length) slices.push(marineObjs);
+    }
+  }
+  try {
+    console.log(`[isail] buildStageWaveSlices: ${storyKey} stage ${stageNum} -> ${slices.length} slice(s)`);
+    slices.forEach((s, i) => console.log(`[isail]  slice ${i}: ${s.map(m=>m.rank).join(', ')}`));
+  } catch (e) {}
+  return slices;
 }
 
 
@@ -364,7 +402,14 @@ function getMarinesForLevel(stage, prevRanks = []) {
     }
   }
 
-  return best ? best.group : [];
+  if (!best) return [];
+  const groupLen = (best.group || []).length;
+  const atkMultiplier = groupLen === 1 ? 2 : groupLen === 2 ? 1.5 : 1;
+  best.group = (best.group || []).map(m => {
+    const newAtk = Math.max(0, Math.floor((m.atk || 0) * atkMultiplier));
+    return Object.assign({}, m, { atk: newAtk, attack_min: newAtk, attack_max: newAtk });
+  });
+  return best.group;
 }
 
 function buildEmbed(state, user, discordUser) {
@@ -406,6 +451,24 @@ function buildEmbed(state, user, discordUser) {
   // set any image override (special attack gif) or default art
   if (state.embedImage) {
     embed.setImage(state.embedImage);
+  } else {
+    // If no explicit embedImage is set, choose the strongest alive marine's image.
+    const aliveMarinesForImage = state.marines.filter(m => m.currentHP > 0 && (m.image || m.image_url));
+    if (aliveMarinesForImage.length > 0) {
+      const getAtkAvg = (x) => {
+        if (typeof x.attack_min === 'number' && typeof x.attack_max === 'number') return (x.attack_min + x.attack_max) / 2;
+        return (x.atk || 0);
+      };
+      let strongest = aliveMarinesForImage[0];
+      for (const m of aliveMarinesForImage) {
+        const mHP = m.maxHP || m.hp || 0;
+        const sHP = strongest.maxHP || strongest.hp || 0;
+        if (mHP > sHP || (mHP === sHP && getAtkAvg(m) > getAtkAvg(strongest))) {
+          strongest = m;
+        }
+      }
+      embed.setImage(strongest.image || strongest.image_url);
+    }
   }
   if (discordUser) {
     embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
@@ -562,6 +625,47 @@ function checkForDefeat(state) {
   return state.cards.every(c => !c.alive);
 }
 
+// Attempt to advance to the next wave slice if available. Returns true
+// if a new wave was spawned, false otherwise.
+async function advanceToNextWave(state, msg, user, discordUser) {
+  if (!state || !Array.isArray(state.waveSlices) || typeof state.currentWaveIndex !== 'number') return false;
+  if (state.currentWaveIndex >= state.waveSlices.length - 1) return false;
+
+  const prevIdx = state.currentWaveIndex;
+  state.currentWaveIndex += 1;
+  const nextSlice = state.waveSlices[state.currentWaveIndex] || [];
+  state.marines = (nextSlice || []).map(m => {
+    const maxHP = m.maxHP || m.hp || 30;
+    return Object.assign({}, m, { currentHP: typeof m.currentHP === 'number' ? m.currentHP : maxHP, maxHP });
+  });
+  state.selected = null;
+  state.embedImage = null;
+  try {
+    console.log(`[isail] advanceToNextWave: user=${state.userId} fromIdx=${prevIdx} toIdx=${state.currentWaveIndex} spawned ${state.marines.length} marine(s)`);
+    state.marines.forEach((m, i) => {
+      const atkDesc = (typeof m.attack_min === 'number' && typeof m.attack_max === 'number') ? `${m.attack_min}-${m.attack_max}` : String(m.atk || 0);
+      console.log(`[isail]  marine ${i}: ${m.rank} HP=${m.maxHP} ATK=${atkDesc}`);
+    });
+  } catch (e) {}
+
+  // Determine who acts first this wave based on speed
+  try {
+    const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
+    const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
+    state.turn = userSpeed >= marineSpeed ? 'user' : 'marine';
+  } catch (e) {
+    state.turn = 'user';
+  }
+
+  // Refresh battle message to show the new wave
+  try {
+    await refreshBattleMessage(msg, state, user, discordUser);
+  } catch (e) {
+    console.error('Failed to refresh battle message after advancing wave:', e);
+  }
+  return true;
+}
+
 function makeTargetRow(state) {
   if (!state.awaitingTarget) return null;
   const row = new ActionRowBuilder();
@@ -614,8 +718,13 @@ function marineAttack(state) {
       target = alive[Math.floor(Math.random() * alive.length)];
     }
     if (!target) return;
-    const dmg = marine.atk;
-    
+    let baseAtkForMarine = 0;
+    if (typeof marine.attack_min === 'number' && typeof marine.attack_max === 'number') {
+      baseAtkForMarine = randomInt(marine.attack_min, marine.attack_max);
+    } else {
+      baseAtkForMarine = marine.atk || 0;
+    }
+
     // Apply attribute multiplier
     if (hasTruesight(target)) {
       logs.push(`${target.def.character} dodges with truesight!`);
@@ -623,7 +732,7 @@ function marineAttack(state) {
     }
 
     const marineAttrMultiplier = getDamageMultiplier(marine.attribute, target.def.attribute);
-    const finalMarineDmg = Math.floor(dmg * marineAttrMultiplier);
+    const finalMarineDmg = Math.floor(baseAtkForMarine * marineAttrMultiplier);
     
     target.currentHP -= finalMarineDmg;
     if (target.currentHP <= 0) {
@@ -669,10 +778,23 @@ async function finalizeUserAction(state, msg, interaction) {
 
   // victory if all marines are dead
   if (state.marines.every(m => m.currentHP <= 0)) {
-    const user = await User.findOne({ userId: state.userId });
-    await handleVictory(state, msg, user);
-    battleStates.delete(msg.id);
-    return true; // finished
+    // If we have precomputed wave slices, advance to the next one instead of
+    // ending the battle. Otherwise, treat as a victory.
+    if (Array.isArray(state.waveSlices) && typeof state.currentWaveIndex === 'number' && state.currentWaveIndex < state.waveSlices.length - 1) {
+      const userDoc = await User.findOne({ userId: state.userId });
+      console.log(`[isail] finalizeUserAction: all marines KO'd, attempting advance for user=${state.userId}`);
+      const advanced = await advanceToNextWave(state, msg, userDoc, interaction ? interaction.user : null);
+      if (advanced) {
+        try { console.log('[isail] finalizeUserAction: advanced to next slice'); } catch (e) {}
+        // After spawning next slice, return control to the player without forcing a marine turn
+        return false;
+      }
+    } else {
+      const userDoc = await User.findOne({ userId: state.userId });
+      await handleVictory(state, msg, userDoc);
+      battleStates.delete(msg.id);
+      return true; // finished
+    }
   }
 
   // switch to marine turn (NO recharge here - cards won't recharge twice)
@@ -730,7 +852,20 @@ async function runSkipCycle(state, msg, user, discordUser) {
 }
 
 async function handleVictory(state, msg, user, discordUser) {
+  // mark finished and clear timeouts
+  try { state.finished = true; } catch (e) {}
+  try { state.victory = true; } catch (e) {}
   clearBattleTimeout(state);
+  // remove any lingering battle state entries for this user (message ids may differ)
+  try {
+    for (const [mid, s] of battleStates) {
+      if (s && (s.userId === (user && user.userId ? user.userId : state.userId))) {
+        battleStates.delete(mid);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to clean up lingering battle states for victory:', e);
+  }
   console.log(`[isail] handleVictory: user=${user.userId} startProgress=${user.isailProgress}`);
   
   // Bounty mapping for marine ranks
@@ -764,6 +899,10 @@ async function handleVictory(state, msg, user, discordUser) {
     const key = state.storyKey || 'story';
     const stage = state.storyStage || 1;
 
+    // Determine island's max stage from data/sailStages
+    const islandDef = (sailStages || []).find(s => s.id === key) || {};
+    const maxStage = Array.isArray(islandDef.stages) && islandDef.stages.length > 0 ? islandDef.stages.length : 3;
+
     // ensure containers exist
     user.storyProgress = user.storyProgress || {};
     user.storyCompletions = user.storyCompletions || {};
@@ -781,7 +920,7 @@ async function handleVictory(state, msg, user, discordUser) {
       state.marines.forEach(m => { marineBounty += bountyMap[m.rank] || 0; });
     }
 
-    if (stage < 3) {
+    if (stage < maxStage) {
       if (stageRuns === 0) {
         // First clear of a non-boss stage: record progress only
         if (!user.storyProgress[key].some(x => Number(x) === stage)) {
@@ -801,7 +940,7 @@ async function handleVictory(state, msg, user, discordUser) {
         bountyGain = 0;
       }
     } else {
-      // Boss stage cleared -> island completion logic
+      // Boss (final) stage cleared -> island completion logic
       const prevCount = Number(user.storyCompletions[key] || 0);
       if (prevCount === 0) {
         // First time completing this island: big bounty + 5 gems
@@ -820,8 +959,8 @@ async function handleVictory(state, msg, user, discordUser) {
       }
       // increment completion counter and persist stage if not recorded
       user.storyCompletions[key] = prevCount + 1;
-      if (!user.storyProgress[key].some(x => Number(x) === 3)) {
-        user.storyProgress[key].push(3);
+      if (!user.storyProgress[key].some(x => Number(x) === maxStage)) {
+        user.storyProgress[key].push(maxStage);
         if (typeof user.markModified === 'function') user.markModified('storyProgress');
       }
       if (typeof user.markModified === 'function') user.markModified('storyCompletions');
@@ -938,7 +1077,9 @@ async function handleVictory(state, msg, user, discordUser) {
     if (belis > 0) descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
     if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
   }
-  descLines.push(`• team members gained **${xpGain} XP**`);
+  if (xpGain > 0) {
+    descLines.push(`• team members gained **${xpGain} XP**`);
+  }
   victoryEmbed.setDescription(descLines.join('\n'));
   if (discordUser) victoryEmbed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   
@@ -946,7 +1087,9 @@ async function handleVictory(state, msg, user, discordUser) {
   let nextCustomId = 'isail_next';
   if (state.storyMode) {
     const nextStage = (state.storyStage || 1) + 1;
-    if (nextStage <= 3) nextCustomId = `isail_next:story|${state.storyKey}|${nextStage}`;
+    const islandDef2 = (sailStages || []).find(s => s.id === state.storyKey) || {};
+    const maxStage2 = Array.isArray(islandDef2.stages) && islandDef2.stages.length > 0 ? islandDef2.stages.length : 3;
+    if (nextStage <= maxStage2) nextCustomId = `isail_next:story|${state.storyKey}|${nextStage}`;
     else nextCustomId = `isail_next:finish|${state.storyKey}`;
   }
   const nextLabel = nextCustomId.includes('finish|') ? 'Open Map' : 'Next Stage';
@@ -1035,7 +1178,7 @@ function appendLog(state, txt) {
 }
 
 // exportable helper to start a battle using a provided marines array
-async function startBattleWithMarines({ message, interaction, user, discordUser, marines, storyMode = false, storyKey = null, storyStage = null }) {
+async function startBattleWithMarines({ message, interaction, user, discordUser, marines, waveSlices = null, storyMode = false, storyKey = null, storyStage = null }) {
   if (!user) return;
   const userId = user.userId || user.userId;
 
@@ -1063,6 +1206,7 @@ async function startBattleWithMarines({ message, interaction, user, discordUser,
     }
   }
   if (activeIsail) {
+    try { console.log(`[isail] startBattleWithMarines blocked: user ${userId} already has active sail msg=${activeIsail}`); } catch (e) {}
     const reply = 'You already have an active sail in progress!';
     if (message) return message.reply(reply);
     return safeInteractionReply({ content: reply, ephemeral: true });
@@ -1129,10 +1273,20 @@ async function startBattleWithMarines({ message, interaction, user, discordUser,
     storyStage: storyStage || null
   };
 
-  // If the provided marines include a representative image, show it on the battle embed
-  if (safeMarines && safeMarines.length > 0) {
-    state.embedImage = safeMarines[0].image || safeMarines[0].image_url || null;
+  // If the caller provided waveSlices (arrays of marine objects), normalize and attach them to state
+  if (Array.isArray(waveSlices) && waveSlices.length > 0) {
+    state.waveSlices = waveSlices.map(slice => (slice || []).map(m => {
+      const maxHP = m.maxHP || m.hp || 30;
+      return Object.assign({}, m, { currentHP: typeof m.currentHP === 'number' ? m.currentHP : maxHP, maxHP });
+    }));
+    state.currentWaveIndex = 0;
+  } else {
+    state.waveSlices = null;
+    state.currentWaveIndex = null;
   }
+
+  // embedImage will be selected dynamically in buildEmbed (strongest opponent image).
+  state.embedImage = null;
 
   const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
   const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
@@ -1397,12 +1551,28 @@ module.exports = {
         if (!consumeShipCola(user)) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
         await user.save();
 
-        // build marines array for story stage (support known islands) using card defs
+        // Attempt to build structured wave slices for this story stage first
+        try {
+          const waveSlices = buildStageWaveSlices(storyKey, nextStage);
+          if (Array.isArray(waveSlices) && waveSlices.length > 0) {
+            await startBattleWithMarines({ interaction, user, discordUser: interaction.user, marines: waveSlices[0], waveSlices, storyMode: true, storyKey, storyStage: nextStage });
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to build stage wave slices:', e);
+        }
+
+        // Fallback to legacy single-enemy stage definitions
         let marinesArr = [];
         if (storyKey === 'fusha_village') {
           const name = nextStage === 1 ? 'Pistol Bandit' : nextStage === 2 ? 'Higuma' : 'Master of the Near Sea';
           const def = findEnemyDef(name);
-          const m = makeMarineFromDef(def, 3);
+          const m = makeMarineFromDef(def, 3, 2);
+          if (m) marinesArr.push(m);
+        } else if (storyKey === 'alvidas_hideout') {
+          const name = nextStage === 1 ? 'Mohji & Richie' : nextStage === 2 ? 'Cabaji' : 'Alvida';
+          const def = findEnemyDef(name);
+          const m = makeMarineFromDef(def, 3, 2);
           if (m) marinesArr.push(m);
         }
 
@@ -1523,10 +1693,8 @@ module.exports = {
             storyStage: storyStage || null
           };
 
-          // If the provided marines include a representative image, show it on the battle embed
-          if (safeMarines && safeMarines.length > 0) {
-            state.embedImage = safeMarines[0].image || safeMarines[0].image_url || null;
-          }
+          // embedImage will be selected dynamically in buildEmbed (strongest opponent image)
+          state.embedImage = null;
 
           const userSpeed = Math.max(...state.cards.map(c => c.def.speed || 0));
           const marineSpeed = Math.max(...state.marines.map(m => m.speed || 0));
@@ -1642,9 +1810,16 @@ module.exports = {
         if (hasStatusLock(card)) {
           return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
         }
-        const aliveEnemies = state.marines.filter(m => m.currentHP > 0);
+        let aliveEnemies = state.marines.filter(m => m.currentHP > 0);
         if (aliveEnemies.length === 0) {
-          return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+          const userDoc = await User.findOne({ userId: state.userId });
+          const advanced = await advanceToNextWave(state, interaction.message, userDoc, discordUser);
+          if (advanced) {
+            aliveEnemies = state.marines.filter(m => m.currentHP > 0);
+            if (aliveEnemies.length === 0) return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+          } else {
+            return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+          }
         }
         let targetIdx = state.marines.findIndex(m => m.currentHP > 0);
         if (aliveEnemies.length > 1 && !state.awaitingTarget) {
@@ -1844,9 +2019,16 @@ module.exports = {
       if (hasStatusLock(card)) {
         return interaction.followUp({ content: `${card.def.character} is ${getStatusLockReason(card)} and cannot act!`, ephemeral: true });
       }
-      const aliveEnemies = state.marines.filter(m => m.currentHP > 0);
+      let aliveEnemies = state.marines.filter(m => m.currentHP > 0);
       if (aliveEnemies.length === 0) {
-        return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+        const userDoc = await User.findOne({ userId: state.userId });
+        const advanced = await advanceToNextWave(state, interaction.message, userDoc, discordUser);
+        if (advanced) {
+          aliveEnemies = state.marines.filter(m => m.currentHP > 0);
+          if (aliveEnemies.length === 0) return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+        } else {
+          return interaction.followUp({ content: 'No valid targets remaining.', ephemeral: true });
+        }
       }
       const m = state.marines[targetIdx];
       if (!m || m.currentHP <= 0) {
@@ -1992,5 +2174,6 @@ module.exports = {
   }
 },
 startBattleWithMarines,
-battleStates
+battleStates,
+buildStageWaveSlices
 }

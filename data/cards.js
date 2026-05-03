@@ -4847,6 +4847,7 @@ const consolidatedCardData = [
     effectAmount: 20,
     effectDuration: 3,
     all: true,
+    itself: true,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4182.png'
   },
   {

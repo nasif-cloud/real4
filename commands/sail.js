@@ -5,6 +5,7 @@ const { getShipById, getCardById, consumeShipCola } = require('../utils/cards');
 const { getMapImageBuffer } = require('../utils/mapImage');
 const { moreCards } = require('../data/morecards');
 const { cards: baseCards } = require('../data/cards');
+const sailStages = require('../data/sailStages');
 
 // map images are chosen from static assets (see utils/mapImage)
 const ISLANDS = [
@@ -45,9 +46,10 @@ function findEnemyDef(name) {
   return def || null;
 }
 
-function makeMarineFromDef(def, hpMultiplier = 3) {
+function makeMarineFromDef(def, hpMultiplier = 3, atkMultiplier = 1) {
   if (!def) return null;
-  const atk = (def.attack_min && def.attack_max) ? Math.floor((def.attack_min + def.attack_max) / 2) : (def.power || 1);
+  const baseAtk = (def.attack_min && def.attack_max) ? Math.floor((def.attack_min + def.attack_max) / 2) : (def.power || 1);
+  const atk = Math.max(0, Math.floor(baseAtk * (typeof atkMultiplier === 'number' ? atkMultiplier : 1)));
   return {
     rank: def.character || def.title || 'Enemy',
     speed: def.speed || 1,
@@ -185,16 +187,33 @@ module.exports = {
         if (!consumeShipCola(user)) return interaction.reply({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
         await user.save();
 
-        // build marines array for stage by looking up story enemy defs
+        // Build wave slices for this story stage, falling back to single
+        // enemy definitions if no structured stage waves exist.
+        try {
+          const waveSlices = isail.buildStageWaveSlices(islandId, stageNum);
+          if (Array.isArray(waveSlices) && waveSlices.length > 0) {
+            await isail.startBattleWithMarines({ interaction, user, discordUser: interaction.user, marines: waveSlices[0], waveSlices, storyMode: true, storyKey: islandId, storyStage: stageNum });
+            return;
+          }
+        } catch (e) {
+          console.error('Failed to build stage wave slices:', e);
+        }
+
+        // Fallback to legacy single-enemy behavior
         let marines = [];
         if (islandId === 'fusha_village') {
           const name = stageNum === 1 ? 'Pistol Bandit' : stageNum === 2 ? 'Higuma' : 'Master of the Near Sea';
           const def = findEnemyDef(name);
-          const m = makeMarineFromDef(def, 3);
+          const m = makeMarineFromDef(def, 3, 2);
+          if (m) marines.push(m);
+        } else if (islandId === 'alvidas_hideout') {
+          // Alvida's Hideout story progression
+          const name = stageNum === 1 ? 'Mohji & Richie' : stageNum === 2 ? 'Cabaji' : 'Alvida';
+          const def = findEnemyDef(name);
+          const m = makeMarineFromDef(def, 3, 2);
           if (m) marines.push(m);
         }
 
-        // Start battle via isail engine in story mode
         try {
           await isail.startBattleWithMarines({ interaction, user, discordUser: interaction.user, marines, storyMode: true, storyKey: islandId, storyStage: stageNum });
           return;
@@ -269,18 +288,37 @@ module.exports = {
     if (!consumeShipCola(user)) return interaction.followUp({ content: 'Your ship is out of cola! Fuel it up using /fuel ship.', ephemeral: true });
     await user.save();
     const islandProg = (user.storyProgress && Array.isArray(user.storyProgress[island.id])) ? user.storyProgress[island.id] : [];
+    // Determine how many stages this island actually has from data/sailStages.js
+    const stageDef = (sailStages || []).find(s => s.id === island.id) || {};
+    const maxStage = Array.isArray(stageDef.stages) && stageDef.stages.length > 0 ? stageDef.stages.length : 3;
     let stageToStart = 1;
-    for (let s = 1; s <= 3; s++) {
+    for (let s = 1; s <= maxStage; s++) {
       if (!islandProg.some(x => Number(x) === s)) { stageToStart = s; break; }
     }
-    if (!stageToStart) stageToStart = 3;
+    if (!stageToStart) stageToStart = maxStage;
 
-    // build marines for the chosen island/stage (data-driven)
+    // Attempt to build structured wave slices for this stage
+    try {
+      const waveSlices = isail.buildStageWaveSlices(island.id, stageToStart);
+      if (Array.isArray(waveSlices) && waveSlices.length > 0) {
+        await isail.startBattleWithMarines({ interaction, user, discordUser: interaction.user, marines: waveSlices[0], waveSlices, storyMode: true, storyKey: island.id, storyStage: stageToStart });
+        return;
+      }
+    } catch (e) {
+      console.error('Failed to build stage wave slices:', e);
+    }
+
+    // Fallback to legacy single-enemy behavior
     let marines = [];
     if (island.id === 'fusha_village') {
       const name = stageToStart === 1 ? 'Pistol Bandit' : stageToStart === 2 ? 'Higuma' : 'Master of the Near Sea';
       const def = findEnemyDef(name);
-      const m = makeMarineFromDef(def, 3);
+      const m = makeMarineFromDef(def, 3, 2);
+      if (m) marines.push(m);
+    } else if (island.id === 'alvidas_hideout') {
+      const name = stageToStart === 1 ? 'Mohji & Richie' : stageToStart === 2 ? 'Cabaji' : 'Alvida';
+      const def = findEnemyDef(name);
+      const m = makeMarineFromDef(def, 3, 2);
       if (m) marines.push(m);
     }
 

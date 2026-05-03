@@ -73,10 +73,10 @@ effects.regen = {
   onStartOfTurn(entity, status, logs) {
     const amount = status.amount ?? 0;
     const baseHP = entity.maxHP || entity.def?.health || 0;
-    if (baseHP > 0) {
+    // Only apply regen if the entity is currently alive (do not revive KO'd entities)
+    if (baseHP > 0 && (entity.currentHP || 0) > 0) {
       const heal = Math.ceil(baseHP * amount / 100);
       entity.currentHP = Math.min(baseHP, (entity.currentHP || 0) + heal);
-      if (entity.currentHP > 0) entity.alive = true;
       logs.push(`${entity.def?.character || entity.rank || 'Entity'} regenerates ${heal} HP from regen!`);
     }
     if (status.remaining !== Infinity) status.remaining = Math.max(0, status.remaining - 1);
