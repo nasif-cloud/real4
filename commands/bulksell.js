@@ -131,7 +131,8 @@ function buildSellPlan(user, requests) {
     if (leveler) {
       const item = user.items.find(i => i.itemId === leveler.id);
       if (!item || item.quantity <= 0) continue;
-      const quantity = Math.min(item.quantity, request.amount);
+      // Default to selling all of a leveler when no explicit amount provided
+      const quantity = (request.amount === 1) ? item.quantity : Math.min(item.quantity, request.amount);
       actions.push({ type: 'leveler', leveler, quantity });
       total += leveler.beli * quantity;
       lines.push(`${leveler.emoji || ''} **${leveler.name}** x${quantity}`);

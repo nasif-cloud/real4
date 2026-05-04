@@ -18,12 +18,14 @@ module.exports = {
     // Check for active duel
     let state = null;
     let isDuel = false;
+    let duelMsgId = null;
     if (duelCmd && duelCmd.duelStates) {
       for (const [msgId, s] of duelCmd.duelStates) {
         // duel state stores player1Id/player2Id
         if ((s.player1Id && s.player1Id === userId) || (s.player2Id && s.player2Id === userId)) {
           state = s;
           isDuel = true;
+          duelMsgId = msgId;
           break;
         }
       }
@@ -65,6 +67,27 @@ module.exports = {
       state.finished = true;
       state.winnerId = winnerId;
       state.loserId = loserId;
+
+      // Clear any duel timeout on this state
+      try {
+        if (state.timeout) {
+          clearTimeout(state.timeout);
+          state.timeout = null;
+        }
+      } catch (err) {}
+
+      // Remove any in-memory duel records for both players (pending or active)
+      try {
+        if (typeof duelCmd.clearUserState === 'function') {
+          duelCmd.clearUserState(winnerId);
+          duelCmd.clearUserState(loserId);
+        }
+        if (duelMsgId && duelCmd.duelStates && duelCmd.duelStates.has(duelMsgId)) {
+          duelCmd.duelStates.delete(duelMsgId);
+        }
+      } catch (err) {
+        // ignore cleanup errors
+      }
 
       // resolve display names from discord users if available
       const winnerName = (state.discordUser1 && state.discordUser1.id === winnerId) ? state.discordUser1.username : (state.discordUser2 && state.discordUser2.id === winnerId) ? state.discordUser2.username : `<@${winnerId}>`;
@@ -114,15 +137,23 @@ module.exports = {
       // Clean up battle state from the map to prevent blocking future sails
       for (const [msgId, s] of isailCmd.battleStates) {
         if (s && s.userId === userId) {
+          try {
+            if (s.timeout) {
+              clearTimeout(s.timeout);
+              s.timeout = null;
+            }
+          } catch (err) {}
           isailCmd.battleStates.delete(msgId);
         }
       }
 
-      // Clear any inactivity timeout
-      if (state.timeout) {
-        clearTimeout(state.timeout);
-        state.timeout = null;
-      }
+      // Also clear any timeout on the matched state reference
+      try {
+        if (state && state.timeout) {
+          clearTimeout(state.timeout);
+          state.timeout = null;
+        }
+      } catch (err) {}
 
       const { EmbedBuilder } = require('discord.js');
       const embed = new EmbedBuilder()

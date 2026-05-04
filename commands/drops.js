@@ -9,8 +9,10 @@ const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
 
 // Store active drops: drop ID -> { messageId, channelId, userId, expiresAt, card }
 const activeDrops = new Map();
+const messageCounts = new Map(); // channelId -> current message count towards next drop
+let messageListener = null;
 
-// Global drop interval timer
+// Global decay timer (reduces message count each minute)
 let dropIntervalTimer = null;
 let dropsChannelId = null;
 let dropsClient = null; // Discord client reference
@@ -118,20 +120,39 @@ async function _spawnDrop() {
       return;
     }
 
-    // Simulate a pull (U1 cards only) but blacklist artifacts from drops
-    let card = simulatePull(0, null); // pityCount=0, no faculty filter
-    // Retry a few times if we accidentally pulled an artifact
-    let tries = 0;
-    while (card && isArtifactCard(card) && tries < 10) {
-      card = simulatePull(0, null);
-      tries++;
+    // Choose rank using drop-specific distribution (DROP-only rates)
+    const dropRates = [
+      ['D', 20],
+      ['C', 20],
+      ['B', 20],
+      ['A', 20],
+      ['S', 18],
+      ['SS', 1.9],
+      ['UR', 0.1]
+    ];
+    const totalRate = dropRates.reduce((s, [, w]) => s + w, 0);
+    let r = Math.random() * totalRate;
+    let chosenRank = dropRates[dropRates.length - 1][0];
+    for (const [rk, wt] of dropRates) {
+      r -= wt;
+      if (r <= 0) {
+        chosenRank = rk;
+        break;
+      }
     }
-    // If still artifact or null, fallback to a random non-artifact pullable card
-    if (!card || isArtifactCard(card)) {
-      const pool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
-      if (!pool.length) return;
-      card = pool[Math.floor(Math.random() * pool.length)];
+
+    // Prefer non-artifact, non-ship pullable cards of the chosen rank
+    let pool = cards.filter(c => c.pullable && !c.artifact && !c.ship && c.rank === chosenRank);
+    if (!pool.length) {
+      // fallback to any non-artifact non-ship pullable card
+      pool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
     }
+    if (!pool.length) {
+      // ultimate fallback: any non-artifact pullable card
+      pool = cards.filter(c => c.pullable && !c.artifact);
+    }
+    if (!pool.length) return;
+    const card = pool[Math.floor(Math.random() * pool.length)];
 
     const dropId = `drop_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const claimButton = new ActionRowBuilder().addComponents(
@@ -213,10 +234,54 @@ async function startDropTimer(client, channelId) {
   }
 
   // Spawn first drop immediately
-  _spawnDrop();
+  // Prepare message counting for drop spawns
+  // ensure previous listener cleared
+  try {
+    if (messageListener && dropsClient && typeof dropsClient.off === 'function') {
+      dropsClient.off('messageCreate', messageListener);
+    }
+  } catch (err) {}
 
-  // Spawn drops every 5 minutes (300,000 ms)
-  dropIntervalTimer = setInterval(_spawnDrop, 300000);
+  // initialize counter for this channel
+  messageCounts.set(channelId, messageCounts.get(channelId) || 0);
+
+  messageListener = (message) => {
+    try {
+      if (!message || !message.channel) return;
+      if (message.channel.id !== dropsChannelId) return;
+      if (message.author && message.author.bot) return;
+      const cur = messageCounts.get(dropsChannelId) || 0;
+      const next = cur + 1;
+      // Update counter
+      messageCounts.set(dropsChannelId, next);
+      // For every 100 messages, spawn a drop
+      if (next >= 100) {
+        const times = Math.floor(next / 100);
+        messageCounts.set(dropsChannelId, next - (times * 100));
+        for (let i = 0; i < times; i++) {
+          // fire-and-forget
+          _spawnDrop().catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('Error in drop message listener:', err);
+    }
+  };
+
+  if (dropsClient && typeof dropsClient.on === 'function') {
+    dropsClient.on('messageCreate', messageListener);
+  }
+
+  // Decay timer: every minute, reduce the channel's count by 1 (min 0)
+  if (dropIntervalTimer) clearInterval(dropIntervalTimer);
+  dropIntervalTimer = setInterval(() => {
+    try {
+      const cur = messageCounts.get(dropsChannelId) || 0;
+      if (cur > 0) messageCounts.set(dropsChannelId, cur - 1);
+    } catch (err) {
+      // ignore
+    }
+  }, 60000);
 
   return true;
 }

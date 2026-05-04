@@ -7,8 +7,8 @@ const COMMAND_CATEGORIES = {
     emoji: '<:user:1490731587564736643>',
     commands: [
       { name: 'start', desc: 'Register an account and receive a starter card' },
-      { name: 'user [username]', desc: 'View a player\'s profile and stats' },
-      { name: 'balance / bal', desc: 'Check your balance (beli & gems)' }
+      { name: 'user', desc: 'View a player\'s profile and stats' },
+      { name: 'balance', desc: 'Check your balance (beli & gems)' }
     ]
   },
   cards: {
@@ -16,13 +16,13 @@ const COMMAND_CATEGORIES = {
     emoji: '<:bag:1490732030458331348>',
     commands: [
       { name: 'pull', desc: 'Perform a card pull (costs one pull, limited per reset)' },
-      { name: 'info <query>', desc: 'View card info with ownership history' },
+      { name: 'info <card>', desc: 'View card info with ownership history' },
       { name: 'collection', desc: 'Browse your card collection with filters' },
       { name: 'stock', desc: 'Check stock market prices' },
       { name: 'open <pack>', desc: 'Open a card pack to get crews' },
       { name: 'equip <artifact> <card>', desc: 'Equip an artifact to a card' },
       { name: 'unequip <artifact>', desc: 'Unequip an artifact from its card' },
-      { name: 'bulkfeed <format>', desc: 'Bulk feed items to multiple cards' },
+      { name: 'bulkfeed <leveler>, <leveler>, etc..', desc: 'Bulk feed items to multiple cards' },
       { name: 'badges', desc: 'View or equip badges for your profile' },
       { name: 'removebadge', desc: 'Remove a badge from your profile' },
       { name: 'reset', desc: 'Reset pulls using a reset token' }
@@ -32,20 +32,21 @@ const COMMAND_CATEGORIES = {
     name: 'Team',
     emoji: '<:sword:1490732251107819530>',
     commands: [
-      { name: 'team [slot] <query>', desc: 'View or set your team composition' },
+      { name: 'team', desc: 'View your team.' },
+      { name: 'team add/remove <card>', desc: 'Remove or add a card from your team' },
       { name: 'autoteam', desc: 'Automatically set your team to your top 3 cards' },
-      { name: 'teambackground / teambg <bg>', desc: 'Set your team background' }
+      { name: 'teambackground <image_url>', desc: 'Set your team background' }
     ]
   },
   battle: {
     name: 'Battle',
     emoji: '<:energy:1478051414558118052>',
     commands: [
-      { name: 'duel [@user]', desc: 'Challenge another player to a 1v1 team battle' },
+      { name: 'duel @user', desc: 'Challenge another player to a 1v1 team battle' },
       { name: 'sail', desc: 'Sail through story stages and battle NPC marines' },
       { name: 'forfeit', desc: 'Forfeit your current story battle' },
       { name: 'bounty', desc: 'Check active bounties or fight for rewards' },
-      { name: 'fuel [ship]', desc: 'Use Cola to refill your ship\'s Cola' },
+      { name: 'fuel <amount>', desc: 'Use Cola to refill your ship\'s Cola' },
       { name: 'wanted', desc: 'Create a wanted poster for another player' }
     ]
   },
@@ -55,9 +56,9 @@ const COMMAND_CATEGORIES = {
     commands: [
       { name: 'daily', desc: 'Claim your daily rewards (streak & packs)' },
       { name: 'shop', desc: 'View the shop' },
-      { name: 'buy <item> [quantity]', desc: 'Purchase items from the shop' },
-      { name: 'sell <query>', desc: 'Sell cards from your collection' },
-      { name: 'bulksell <format>', desc: 'Bulk sell multiple cards' },
+      { name: 'buy <item> <quantity>', desc: 'Purchase items from the shop' },
+      { name: 'sell <card/leveler>', desc: 'Sell cards from your collection' },
+      { name: 'bulksell <cardID/name>, <cardID/name>, etc.. ', desc: 'Bulk sell multiple cards' },
       { name: 'inventory / inv', desc: 'View your inventory of items' },
       { name: 'setship <ship>', desc: 'Set your active ship for passive income' },
       { name: 'deposit <amount>', desc: 'Deposit Beli into your active ship' },
@@ -72,18 +73,19 @@ const COMMAND_CATEGORIES = {
     name: 'Fun',
     emoji: '<:paintbrush:1490733392860287088>',
     commands: [
-      { name: 'fish', desc: 'Go fishing for levelers and cards (3% gem chance!)' },
+      { name: 'fish', desc: 'Go fishing for levelers and chests' },
       { name: 'feed <query> <item>', desc: 'Feed items to a card to level it up' },
       { name: 'trivia [difficulty]', desc: 'Play a trivia quiz to earn rewards' },
+      { name: 'trade <cardID>/*beli <cardID>', desc: 'Trade with another user' },
     ]
   },
   info: {
     name: 'Info',
     emoji: '<:help:1490733477057007716>',
     commands: [
-      { name: 'leaderboard / lb [page]', desc: 'View the global leaderboard' },
-      { name: 'timers / t', desc: 'Check your pull timer & reset timer' },
-      { name: 'help / h', desc: 'Show this help menu' }
+      { name: 'leaderboard', desc: 'View the global leaderboard' },
+      { name: 'timers', desc: 'Check your pull timer & reset timer' },
+      { name: 'help', desc: 'Show this help menu' }
     ]
   }
 };

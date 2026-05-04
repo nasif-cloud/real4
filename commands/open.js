@@ -332,9 +332,8 @@ module.exports = {
     }
     let shipCandidates = cards.filter(c => c.ship && c.pullable && normalizeName(c.faculty) === normalizedPack);
 
-    // fallback to global pools if faculty-specific none
-    if (!artifactCandidates.length) artifactCandidates = cards.filter(c => c.artifact && c.pullable);
-    if (!shipCandidates.length) shipCandidates = cards.filter(c => c.ship && c.pullable);
+    // Do NOT fallback to global artifact/ship pools. Keep faculty-specific candidates only.
+    // If this pack has no artifacts or ships defined, the first card will fall back to a normal card.
 
     const pickRandom = (arr) => (arr && arr.length) ? arr[Math.floor(Math.random() * arr.length)] : null;
 

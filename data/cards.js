@@ -3761,25 +3761,6 @@ const consolidatedCardData = [
     image_url: 'https://files.catbox.moe/vspiir.webp'
   },
   {
-    character: 'Sandai Kietsu',
-    alias: ['sandai kietsu'],
-    id: 'a013',
-    attribute: 'STR',
-    emoji: '<:1000048118:1497621500000338051>',
-    pullable: true,
-    title: 'Sandai Kietsu',
-    faculty: 'Strawhat Pirates',
-    rank: 'A',
-    power: 1,
-    health: 1,
-    speed: 1,
-    attack_min: 0,
-    attack_max: 0,
-    boost: 'Kouzuki Sukiyaki, Attack (10%), Ipponmatsu, Attack (10%), Roronoa Zoro, Attack (10%)',
-    artifact: true,
-    image_url: null
-  },
-  {
     character: 'Shusui',
     alias: ['shusui'],
     id: 'a014',

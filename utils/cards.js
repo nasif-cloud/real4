@@ -495,7 +495,9 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
     PSY: '#f5df4d',
     INT: '#9b59b6'
   };
-  const color = attributeColors[card.attribute] || (rankData[card.rank] && rankData[card.rank].color) || '#2b2d31';
+  let color = attributeColors[card.attribute] || (rankData[card.rank] && rankData[card.rank].color) || '#2b2d31';
+  // Artifact pull embeds should always be white
+  if (card && card.artifact) color = '#FFFFFF';
   // same emoji handling as buildCardEmbed: transform `<:name:id>` into a CDN URL
   let iconVal = crewIcons[card.faculty];
   if (iconVal && iconVal.startsWith && iconVal.startsWith('<:')) {

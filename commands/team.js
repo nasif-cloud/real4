@@ -131,6 +131,12 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    if (card.boost || (card.type && String(card.type).toLowerCase() === 'boost')) {
+      const reply = 'Boost cards cannot be added to your active team.';
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
     if (card.artifact || card.ship) {
       const reply = card.artifact ? 'Artifacts cannot be added to your active team.' : 'Ships cannot be added to your active team.';
       if (message) return message.reply(reply);
@@ -213,9 +219,9 @@ module.exports = {
         .map(e => cards.find(c => c.id === e.cardId))
         .filter(c => c);
 
-      // Exclude artifacts and ships; include all regular owned cards.
+      // Exclude artifacts, ships and boost-type cards; include all regular owned cards.
       // We'll sort by boosted power so team strength accounts for stat boosts.
-      let eligibles = ownedDefs.filter(c => !c.artifact && !c.ship);
+      let eligibles = ownedDefs.filter(c => !c.artifact && !c.ship && !c.boost && !(c.type && String(c.type).toLowerCase() === 'boost'));
 
       if (eligibles.length === 0) {
         return interaction.reply({ content: 'You don\'t have any eligible cards to form a team.', ephemeral: true });

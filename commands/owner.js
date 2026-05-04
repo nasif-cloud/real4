@@ -303,7 +303,7 @@ async function execute({ message, args }) {
     
     try {
       await dropsModule.startDropTimer(message.client, channelId);
-      return message.reply(`✅ Card drops enabled in <#${channelId}>! Drops will spawn every 5 minutes and expire after 10 minutes.`);
+      return message.reply(`✅ Card drops enabled in <#${channelId}>!`);
     } catch (err) {
       console.error('Error setting up drops:', err);
       return message.reply('Failed to set up drops. Make sure the bot can access that channel and that it is a text channel.');
