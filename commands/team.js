@@ -200,100 +200,88 @@ module.exports = {
 
   async handleButton(interaction, rawAction, cardId) {
     if (rawAction === 'team_autoteam') {
-      // Trigger autoteam logic
       const userId = interaction.user.id;
       let user = await User.findOne({ userId });
       if (!user) {
         return interaction.reply({ content: 'You don\'t have an account.', ephemeral: true });
       }
 
-      // Acknowledge the interaction quickly to avoid Unknown interaction/timeouts
+      // Acknowledge quickly and give immediate feedback, then do heavy work in background
       try {
         if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate().catch(() => {});
-      } catch (err) {
-        // ignore
-      }
+      } catch (err) {}
 
-      const { cards } = require('../data/cards');
-      const ownedDefs = (user.ownedCards || [])
-        .map(e => cards.find(c => c.id === e.cardId))
-        .filter(c => c);
+      try { await interaction.followUp({ content: 'Applying auto-team...', ephemeral: true }); } catch (e) {}
 
-      // Exclude artifacts, ships and boost-type cards; include all regular owned cards.
-      // We'll sort by boosted power so team strength accounts for stat boosts.
-      let eligibles = ownedDefs.filter(c => !c.artifact && !c.ship && !c.boost && !(c.type && String(c.type).toLowerCase() === 'boost'));
-
-      if (eligibles.length === 0) {
-        return interaction.reply({ content: 'You don\'t have any eligible cards to form a team.', ephemeral: true });
-      }
-
-      eligibles.sort((a, b) => {
-        const aEntry = user.ownedCards.find(e => e.cardId === a.id);
-        const bEntry = user.ownedCards.find(e => e.cardId === b.id);
-        const aStats = getCardFinalStats(a, aEntry?.level || 1, user);
-        const bStats = getCardFinalStats(b, bEntry?.level || 1, user);
-        return (bStats.scaled.power || 0) - (aStats.scaled.power || 0);
-      });
-
-      const selected = eligibles.slice(0, 3);
-      user.team = selected.map(c => c.id);
-      await user.save();
-
-      // check achievements for team power after auto-team set
-      try {
-        const { checkAndAwardAll } = require('../utils/achievements');
-        await checkAndAwardAll(user, interaction.client, { event: 'team' });
-      } catch (err) {
-        console.error('Error checking achievements after autoteam', err);
-      }
-
-      const cardDefs = user.team.map(id => cards.find(c => c.id === id)).filter(Boolean);
-      const totalPower = cardDefs.reduce((sum, card) => {
-        const entry = user.ownedCards.find(e => e.cardId === card.id);
-        const stats = getCardFinalStats(card, entry?.level || 1, user);
-        return sum + (stats.scaled.power || 0);
-      }, 0);
-      const imageBuffer = await generateTeamImage({
-        username: interaction.user.username,
-        totalPower,
-        cards: cardDefs,
-        backgroundUrl: user.teamBackgroundUrl
-      });
-      const attachment = new AttachmentBuilder(imageBuffer, { name: 'team.png' });
-      const row = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId('team_autoteam')
-            .setLabel('Auto team')
-            .setStyle(ButtonStyle.Secondary)
-            .setEmoji('<:autoteam:1489632891188019342>')
-        );
-
-      // add IDs button to the same row
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId('team_ids')
-          .setLabel('IDs')
-          .setStyle(ButtonStyle.Secondary)
-      );
-
-      // Try to edit the original message (preferred) and follow up to the user.
-      try {
-        if (interaction.message && interaction.message.edit) {
-          await interaction.message.edit({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
-        } else {
-          await interaction.update({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
-        }
-        try { await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
-      } catch (err) {
-        console.error('Autoteam update failed, sending fallback message', err);
+      // Run the selection, image generation and message edit asynchronously
+      (async () => {
         try {
-          await interaction.channel.send({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
-        } catch (e) {
-          console.error('Fallback channel send failed', e);
+          const { cards } = require('../data/cards');
+          const { selectAutoTeam } = require('../utils/autoteam');
+          const selectedIds = selectAutoTeam(user, 3);
+          if (!selectedIds || selectedIds.length === 0) {
+            try { if (!interaction.replied) await interaction.followUp({ content: 'You don\'t have any eligible cards to form a team.', ephemeral: true }); } catch (e) {}
+            return;
+          }
+          user.team = selectedIds;
+          await user.save();
+
+          try {
+            const { checkAndAwardAll } = require('../utils/achievements');
+            await checkAndAwardAll(user, interaction.client, { event: 'team' });
+          } catch (err) {
+            console.error('Error checking achievements after autoteam', err);
+          }
+
+          const cardDefs = user.team.map(id => cards.find(c => c.id === id)).filter(Boolean);
+          const totalPower = cardDefs.reduce((sum, card) => {
+            const entry = user.ownedCards.find(e => e.cardId === card.id);
+            const stats = getCardFinalStats(card, entry?.level || 1, user);
+            return sum + (stats.scaled.power || 0);
+          }, 0);
+          const imageBuffer = await generateTeamImage({
+            username: interaction.user.username,
+            totalPower,
+            cards: cardDefs,
+            backgroundUrl: user.teamBackgroundUrl
+          });
+          const attachment = new AttachmentBuilder(imageBuffer, { name: 'team.png' });
+          const row = new ActionRowBuilder()
+            .addComponents(
+              new ButtonBuilder()
+                .setCustomId('team_autoteam')
+                .setLabel('Auto team')
+                .setStyle(ButtonStyle.Secondary)
+                .setEmoji('<:autoteam:1489632891188019342>')
+            );
+
+          row.addComponents(
+            new ButtonBuilder()
+              .setCustomId('team_ids')
+              .setLabel('IDs')
+              .setStyle(ButtonStyle.Secondary)
+          );
+
+          try {
+            if (interaction.message && interaction.message.edit) {
+              await interaction.message.edit({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
+            } else {
+              await interaction.update({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
+            }
+            try { await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
+          } catch (err) {
+            console.error('Autoteam update failed, sending fallback message', err);
+            try {
+              await interaction.channel.send({ content: `${interaction.user.username}'s team`, files: [attachment], components: [row] });
+            } catch (e) {
+              console.error('Fallback channel send failed', e);
+            }
+            try { if (!interaction.replied) await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
+          }
+        } catch (err) {
+          console.error('Autoteam background error', err);
         }
-        try { if (!interaction.replied) await interaction.followUp({ content: 'Your team has been set to the strongest possible cards!', ephemeral: true }); } catch (e) {}
-      }
+      })();
       return;
     }
     if (rawAction === 'team_ids') {

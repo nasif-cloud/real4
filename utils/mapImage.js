@@ -25,6 +25,7 @@ async function fetchBuffer(url) {
 
 function getMapImageUrl(user) {
   const storyProgress = (user && user.storyProgress) || {};
+  const sailStages = require('../data/sailStages');
 
   for (const id of ISLAND_ORDER) {
     const prog = storyProgress[id];
@@ -32,10 +33,12 @@ function getMapImageUrl(user) {
       // user hasn't started this island yet -> show that island
       return MAP_URLS[id] || MAP_URLS.all_unlocked;
     }
-    // if user hasn't completed boss (stage 3) yet, show that island image
+    // determine island's max stage (fallback to 3)
+    const islandDef = (sailStages || []).find(s => s.id === id) || {};
+    const maxStage = Array.isArray(islandDef.stages) && islandDef.stages.length > 0 ? islandDef.stages.length : 3;
     // be tolerant of numeric strings stored in DB
-    const hasBoss = prog.some(s => Number(s) === 3);
-    if (!hasBoss) return MAP_URLS[id] || MAP_URLS.all_unlocked;
+    const hasCompletedFinal = prog.some(s => Number(s) === maxStage);
+    if (!hasCompletedFinal) return MAP_URLS[id] || MAP_URLS.all_unlocked;
   }
   // everything complete
   return MAP_URLS.all_unlocked;

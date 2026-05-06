@@ -54,6 +54,11 @@ const UserSchema = new Schema({
   dailyStreak: { type: Number, default: 0 },
   // next scheduled DM reminder for daily (set when user claims daily)
   nextDailyReminder: { type: Date, default: null },
+  // duel rate limiting: number of duels used today and the reset timestamp
+  dailyDuels: { type: Number, default: 0 },
+  dailyDuelsReset: { type: Date, default: null },
+  // last bounty target userId to avoid assigning the same target twice in a row
+  lastBountyTarget: { type: String, default: null },
   // achievements mapping: achievementId -> date awarded
   achievements: { type: Object, default: {} },
   // badges the user owns (achievement ids)

@@ -161,7 +161,7 @@ const triviaQuestions = {
       answer: 'D'
     },
     {
-      question: 'Who is the shipright of the strawhat pirates?',
+      question: 'Who is the shipwright of the strawhat pirates?',
       options: {
         A: 'Robin',
         B: 'Brook',

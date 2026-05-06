@@ -55,22 +55,63 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    // Check if user has active bounty or cooldown
-    if (requester.activeBountyTarget) {
-      const targetId = String(requester.activeBountyTarget).trim();
-      if (!targetId || targetId === userId) {
+    // Prefer showing an active bounty if present. Use `activeBountyTarget` first; if missing,
+    // fall back to `lastBountyTarget` while its expiry (bountyCooldownUntil) is still in the future.
+    let activeTargetId = requester.activeBountyTarget || null;
+    if (!activeTargetId && requester.lastBountyTarget && requester.bountyCooldownUntil && new Date(requester.bountyCooldownUntil) > new Date()) {
+      activeTargetId = requester.lastBountyTarget;
+    }
+
+    if (activeTargetId) {
+      const targetId = String(activeTargetId).trim();
+      // If expiry passed, clear active target so user can claim a new one
+      if (requester.bountyCooldownUntil && new Date(requester.bountyCooldownUntil) <= new Date()) {
         requester.activeBountyTarget = null;
+        requester.bountyCooldownUntil = null;
+        await requester.save();
+      } else if (!targetId || targetId === userId) {
+        requester.activeBountyTarget = null;
+        requester.bountyCooldownUntil = null;
         await requester.save();
       } else {
+        // Fetch stored opponent data if available to show bounty
+        const opponentDoc = await User.findOne({ userId: targetId }).catch(() => null);
+        const targetBounty = (opponentDoc && opponentDoc.bounty) ? opponentDoc.bounty : 100;
+        const baseBeli = Math.ceil(targetBounty / 100000) || 1;
+        const rewardBeli = baseBeli * 2; // 2x as advertised
+
+        const expiresAt = requester.bountyCooldownUntil ? new Date(requester.bountyCooldownUntil) : new Date(Date.now() + 24 * 60 * 60 * 1000);
         const targetDiscord = await (message ? message.client.users.fetch(targetId) : interaction.client.users.fetch(targetId)).catch(() => null);
         const targetName = targetDiscord ? targetDiscord.username : 'Unknown';
-        const reply = `You can not claim a new bounty until you defeat **${targetName}**.`;
-        if (message) return message.channel.send(reply);
-        return interaction.reply({ content: reply, ephemeral: true });
+
+        const embed = new EmbedBuilder()
+          .setColor('#FFFFFF')
+          .setTitle('Active Bounty')
+          .setDescription(`Your current bounty target is **${targetName}**.`)
+          .addFields(
+            { name: 'Rewards', value: `• Bounty: <:bounty:1490738541448400976>${formatAmount(targetBounty)}\n• Beli: <:beri:1490738445319016651>${formatAmount(rewardBeli)}`, inline: false }
+          )
+          .setImage('https://i.pinimg.com/1200x/65/7c/06/657c066ce2b36625b6d56398128150fb.jpg')
+          .setFooter({ text: 'Expires' })
+          .setTimestamp(expiresAt)
+          .setAuthor({ name: username, iconURL: avatarUrl });
+
+        const infoButton = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('bounty:info')
+            .setLabel('View Target Info')
+            .setStyle(ButtonStyle.Primary)
+        );
+
+        if (message) {
+          return message.channel.send({ embeds: [embed], components: [infoButton] });
+        }
+        return interaction.reply({ embeds: [embed], components: [infoButton], ephemeral: true });
       }
     }
+    // If there's a cooldown remaining (but no active target), block new claims until cooldown ends
     if (requester.bountyCooldownUntil && requester.bountyCooldownUntil > new Date()) {
-      const timeLeft = formatRelativeTime(requester.bountyCooldownUntil);
+      const timeLeft = formatRelativeTime(new Date(requester.bountyCooldownUntil));
       const reply = `You can not claim a new bounty until your cooldown of ${timeLeft} resets.`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
@@ -82,8 +123,11 @@ module.exports = {
     const minBounty = Math.floor(requesterBounty / 2) + 1;
     const maxBounty = Math.ceil(requesterBounty * 2) - 1;
 
+    // Exclude self and the last assigned bounty target to avoid giving the same target twice in a row
+    const excludeIds = [userId];
+    if (requester.lastBountyTarget) excludeIds.push(requester.lastBountyTarget);
     const candidates = await User.find({
-      userId: { $ne: userId },
+      userId: { $nin: excludeIds },
       bounty: { $gte: minBounty, $lte: maxBounty }
     });
 
@@ -101,15 +145,18 @@ module.exports = {
     const opponentName = opponentDiscord ? opponentDiscord.username : 'Unknown';
     const opponentAvatar = opponentDiscord ? opponentDiscord.displayAvatarURL() : avatarUrl;
 
-    // Set active bounty / cooldown (align with global pull reset)
+    // Set active bounty and 24-hour expiry
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     requester.activeBountyTarget = opponent.userId;
-    requester.bountyCooldownUntil = getNextPullResetDate();
+    requester.lastBountyTarget = opponent.userId;
+    requester.bountyCooldownUntil = expiresAt;
     await requester.save();
 
     // Reward preview (based on relative bounty)
     const targetBounty = opponent.bounty || 100;
     const rewardXP = 0;
-    const rewardBeli = requesterBounty > targetBounty ? 1000 : 300;
+    const baseBeli = Math.ceil(targetBounty / 100000) || 1;
+    const rewardBeli = baseBeli * 2; // 2x shown in the embed
 
     // Create bounty embed (matches provided screenshot style)
     const embed = new EmbedBuilder()
@@ -120,7 +167,8 @@ module.exports = {
         { name: 'Rewards', value: `• Bounty: <:bounty:1490738541448400976>${formatAmount(targetBounty)}\n• Beli: <:beri:1490738445319016651>${formatAmount(rewardBeli)}`, inline: false }
       )
       .setImage('https://i.pinimg.com/1200x/65/7c/06/657c066ce2b36625b6d56398128150fb.jpg')
-      .setFooter({ text: 'Expires in a day' })
+      .setFooter({ text: 'Expires' })
+      .setTimestamp(expiresAt)
       .setAuthor({ name: username, iconURL: avatarUrl });
 
     const infoButton = new ActionRowBuilder().addComponents(
@@ -137,11 +185,12 @@ module.exports = {
       msg = await interaction.reply({ embeds: [embed], components: [infoButton], fetchReply: true });
     }
 
-    // Disable buttons after 24 hours
+    // Disable buttons after expiry (schedules UI update for this process run)
+    const msUntilExpiry = Math.max(0, expiresAt - Date.now());
     setTimeout(() => {
       embed.setFooter({ text: 'Expired' });
       msg.edit({ embeds: [embed], components: [] }).catch(() => {});
-    }, 24 * 60 * 60 * 1000);
+    }, msUntilExpiry);
   },
 
   async handleButton(interaction, rawAction) {

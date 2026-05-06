@@ -545,23 +545,61 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
     // Handle bounty rewards
     let xpGain = 0;
     let beliGain = 0;
+    let bountyClaimed = 0;
     if (state.isBountyDuel && winnerId === state.bountyHunter) {
       const targetBounty = loserUser.bounty || 100;
       xpGain = 0;
-      beliGain = Math.floor(targetBounty / 12);
-      
+      // Award the target's bounty to the hunter's bounty total
+      winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
+      bountyClaimed = targetBounty;
+      // Compute proportional beli reward (example: 27,355,000 -> 274 beli)
+      const baseBeli = Math.ceil(targetBounty / 100000);
+      // Bounty challenge advertises 2x reward; apply 2x to beli payout
+      beliGain = baseBeli * 2;
+
       winnerUser.balance = (winnerUser.balance || 0) + beliGain;
       winnerUser.activeBountyTarget = null;
-      // set bounty cooldown until next pull reset so users can't immediately re-claim
-      winnerUser.bountyCooldownUntil = getNextPullResetDate();
+      // record last bounty target and set 24h cooldown before claiming a new bounty
+      winnerUser.lastBountyTarget = loserId;
+      winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
       await winnerUser.save();
+      try {
+        const { checkAndAwardAll } = require('../utils/achievements');
+        await checkAndAwardAll(winnerUser, msg.client, { event: 'bounty_capture', amount: bountyClaimed });
+      } catch (err) {
+        console.error('Achievement check after bounty capture failed', err);
+      }
     } else if (state.isBountyDuel && loserId === state.bountyHunter) {
       // Hunter lost, reset cooldown but keep target
       const hunterUser = await User.findOne({ userId: state.bountyHunter });
       if (hunterUser) {
-        hunterUser.bountyCooldownUntil = getNextPullResetDate();
+        hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await hunterUser.save();
       }
+    }
+
+    // Increment daily duel counts for both participants
+    try {
+      const now = new Date();
+      const todayStr = now.toDateString();
+      if (winnerUser) {
+        if (!winnerUser.dailyDuelsReset || new Date(winnerUser.dailyDuelsReset).toDateString() !== todayStr) {
+          winnerUser.dailyDuels = 0;
+          winnerUser.dailyDuelsReset = now;
+        }
+        winnerUser.dailyDuels = (winnerUser.dailyDuels || 0) + 1;
+        await winnerUser.save();
+      }
+      if (loserUser) {
+        if (!loserUser.dailyDuelsReset || new Date(loserUser.dailyDuelsReset).toDateString() !== todayStr) {
+          loserUser.dailyDuels = 0;
+          loserUser.dailyDuelsReset = now;
+        }
+        loserUser.dailyDuels = (loserUser.dailyDuels || 0) + 1;
+        await loserUser.save();
+      }
+    } catch (err) {
+      console.error('Failed to increment daily duel counters:', err);
     }
     
     // Create victory embed with bounty information
@@ -569,8 +607,11 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
     if (bountyGain > 0) {
       description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
     }
+    if (bountyClaimed > 0) {
+      description += `\n\nBounty Claimed: **${formatAmount(bountyClaimed)}**`;
+    }
     if (beliGain > 0) {
-      description += `\n\nBounty Claimed! Earned ¥**${formatAmount(beliGain)}**!`;
+      description += `\n\nBeli Earned: ¥**${formatAmount(beliGain)}**`;
     }
     
     const victorEmbed = new EmbedBuilder()
@@ -619,12 +660,14 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
       let winnerUser = await User.findOne({ userId: winnerId });
       let loserUser = await User.findOne({ userId: loserId });
       let bountyGain = 0;
-      
+      let bountyClaimed = 0;
+      let beliGain = 0;
+
       if (winnerUser && loserUser) {
         const winnerBounty = winnerUser.bounty || 100;
         const loserBounty = loserUser.bounty || 100;
-        
-        // Calculate bounty gain based on the rules
+
+        // Calculate bounty gain based on the rules (non-bounty-capture case)
         if (loserBounty > winnerBounty) {
           if (loserBounty > winnerBounty * 3) {
             bountyGain = 0; // Cap reached
@@ -632,31 +675,89 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
             bountyGain = Math.floor(loserBounty * 0.03);
           }
         }
-        
+
         if (bountyGain > 0) {
-            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
-            await winnerUser.save();
-            try {
-              const { checkAndAwardAll } = require('../utils/achievements');
-              await checkAndAwardAll(winnerUser, msg.client, { event: 'bounty_gain', amount: bountyGain });
-            } catch (err) {
-              console.error('Achievement check after duel bounty gain failed', err);
-            }
+          winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+          await winnerUser.save();
+          try {
+            const { checkAndAwardAll } = require('../utils/achievements');
+            await checkAndAwardAll(winnerUser, msg.client, { event: 'bounty_gain', amount: bountyGain });
+          } catch (err) {
+            console.error('Achievement check after duel bounty gain failed', err);
+          }
+        }
+
+        // Handle bounty duel where hunter captured their target
+        if (state.isBountyDuel && winnerId === state.bountyHunter) {
+          const targetBounty = loserUser.bounty || 100;
+          bountyClaimed = targetBounty;
+          // award the bounty amount to the hunter's bounty
+          winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
+          // proportional beli reward
+          const baseBeli = Math.ceil(targetBounty / 100000);
+          beliGain = baseBeli * 2; // 2x reward for bounty claim
+          winnerUser.balance = (winnerUser.balance || 0) + beliGain;
+          winnerUser.activeBountyTarget = null;
+          winnerUser.lastBountyTarget = loserId;
+          winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          await winnerUser.save();
+          try {
+            const { checkAndAwardAll } = require('../utils/achievements');
+            await checkAndAwardAll(winnerUser, msg.client, { event: 'bounty_capture', amount: bountyClaimed });
+          } catch (err) {
+            console.error('Achievement check after bounty capture failed', err);
+          }
+        } else if (state.isBountyDuel && loserId === state.bountyHunter) {
+          // Hunter lost, reset cooldown but keep target
+          const hunterUser = await User.findOne({ userId: state.bountyHunter });
+          if (hunterUser) {
+            hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            await hunterUser.save();
+          }
         }
       }
-      
+
+      // Increment daily duel counters for both players
+      try {
+        const now = new Date();
+        const todayStr = now.toDateString();
+        if (winnerUser) {
+          if (!winnerUser.dailyDuelsReset || new Date(winnerUser.dailyDuelsReset).toDateString() !== todayStr) {
+            winnerUser.dailyDuels = 0;
+            winnerUser.dailyDuelsReset = now;
+          }
+          winnerUser.dailyDuels = (winnerUser.dailyDuels || 0) + 1;
+          await winnerUser.save();
+        }
+        if (loserUser) {
+          if (!loserUser.dailyDuelsReset || new Date(loserUser.dailyDuelsReset).toDateString() !== todayStr) {
+            loserUser.dailyDuels = 0;
+            loserUser.dailyDuelsReset = now;
+          }
+          loserUser.dailyDuels = (loserUser.dailyDuels || 0) + 1;
+          await loserUser.save();
+        }
+      } catch (err) {
+        console.error('Failed to increment daily duel counters:', err);
+      }
+
       // Create victory embed with bounty information
       let description = `${winner.username} wins!`;
       if (bountyGain > 0) {
-        description += `\n\nBounty Gained: **${bountyGain}**`;
+        description += `\n\nBounty Gained: **${formatAmount(bountyGain)}**`;
       }
-      
+      if (bountyClaimed > 0) {
+        description += `\n\nBounty Claimed: **${formatAmount(bountyClaimed)}**`;
+      }
+      if (beliGain > 0) {
+        description += `\n\nBeli Earned: ¥**${formatAmount(beliGain)}**`;
+      }
       const victorEmbed = new EmbedBuilder()
         .setColor('#FFFFFF')
         .setTitle('Duel Victory!')
         .setDescription(description)
         .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
-      
+
       try { await msg.delete(); } catch {}
       await msg.channel.send({ embeds: [victorEmbed] });
       duelStates.delete(msg.id);
@@ -724,6 +825,36 @@ module.exports = {
       const reply = 'You cannot duel yourself.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    // Enforce a per-user daily duel limit (3 per day)
+    try {
+      const now = new Date();
+      const todayStr = now.toDateString();
+      if (!user1.dailyDuelsReset || new Date(user1.dailyDuelsReset).toDateString() !== todayStr) {
+        user1.dailyDuels = 0;
+        user1.dailyDuelsReset = now;
+        await user1.save();
+      }
+      if ((user1.dailyDuels || 0) >= 3) {
+        const reply = 'You have reached your daily duel limit of 3.';
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+
+      if (!user2.dailyDuelsReset || new Date(user2.dailyDuelsReset).toDateString() !== todayStr) {
+        user2.dailyDuels = 0;
+        user2.dailyDuelsReset = now;
+        await user2.save();
+      }
+      if ((user2.dailyDuels || 0) >= 3) {
+        const opponent2Username = discordUser2?.username || 'That user';
+        const reply = `${opponent2Username} has reached their daily duel limit of 3.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+    } catch (err) {
+      console.error('Failed to check daily duel limits:', err);
     }
 
     // Check if either player is already in an active duel
@@ -916,6 +1047,33 @@ module.exports = {
         let bountyHunter = null;
         const p1User = await User.findOne({ userId: pending.player1Id });
         const p2User = await User.findOne({ userId: pending.player2Id });
+        // Enforce daily duel limit at accept time as well
+        try {
+          const now = new Date();
+          const todayStr = now.toDateString();
+          if (p1User) {
+            if (!p1User.dailyDuelsReset || new Date(p1User.dailyDuelsReset).toDateString() !== todayStr) {
+              p1User.dailyDuels = 0;
+              p1User.dailyDuelsReset = now;
+              await p1User.save();
+            }
+            if ((p1User.dailyDuels || 0) >= 3) {
+              return interaction.reply({ content: 'Challenger has reached their daily duel limit of 3.', ephemeral: true });
+            }
+          }
+          if (p2User) {
+            if (!p2User.dailyDuelsReset || new Date(p2User.dailyDuelsReset).toDateString() !== todayStr) {
+              p2User.dailyDuels = 0;
+              p2User.dailyDuelsReset = now;
+              await p2User.save();
+            }
+            if ((p2User.dailyDuels || 0) >= 3) {
+              return interaction.reply({ content: 'You have reached your daily duel limit of 3.', ephemeral: true });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to enforce daily duel limits on accept:', err);
+        }
         if (p1User && p1User.activeBountyTarget === pending.player2Id) {
           isBountyDuel = true;
           bountyHunter = pending.player1Id;
@@ -1392,7 +1550,8 @@ module.exports = {
             actionText = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack?.name || 'Special Attack'} for **${dmg} DMG**!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
           }
         } else {
-          actionText = `${card.def.emoji} **${card.def.character}** attacked ${damageTarget.def.emoji} **${damageTarget.def.character}** for **${dmg} DMG**!${effectivenessStr}${getEffectString(card, damageTarget)}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
+          // Normal attacks should not display special-effect descriptions; only include per-action effect messages
+          actionText = `${card.def.emoji} **${card.def.character}** attacked ${damageTarget.def.emoji} **${damageTarget.def.character}** for **${dmg} DMG**!${effectivenessStr}${effectMessages} **<:energy:1478051414558118052> -${cost}**`;
         }
         if (isPlayer1) state.lastP1Action = actionText;
         else state.lastP2Action = actionText;

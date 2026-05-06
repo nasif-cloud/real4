@@ -272,12 +272,21 @@ async function startDropTimer(client, channelId) {
     dropsClient.on('messageCreate', messageListener);
   }
 
-  // Decay timer: every minute, reduce the channel's count by 1 (min 0)
+  // Timer: every minute, add 1 to the channel's progress (counts toward next drop)
+  // If the progress reaches 100 (or more), spawn drops immediately.
   if (dropIntervalTimer) clearInterval(dropIntervalTimer);
   dropIntervalTimer = setInterval(() => {
     try {
       const cur = messageCounts.get(dropsChannelId) || 0;
-      if (cur > 0) messageCounts.set(dropsChannelId, cur - 1);
+      const next = cur + 1;
+      messageCounts.set(dropsChannelId, next);
+      if (next >= 100) {
+        const times = Math.floor(next / 100);
+        messageCounts.set(dropsChannelId, next - (times * 100));
+        for (let i = 0; i < times; i++) {
+          _spawnDrop().catch(() => {});
+        }
+      }
     } catch (err) {
       // ignore
     }
@@ -294,6 +303,14 @@ function stopDropTimer() {
     clearInterval(dropIntervalTimer);
     dropIntervalTimer = null;
   }
+  // Remove any attached message listener
+  try {
+    if (messageListener && dropsClient && typeof dropsClient.off === 'function') {
+      dropsClient.off('messageCreate', messageListener);
+    }
+  } catch (err) {}
+  messageListener = null;
+
   dropsChannelId = null;
   clearDropChannelId();
 }

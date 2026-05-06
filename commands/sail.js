@@ -28,8 +28,11 @@ function isIslandUnlocked(user, idx) {
   if (!user.storyProgress) return false;
   const prevProg = user.storyProgress[prev.id];
   if (!Array.isArray(prevProg)) return false;
-  // unlock next island when boss (stage 3) of previous island completed
-  return prevProg.some(s => Number(s) === 3);
+  // unlock next island when the previous island's final stage is completed
+  // determine previous island's max stage from data/sailStages.js
+  const prevDef = (sailStages || []).find(s => s.id === prev.id) || {};
+  const prevMaxStage = Array.isArray(prevDef.stages) && prevDef.stages.length > 0 ? prevDef.stages.length : 3;
+  return prevProg.some(s => Number(s) === prevMaxStage);
 }
 
 async function renderMapImage(user) {
