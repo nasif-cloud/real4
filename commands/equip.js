@@ -1,5 +1,5 @@
 const User = require('../models/User');
-const { searchCards } = require('../utils/cards');
+const { searchCards, findBestOwnedCard } = require('../utils/cards');
 
 function findArtifactCard(query) {
   if (!query) return null;
@@ -88,7 +88,7 @@ module.exports = {
       return reply(`You don't own **${artifactDef.character}**.`);
     }
 
-    const targetDef = findTargetCard(targetQuery);
+    const targetDef = await findBestOwnedCard(userId, targetQuery);
     if (!targetDef) {
       return reply(`**${targetQuery}** is not a valid card name to equip this artifact to.`);
     }

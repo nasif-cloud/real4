@@ -38,6 +38,9 @@ const setShipCmd = require('./commands/setship');
 const depositCmd = require('./commands/deposit');
 const betCmd = require('./commands/bet');
 const forfeitCmd = require('./commands/forfeit');
+const favoriteCmd = require('./commands/favorite');
+const unfavoriteCmd = require('./commands/unfavorite');
+const favoritesCmd = require('./commands/favorites');
 const User = require('./models/User');
 
 async function main() {
@@ -422,6 +425,9 @@ async function main() {
       if (cmd === 'feed') return await require('./commands/feed').execute({ message, args });
       if (cmd === 'equip') return await equipCmd.execute({ message, args });
       if (cmd === 'unequip') return await unequipCmd.execute({ message, args });
+      if (cmd === 'favorite') return await favoriteCmd.execute({ message, args });
+      if (cmd === 'unfavorite') return await unfavoriteCmd.execute({ message, args });
+      if (cmd === 'favorites') return await favoritesCmd.execute({ message });
       if (cmd === 'help' || cmd === 'h') return await require('./commands/help').execute({ message });
       if (cmd === 'ownerlist') return await require('./commands/owner').list({ message });
       if (cmd === 'owner') return await require('./commands/owner').execute({ message, args });

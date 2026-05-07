@@ -102,8 +102,55 @@ function buildSellPlan(user, requests) {
   const actions = [];
   let total = 0;
   const lines = [];
+  // Helper: parse compact rank/type codes like CFC, CFUR, URFC, FCUR, etc.
+  function parseRankTypeCode(raw) {
+    if (!raw) return null;
+    const norm = String(raw).replace(/\s+/g, '').toUpperCase();
+    const ranks = ['UR','SS','S','A','B','C','D'];
+    let foundRank = null;
+    for (const r of ranks) {
+      if (norm.includes(r)) { foundRank = r; break; }
+    }
+    if (!foundRank) return null;
+    const remaining = norm.replace(foundRank, '');
+    const typeMap = {
+      'FC': 'fighting', 'CF': 'fighting',
+      'BC': 'boost', 'CB': 'boost',
+      'AC': 'attribute', 'CA': 'attribute'
+    };
+    if (typeMap[remaining]) return { rank: foundRank, type: typeMap[remaining] };
+    return null;
+  }
 
   for (const request of requests) {
+    // Check for compact rank/type shorthand (e.g., CFC, URFC, CFUR)
+    if (request.type === 'item' && request.query) {
+      const rt = parseRankTypeCode(request.query);
+      if (rt) {
+        const ownedIds = (user.ownedCards || []).map(e => e.cardId);
+        const matches = ownedIds
+          .map(id => getCardById(id))
+          .filter(Boolean)
+          .filter(c => {
+            if (String(c.rank).toUpperCase() !== String(rt.rank).toUpperCase()) return false;
+            // fighting: exclude artifacts, ships, and explicit boost cards
+            if (rt.type === 'fighting') return !c.artifact && !c.ship && !(c.boost || (c.type && String(c.type).toLowerCase() === 'boost')) && !(user.team || []).includes(c.id);
+            // boost: include cards authored as boost/type boost
+            if (rt.type === 'boost') return !!c.boost || (c.type && String(c.type).toLowerCase() === 'boost');
+            // attribute: include artifact/type 'attribute' (ask to confirm if different desired)
+            if (rt.type === 'attribute') return !!c.artifact || (c.type && String(c.type).toLowerCase() === 'attribute');
+            return false;
+          });
+        for (const card of matches) {
+          const price = (card.rank === 'D' ? 10 : card.rank === 'C' ? 10 : card.rank === 'B' ? 25 : card.rank === 'A' ? 50 : card.rank === 'S' ? 200 : card.rank === 'SS' ? 750 : card.rank === 'UR' ? 2500 : 0);
+          if (price <= 0) continue;
+          actions.push({ type: 'card', card, price });
+          total += price;
+          lines.push(`${card.emoji || ''} **${card.character}** (${card.rank})`);
+        }
+        continue;
+      }
+    }
     if (request.type === 'all') {
       const matches = findMatchingLevelers(request.query, user);
       if (matches.length) {
@@ -116,7 +163,7 @@ function buildSellPlan(user, requests) {
         }
         continue;
       }
-      const cardMatches = findMatchingOwnedCards(request.query, user).slice(0, MAX_CARD_SELL);
+      const cardMatches = findMatchingOwnedCards(request.query, user);
       for (const card of cardMatches) {
         const price = (card.rank === 'D' ? 10 : card.rank === 'C' ? 10 : card.rank === 'B' ? 25 : card.rank === 'A' ? 50 : card.rank === 'S' ? 200 : card.rank === 'SS' ? 750 : card.rank === 'UR' ? 2500 : 0);
         if (price <= 0) continue;
@@ -154,7 +201,8 @@ function buildSellPlan(user, requests) {
 
     const cardMatches = findMatchingOwnedCards(request.query, user);
     if (!cardMatches.length) continue;
-    let remaining = request.amount === 'all' ? MAX_CARD_SELL : Math.min(request.amount, MAX_CARD_SELL);
+    const requested = Number.isFinite(Number(request.amount)) ? Math.max(0, Number(request.amount)) : 1;
+    let remaining = Math.min(requested, cardMatches.length);
     for (const card of cardMatches) {
       if (remaining <= 0) break;
       const price = (card.rank === 'D' ? 10 : card.rank === 'C' ? 10 : card.rank === 'B' ? 25 : card.rank === 'A' ? 50 : card.rank === 'S' ? 200 : card.rank === 'SS' ? 750 : card.rank === 'UR' ? 2500 : 0);
@@ -230,7 +278,12 @@ module.exports = {
     const token = randomKey();
     pendingBulkSell.set(token, { userId, requests, createdAt: Date.now() });
 
-    const description = `Are you sure you want to sell the following items for **${plan.total}** ¥?\n\n${plan.lines.join('\n')}`;
+    // Limit displayed lines to MAX_CARD_SELL and show "and N more" if applicable,
+    // but the plan.actions contains all items that will be sold.
+    const displayLimit = MAX_CARD_SELL;
+    const displayLines = plan.lines.slice(0, displayLimit);
+    if (plan.lines.length > displayLimit) displayLines.push(`and ${plan.lines.length - displayLimit} more`);
+    const description = `Are you sure you want to sell the following items for **${plan.total}** ¥?\n\n${displayLines.join('\n')}`;
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
       .setTitle('Confirm Bulk Sell')

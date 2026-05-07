@@ -4,13 +4,32 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBu
 
 // helper to safely defer interaction updates without crashing on expired ones
 async function safeDefer(interaction) {
+  if (!interaction) return;
   // If already acknowledged, nothing to do
   if (interaction.deferred || interaction.replied) return;
 
+  // Prefer `deferUpdate` (silent ack for component interactions). If that
+  // fails (some interaction types can't be update-deferred), fall back to
+  // `deferReply({ ephemeral: true })`. As a last resort try a plain reply.
   try {
     await interaction.deferUpdate();
+    return;
   } catch (e) {
-    if (e.code !== 10062) console.error('Failed to defer interaction:', e);
+    // Try deferReply fallback
+    try {
+      await interaction.deferReply({ ephemeral: true });
+      return;
+    } catch (e2) {
+      try {
+        if (!interaction.replied) await interaction.reply({ content: 'Acknowledged.', ephemeral: true });
+        return;
+      } catch (e3) {
+        // Log original error(s) for investigation but don't blow up
+        if (e && e.code !== 10062) console.error('Failed to defer interaction (deferUpdate):', e);
+        if (e2 && e2.code !== 10062) console.error('Failed to defer interaction (deferReply):', e2);
+        if (e3 && e3.code !== 10062) console.error('Failed to reply as fallback:', e3);
+      }
+    }
   }
 }
 
@@ -949,24 +968,37 @@ async function handleVictory(state, msg, user, discordUser) {
         const firstTimeRewards = islandRewards.firstTime || {};
         const rewardGems = firstTimeRewards.gems || 5;
         const rewardBounty = firstTimeRewards.bounty || 100000;
-        const rewardIdCard = firstTimeRewards.id_card || firstTimeRewards.id_card_1;
         const rewardShip = firstTimeRewards.ship_card;
-        
+        // collect any id_card fields (id_card, id_card_1, id_card_2, or id_cards array)
+        const rewardIdCards = [];
+        if (firstTimeRewards.id_card) rewardIdCards.push(firstTimeRewards.id_card);
+        if (firstTimeRewards.id_card_1) rewardIdCards.push(firstTimeRewards.id_card_1);
+        if (firstTimeRewards.id_card_2) rewardIdCards.push(firstTimeRewards.id_card_2);
+        if (Array.isArray(firstTimeRewards.id_cards)) rewardIdCards.push(...firstTimeRewards.id_cards);
+
         user.gems = (user.gems || 0) + rewardGems;
         bountyGain = marineBounty + rewardBounty;
         belis = 0;
         
         // Handle id_card and ship_card rewards if present
-        if (rewardIdCard) {
+        if (rewardIdCards.length) {
           user.ownedCards = user.ownedCards || [];
-          if (!user.ownedCards.some(c => c.cardId === rewardIdCard)) {
-            user.ownedCards.push({ cardId: rewardIdCard, level: 1, xp: 0 });
-          }
+          const uniqueIds = Array.from(new Set(rewardIdCards.map(String)));
+          uniqueIds.forEach(id => {
+            if (!user.ownedCards.some(c => c.cardId === id)) {
+              user.ownedCards.push({ cardId: id, level: 1, xp: 0 });
+            }
+          });
         }
         if (rewardShip) {
-          user.ships = user.ships || [];
-          if (!user.ships.some(s => s === rewardShip)) {
-            user.ships.push(rewardShip);
+          // Ensure ships is an object keyed by ship id (per other codepaths)
+          user.ships = user.ships || {};
+          const shipDefObj = getShipById(rewardShip) || getCardById(rewardShip) || null;
+          const shipKey = (shipDefObj && shipDefObj.id) ? shipDefObj.id : String(rewardShip).toLowerCase().replace(/[^a-z0-9]+/g, '_');
+          const defaultCola = shipDefObj ? (shipDefObj.cola !== undefined ? shipDefObj.cola : (shipDefObj.maxCola !== undefined ? shipDefObj.maxCola : 0)) : 0;
+          if (!user.ships[shipKey]) {
+            user.ships[shipKey] = { cola: defaultCola, maxCola: (shipDefObj && shipDefObj.maxCola !== undefined) ? shipDefObj.maxCola : defaultCola };
+            if (typeof user.markModified === 'function') user.markModified('ships');
           }
         }
       } else if (prevCount === 1) {
@@ -1062,51 +1094,75 @@ async function handleVictory(state, msg, user, discordUser) {
   // Create a simple victory embed with contextual story rewards
   const victoryEmbed = new EmbedBuilder().setColor('#f8fec6').setTitle('Victory!');
   const descLines = [];
-  if (state.storyMode && state.storyStage === 3) {
+  if (state.storyMode) {
     const key = state.storyKey || 'story';
-    const completions = Number((user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0);
-    const gemIcon = '<:gem:1490741488081043577>';
-    const islandDef = (sailStages || []).find(s => s.id === key) || {};
-    const islandRewards = islandDef.rewards || {};
-    
-    if (completions === 1) {
-      // first time island clear - use rewards from sailStages
-      const firstTimeRewards = islandRewards.firstTime || {};
-      const rewardGems = firstTimeRewards.gems || 5;
-      descLines.push(`• Earned ${gemIcon} ${rewardGems} Gems`);
-      if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
-      if (firstTimeRewards.id_card || firstTimeRewards.id_card_1) {
-        const cardId = firstTimeRewards.id_card || firstTimeRewards.id_card_1;
-        descLines.push(`• Obtained card **${cardId}**`);
-      }
-      if (firstTimeRewards.ship_card) {
-        descLines.push(`• Obtained ship **${firstTimeRewards.ship_card}**`);
-      }
-      // compute next island name for unlock message
-      const ISLAND_ORDER = ['fusha_village','alvidas_hideout','shells_town','orange_town','syrup_village','baratie','arlong_park','loguetown'];
-      const idx = ISLAND_ORDER.indexOf(key);
-      if (idx >= 0 && idx < ISLAND_ORDER.length - 1) {
-        const nextName = ISLAND_ORDER[idx + 1].replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        descLines.push(`Unlocked **${nextName}**!`);
+    const islandDef2 = (sailStages || []).find(s => s.id === key) || {};
+    const maxStage2 = Array.isArray(islandDef2.stages) && islandDef2.stages.length > 0 ? islandDef2.stages.length : 3;
+
+    // If this was the island's final stage, show island-completion rewards
+    if (state.storyStage === maxStage2) {
+      const completions = Number((user.storyCompletions && user.storyCompletions[key]) ? user.storyCompletions[key] : 0);
+      const gemIcon = '<:gem:1490741488081043577>';
+      const islandRewards = islandDef2.rewards || {};
+      
+      if (completions === 1) {
+        // first time island clear - use rewards from sailStages
+        const firstTimeRewards = islandRewards.firstTime || {};
+        const rewardGems = firstTimeRewards.gems || 5;
+        descLines.push(`• Earned ${gemIcon} ${rewardGems} Gems`);
+        if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+        // show any awarded id cards
+        const displayIdCards = [];
+        if (firstTimeRewards.id_card) displayIdCards.push(firstTimeRewards.id_card);
+        if (firstTimeRewards.id_card_1) displayIdCards.push(firstTimeRewards.id_card_1);
+        if (firstTimeRewards.id_card_2) displayIdCards.push(firstTimeRewards.id_card_2);
+        if (Array.isArray(firstTimeRewards.id_cards)) displayIdCards.push(...firstTimeRewards.id_cards);
+        Array.from(new Set(displayIdCards.map(String))).forEach(id => {
+          try {
+            const cardDef = getCardById(id);
+            if (cardDef) {
+              const emoji = cardDef.emoji ? `${cardDef.emoji} ` : '';
+              const name = cardDef.character || cardDef.title || id;
+              descLines.push(`• Obtained ${emoji}${name} \`${cardDef.id}\``);
+            } else {
+              descLines.push(`• Obtained \`${id}\``);
+            }
+          } catch (e) {
+            descLines.push(`• Obtained \`${id}\``);
+          }
+        });
+        if (firstTimeRewards.ship_card) {
+          descLines.push(`• Obtained ship **${firstTimeRewards.ship_card}**`);
+        }
+        // compute next island name for unlock message
+        const ISLAND_ORDER = ['fusha_village','alvidas_hideout','shells_town','orange_town','syrup_village','baratie','arlong_park','loguetown'];
+        const idx = ISLAND_ORDER.indexOf(key);
+        if (idx >= 0 && idx < ISLAND_ORDER.length - 1) {
+          const nextName = ISLAND_ORDER[idx + 1].replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          descLines.push(`Unlocked **${nextName}**!`);
+        } else {
+          descLines.push('Island cleared!');
+        }
+      } else if (completions === 2) {
+        descLines.push(`• Earned ${gemIcon} 1 Gem`);
+        if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
       } else {
-        descLines.push('Island cleared!');
+        if (belis > 0) descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
+        if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
       }
-    } else if (completions === 2) {
-      descLines.push(`• Earned ${gemIcon} 1 Gem`);
-      if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
+    } else if (state.storyStage < maxStage2) {
+      const gemIcon = '<:gem:1490741488081043577>';
+      if (stageRuns === 0) {
+        // first clear of a non-boss stage has no reward beyond XP
+        descLines.push('Stage cleared!');
+      } else if (stageRuns === 1) {
+        descLines.push(`• Earned ${gemIcon} 1 Gem`);
+      } else {
+        descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
+      }
     } else {
       if (belis > 0) descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
       if (bountyGain > 0) descLines.push(`• Earned ${bountyGain} <:bounty:1490738541448400976>`);
-    }
-  } else if (state.storyMode && state.storyStage < 3) {
-    const gemIcon = '<:gem:1490741488081043577>';
-    if (stageRuns === 0) {
-      // first clear of a non-boss stage has no reward beyond XP
-      descLines.push('Stage cleared!');
-    } else if (stageRuns === 1) {
-      descLines.push(`• Earned ${gemIcon} 1 Gem`);
-    } else {
-      descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);
     }
   } else {
     if (belis > 0) descLines.push(`• Earned ${belis} <:beri:1490738445319016651>`);

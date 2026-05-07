@@ -92,11 +92,9 @@ module.exports = {
     const user = await User.findOne({ userId });
     if (!user) return interaction.reply({ content: 'You don\'t have an account.', ephemeral: true });
     user.badgesOwned = user.badgesOwned || [];
-    user.badgesEquipped = user.badgesEquipped || [];
-    if (!user.badgesOwned.includes(def.id)) return interaction.reply({ content: `You don't own that badge.`, ephemeral: true });
-    if (user.badgesEquipped.includes(def.id)) return interaction.reply({ content: `Badge already equipped.`, ephemeral: true });
-    if (user.badgesEquipped.length >= 3) return interaction.reply({ content: `You can only equip up to 3 badges.`, ephemeral: true });
-    user.badgesEquipped.push(def.id);
+    if (!user.badgesOwned || !user.badgesOwned.includes(def.id)) return interaction.reply({ content: `You don't own that badge.`, ephemeral: true });
+    // Only allow one equipped badge — replace any existing equipped badge with the new one
+    user.badgesEquipped = [def.id];
     await user.save();
     return interaction.update({ content: `Equipped badge ${def.icon} ${def.title}`, embeds: [], components: [] });
   },

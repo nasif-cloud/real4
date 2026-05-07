@@ -494,7 +494,37 @@ module.exports = {
       return a.id.localeCompare(b.id);
     };
 
-    const sessionCards = [...matches].sort(sortByStrength);
+    let sessionCards = [...matches].sort(sortByStrength);
+    // Reorder session cards so the user's preferences appear first:
+    // 1) owned favorites (user.favoriteCards in order)
+    // 2) wishlist entries (user.wishlistCards in order)
+    // 3) team entries (user.team in order)
+    if (user) {
+      const ordered = [];
+      const remaining = sessionCards.slice();
+
+      const pushAndRemove = (idList) => {
+        if (!Array.isArray(idList)) return;
+        for (const id of idList) {
+          const idx = remaining.findIndex(c => c.id === id);
+          if (idx !== -1) {
+            ordered.push(remaining[idx]);
+            remaining.splice(idx, 1);
+          }
+        }
+      };
+
+      // owned favorites first
+      pushAndRemove(user.favoriteCards);
+      // wishlist next
+      pushAndRemove(user.wishlistCards);
+      // team next
+      pushAndRemove(user.team);
+
+      // append the rest
+      sessionCards = [...ordered, ...remaining];
+    }
+
     const cardDef = sessionCards[0];
 
     if (cardDef.ship && user && user.activeShip === cardDef.id) {

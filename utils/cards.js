@@ -1,5 +1,5 @@
 const { EmbedBuilder } = require('discord.js');
-const { cards, rankData } = require('../data/cards');
+const { cards, rankData, artifactThumbnails } = require('../data/cards');
 const crews = require('../data/crews');
 const { PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
 
@@ -8,6 +8,11 @@ const crewIcons = {};
 crews.forEach(crew => {
   crewIcons[crew.name] = crew.icon;
 });
+
+// Emoji used to mark favorited cards in embeds/lists
+const STAR_EMOJI = '<:star:1501996419693936843>';
+// Emoji used to mark wishlist (non-owned) cards
+const WISH_EMOJI = '📝';
 
 const RANDOM_ENEMY_EMOJI_REMAP = {
   '<:randomenemy:1491916913960423645>': '<:fgcrb:1492280855832432680>',
@@ -73,6 +78,22 @@ function getRankFromDistributionWithFilter(rates, allowedRanks) {
     filteredRates[rk] = filteredRates[rk] * factor;
   }
   return getRankFromDistribution(filteredRates);
+}
+
+// Pick an item from a pool, giving a small relative bonus to wishlisted items.
+// `wishlist` is an array of cardIds that should receive a weight multiplier.
+function pickFromPoolWithWishlist(pool, wishlist) {
+  if (!pool || !pool.length) return null;
+  const wishSet = Array.isArray(wishlist) ? new Set(wishlist) : null;
+  // base weight 1; wishlisted items have a 1.10 multiplier (i.e., +10% relative chance)
+  const weights = pool.map(c => (wishSet && wishSet.has(c.id) ? 1.1 : 1));
+  const total = weights.reduce((s, w) => s + w, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < pool.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return pool[i];
+  }
+  return pool[pool.length - 1];
 }
 
 function normalizeName(name) {
@@ -386,7 +407,13 @@ async function findBestOwnedShip(userId, query) {
 
   const ownedIds = user.ownedCards.map(e => e.cardId);
   const ownedMatches = matches.filter(m => ownedIds.includes(m.id));
-  return ownedMatches.length ? ownedMatches[ownedMatches.length - 1] : matches[0];
+  if (!ownedMatches.length) return matches[0];
+
+  // Prefer by team or favorites
+  const preferred = preferMatchForUser(user, ownedMatches);
+  if (preferred) return preferred;
+  // fallback to highest mastery owned (last one)
+  return ownedMatches[ownedMatches.length - 1];
 }
 
 // fuzzy search: return matched card definitions sorted by mastery asc
@@ -411,6 +438,38 @@ function findFirstCard(query) {
   return results.length ? results[0] : null;
 }
 
+// Prefer a match from a user's context: team first, then exact favorite ids, then fallback
+function preferMatchForUser(user, matches) {
+  if (!user || !Array.isArray(matches) || matches.length === 0) return matches[0] || null;
+
+  // Prefer exact favorite card id matches (preserve favorite order)
+  if (Array.isArray(user.favoriteCards) && user.favoriteCards.length) {
+    for (const favId of user.favoriteCards) {
+      const found = matches.find(m => m.id === favId);
+      if (found) return found;
+    }
+  }
+
+  // Next prefer wishlist entries (preserve wishlist order)
+  if (Array.isArray(user.wishlistCards) && user.wishlistCards.length) {
+    for (const wishId of user.wishlistCards) {
+      const found = matches.find(m => m.id === wishId);
+      if (found) return found;
+    }
+  }
+
+  // Then prefer team entries (preserve team order)
+  if (Array.isArray(user.team) && user.team.length) {
+    for (const teamId of user.team) {
+      const found = matches.find(m => m.id === teamId);
+      if (found) return found;
+    }
+  }
+
+  // fallback to first match
+  return matches[0] || null;
+}
+
 // Find the best (highest mastery) owned version of a card
 async function findBestOwnedCard(userId, query) {
   const User = require('../models/User');
@@ -419,13 +478,20 @@ async function findBestOwnedCard(userId, query) {
   
   const user = await User.findOne({ userId });
   if (!user || !user.ownedCards) return matches[0]; // fallback to base if no user
-  
+
   // find all owned versions of this character
   const ownedIds = user.ownedCards.map(e => e.cardId);
   const ownedMatches = matches.filter(m => ownedIds.includes(m.id));
-  
-  // return highest mastery owned, or fallback to base if none owned
-  return ownedMatches.length ? ownedMatches[ownedMatches.length - 1] : matches[0];
+
+  if (ownedMatches.length) {
+    // Prefer team / favorites
+    const preferred = preferMatchForUser(user, ownedMatches);
+    if (preferred) return preferred;
+    // return highest mastery owned, or fallback to base if none owned
+    return ownedMatches[ownedMatches.length - 1];
+  }
+
+  return matches[0];
 }
 
 // Simulate a pull with optional faculty filter and optional rod/mastery modifiers
@@ -482,12 +548,17 @@ function simulatePull(pityCount, faculty = null, options = {}) {
     return null;
   }
 
+  // If a wishlist was provided in options, favor wishlisted cards when choosing.
+  if (options && Array.isArray(options.wishlist) && options.wishlist.length) {
+    return pickFromPoolWithWishlist(pool, options.wishlist);
+  }
+
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 
 // Build a pull embed according to spec
-function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
+function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo, user, options = {}) {
   const attributeColors = {
     STR: '#ff4b4b',
     DEX: '#33cc33',
@@ -495,7 +566,14 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
     PSY: '#f5df4d',
     INT: '#9b59b6'
   };
-  let color = attributeColors[card.attribute] || (rankData[card.rank] && rankData[card.rank].color) || '#2b2d31';
+  const rankColor = rankData[card.rank] && rankData[card.rank].color;
+  // Prefer rank color for UR cards; otherwise fall back to attribute color.
+  let color;
+  if (rankColor && card.rank === 'UR') {
+    color = rankColor;
+  } else {
+    color = attributeColors[card.attribute] || rankColor || '#2b2d31';
+  }
   // Artifact pull embeds should always be white
   if (card && card.artifact) color = '#FFFFFF';
   // same emoji handling as buildCardEmbed: transform `<:name:id>` into a CDN URL
@@ -511,9 +589,17 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
   }
   // always include a name field; use faculty if nothing else
   if (!author.name && pityText) author.name = card.faculty;
+
+  // Determine whether to show the star icon for this pull. We show a star
+  // if the card was favorited or wishlisted for the provided user, or if the
+  // caller explicitly forces it via options.forceStar.
+  const forcedStar = options && !!options.forceStar;
+  const isFavPull = user && Array.isArray(user.favoriteCards) && user.favoriteCards.includes(card.id);
+  const isWishPull = user && Array.isArray(user.wishlistCards) && user.wishlistCards.includes(card.id);
+  const showStar = forcedStar || isFavPull || isWishPull;
   
   // Artifact cards use a simplified pull embed with boost/signature info
-  let embed = new EmbedBuilder().setColor(color).setTitle(`${card.character}`).setImage(card.image_url || null)
+  let embed = new EmbedBuilder().setColor(color).setTitle(`${showStar ? STAR_EMOJI + ' ' : ''}${card.character}`).setImage(card.image_url || null)
     .setFooter({ text: `ID ${formatCardId(card.id)}${pityText ? ` | ${pityText}` : ''}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
 
   if (isShipCard(card)) {
@@ -526,7 +612,7 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
     ];
     const shipEmbed = new EmbedBuilder()
       .setColor(card.color || color)
-      .setTitle(card.character)
+      .setTitle(`${showStar ? STAR_EMOJI + ' ' : ''}${card.character}`)
       .setDescription(descLines.join('\n'))
       .setImage(card.image_url || null)
       .setFooter({ text: `ID ${formatCardId(card.id)}${duplicateInfo ? ` | ${duplicateInfo}` : ''}`, iconURL: avatarUrl || null });
@@ -568,13 +654,18 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo) {
   safeApplyAuthor(embed, author);
 
   if (card.title !== 'Random enemy') {
-    const emojiThumbnail = getEmojiImageUrl(card.emoji);
-    if (emojiThumbnail) {
-      embed.setThumbnail(emojiThumbnail);
+    // Prefer an explicit artifact thumbnail when the card is an artifact.
+    if (card.artifact && artifactThumbnails && artifactThumbnails[card.rank]) {
+      embed.setThumbnail(artifactThumbnails[card.rank]);
     } else {
-      const rankBadge = rankData[card.rank] && rankData[card.rank].badge;
-      if (rankBadge) embed.setThumbnail(rankBadge);
-      else if (iconVal && iconVal.startsWith && iconVal.startsWith('http')) embed.setThumbnail(iconVal);
+      const emojiThumbnail = getEmojiImageUrl(card.emoji);
+      if (emojiThumbnail) {
+        embed.setThumbnail(emojiThumbnail);
+      } else {
+        const rankBadge = rankData[card.rank] && rankData[card.rank].badge;
+        if (rankBadge) embed.setThumbnail(rankBadge);
+        else if (iconVal && iconVal.startsWith && iconVal.startsWith('http')) embed.setThumbnail(iconVal);
+      }
     }
   }
 
@@ -622,13 +713,16 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     INT: '#9b59b6'
   };
   let color;
+  const rankColor = rankData[cardDef.rank] && rankData[cardDef.rank].color;
   if (cardDef.ship) {
-    color = cardDef.color || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31';
+    color = cardDef.color || rankColor || '#2b2d31';
   } else if (cardDef.artifact) {
     // Info embeds for artifacts should be white
     color = '#ffffff';
   } else {
-    color = attributeColors[cardDef.attribute] || (rankData[cardDef.rank] && rankData[cardDef.rank].color) || '#2b2d31';
+    // Prefer rank color for UR cards, otherwise prefer attribute color.
+    if (rankColor && cardDef.rank === 'UR') color = rankColor;
+    else color = attributeColors[cardDef.attribute] || rankColor || '#2b2d31';
   }
   let iconText = crewIcons[cardDef.faculty];
   let iconUrl = iconText;
@@ -671,9 +765,12 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       descLines.push('', `**Earnings:** <:beri:1490738445319016651>${shipBalance}${isMaxed ? ' *max*' : ''}`);
     }
 
+    const isFav = user && Array.isArray(user.favoriteCards) && user.favoriteCards.includes(cardDef.id);
+    const isWish = user && Array.isArray(user.wishlistCards) && user.wishlistCards.includes(cardDef.id);
+    const titleText = isFav ? `${STAR_EMOJI} ${cardDef.character}` : (isWish ? `${WISH_EMOJI} ${cardDef.character}` : `${cardDef.character}`);
     const shipEmbed = new EmbedBuilder()
       .setColor(color)
-      .setTitle(cardDef.character)
+      .setTitle(titleText)
       .setDescription(descLines.join('\n'))
       .setImage(cardDef.image_url || null)
       .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
@@ -777,21 +874,31 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
       }
     }
 
+    const isFavA = user && Array.isArray(user.favoriteCards) && user.favoriteCards.includes(cardDef.id);
+    const isWishA = user && Array.isArray(user.wishlistCards) && user.wishlistCards.includes(cardDef.id);
+    // For artifacts pulled in a pull/pack, show a star if the card was favorited
+    // or wishlisted at the time of the pull (or forced via options).
+    const artifactTitle = showStar ? `${STAR_EMOJI} ${cardDef.character}` : `${cardDef.character}`;
     const artifactEmbed = new EmbedBuilder()
       .setColor(color)
-      .setTitle(cardDef.character)
+      .setTitle(artifactTitle)
       .setDescription(descLines.join('\n'))
       .setImage(cardDef.image_url || null)
       .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
 
     if (cardDef.title !== 'Random enemy') {
-      const emojiThumbnail = getEmojiImageUrl(cardDef.emoji);
-      if (emojiThumbnail) {
-        artifactEmbed.setThumbnail(emojiThumbnail);
+      // Prefer configured artifact thumbnail first, then emoji, then rank badge.
+      if (artifactThumbnails && artifactThumbnails[cardDef.rank]) {
+        artifactEmbed.setThumbnail(artifactThumbnails[cardDef.rank]);
       } else {
-        const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
-        if (rankBadge) artifactEmbed.setThumbnail(rankBadge);
-        else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) artifactEmbed.setThumbnail(iconUrl);
+        const emojiThumbnail = getEmojiImageUrl(cardDef.emoji);
+        if (emojiThumbnail) {
+          artifactEmbed.setThumbnail(emojiThumbnail);
+        } else {
+          const rankBadge = rankData[cardDef.rank] && rankData[cardDef.rank].badge;
+          if (rankBadge) artifactEmbed.setThumbnail(rankBadge);
+          else if (iconUrl && iconUrl.startsWith && iconUrl.startsWith('http')) artifactEmbed.setThumbnail(iconUrl);
+        }
       }
     }
 
@@ -816,9 +923,12 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   descLines.push(`**Owned:** ${isOwned ? 'Yes' : 'No'}`);
   descLines.push(`**Rank:** ${cardDef.rank}`);
 
+  const isFavN = user && Array.isArray(user.favoriteCards) && user.favoriteCards.includes(cardDef.id);
+  const isWishN = user && Array.isArray(user.wishlistCards) && user.wishlistCards.includes(cardDef.id);
+  const normalTitle = showStar ? `${STAR_EMOJI} ${cardDef.character}` : `${cardDef.character}`;
   const embed = new EmbedBuilder()
     .setColor(color)
-    .setTitle(cardDef.character)
+    .setTitle(normalTitle)
     .setDescription(descLines.join('\n'))
     .setImage(cardDef.image_url || null)
     .setFooter({ text: `ID ${formatCardId(cardDef.id) || 'unknown'}`, iconURL: avatarUrl || null });
@@ -1093,6 +1203,7 @@ module.exports = {
   getAttributeEmoji,
   buildDurabilityBar,
   simulatePull,
+  pickFromPoolWithWishlist,
   isArtifactCard,
   isShipCard,
   getShipById,

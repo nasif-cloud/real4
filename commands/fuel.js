@@ -33,12 +33,54 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    // Resolve ship preference:
+    // 1) explicit query -> findBestOwnedShip
+    // 2) user's activeShip if they actually own it
+    // 3) prefer a ship on the team
+    // 4) prefer a favorited ship
+    // 5) fallback to any owned ship
     let shipDef = null;
     if (shipQuery) {
       shipDef = await findBestOwnedShip(userId, shipQuery);
     }
+
+    // If no explicit match, prefer the active ship if user owns it
     if (!shipDef && user.activeShip) {
-      shipDef = getShipById(user.activeShip);
+      const owned = (user.ownedCards || []).some(e => e.cardId === user.activeShip);
+      if (owned) {
+        shipDef = getShipById(user.activeShip) || null;
+      }
+    }
+
+    // If still not found, try to pick a ship from the user's team (if any)
+    if (!shipDef && Array.isArray(user.team) && user.team.length) {
+      for (const tid of user.team) {
+        const maybe = getShipById(tid);
+        if (maybe && (user.ownedCards || []).some(e => e.cardId === maybe.id)) {
+          shipDef = maybe;
+          break;
+        }
+      }
+    }
+
+    // Next prefer any favorited ship
+    if (!shipDef && Array.isArray(user.favoriteCards) && user.favoriteCards.length) {
+      for (const fid of user.favoriteCards) {
+        const maybe = getShipById(fid);
+        if (maybe && (user.ownedCards || []).some(e => e.cardId === maybe.id)) {
+          shipDef = maybe;
+          break;
+        }
+      }
+    }
+
+    // Finally fallback to any owned ship (highest mastery/last entry)
+    if (!shipDef) {
+      const ownedShipIds = (user.ownedCards || []).map(e => e.cardId).filter(id => getShipById(id));
+      if (ownedShipIds.length) {
+        // prefer the last one (highest mastery style) unless otherwise matched
+        shipDef = getShipById(ownedShipIds[ownedShipIds.length - 1]);
+      }
     }
 
     if (!shipDef) {

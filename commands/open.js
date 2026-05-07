@@ -311,7 +311,7 @@ module.exports = {
 
     // Open pack: pull 5 cards along with duplicate info
     // Detect if this pack has any available cards for the pack's faculty.
-    const packCheck = simulatePull(user.pityCount, matchedPack);
+    const packCheck = simulatePull(user.pityCount, matchedPack, { wishlist: user.wishlistCards });
     if (!packCheck) {
       const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
       if (message) return message.reply(reply);
@@ -335,7 +335,8 @@ module.exports = {
     // Do NOT fallback to global artifact/ship pools. Keep faculty-specific candidates only.
     // If this pack has no artifacts or ships defined, the first card will fall back to a normal card.
 
-    const pickRandom = (arr) => (arr && arr.length) ? arr[Math.floor(Math.random() * arr.length)] : null;
+    const { pickFromPoolWithWishlist } = require('../utils/cards');
+    const pickRandom = (arr) => (arr && arr.length) ? pickFromPoolWithWishlist(arr, user.wishlistCards) : null;
 
     const pickRankFromRatesWithAllowed = (rates, allowedSet) => {
       const entries = Object.entries(rates).filter(([rk, wt]) => allowedSet.has(rk) && wt > 0);
@@ -400,7 +401,7 @@ module.exports = {
           let cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship && normalizeName(c.faculty) === normalizedPack);
           if (!cardPool.length) cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
           const rank = getRankForUser(user, cardPool);
-          card = pickFromPoolByRank(cardPool, rank) || pickRandom(cardPool) || simulatePull(user.pityCount, matchedPack);
+          card = pickFromPoolByRank(cardPool, rank) || pickRandom(cardPool) || simulatePull(user.pityCount, matchedPack, { wishlist: user.wishlistCards });
         }
         if (!card) {
           const reply = `The ${matchedPack} pack cannot be opened because it has no available cards.`;
@@ -447,7 +448,7 @@ module.exports = {
             chosenRank = order.find(rk => allowed.has(rk)) || null;
           }
           if (chosenRank) card = pickFromPoolByRank(pool, chosenRank);
-          if (!card) card = simulatePull(user.pityCount, matchedPack);
+          if (!card) card = simulatePull(user.pityCount, matchedPack, { wishlist: user.wishlistCards });
         }
 
         if (!card) {
@@ -467,7 +468,7 @@ module.exports = {
           let cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship && normalizeName(c.faculty) === normalizedPack);
           if (!cardPool.length) cardPool = cards.filter(c => c.pullable && !c.artifact && !c.ship);
           const rank = getRankForUser(user, cardPool);
-          card = pickFromPoolByRank(cardPool, rank) || pickRandom(cardPool) || simulatePull(user.pityCount, matchedPack);
+          card = pickFromPoolByRank(cardPool, rank) || pickRandom(cardPool) || simulatePull(user.pityCount, matchedPack, { wishlist: user.wishlistCards });
         } else if (cat === 'artifact') {
           const rank = getRankForUser(user, artifactCandidates);
           card = pickFromPoolByRank(artifactCandidates, rank) || pickRandom(artifactCandidates);
@@ -553,6 +554,29 @@ module.exports = {
     // (no additional loop needed)
 
 
+    // Determine which pulled cards were favorited or wishlisted at the time
+    // of the pull so we can show a star on those embeds even after we remove
+    // wishlist entries when saving.
+    const pulledIds = pulledCards.map(p => p.card.id);
+    const starIds = [];
+    if (Array.isArray(user.favoriteCards)) {
+      for (const id of user.favoriteCards) if (pulledIds.includes(id)) starIds.push(id);
+    }
+    if (Array.isArray(user.wishlistCards)) {
+      for (const id of user.wishlistCards) if (pulledIds.includes(id) && !starIds.includes(id)) starIds.push(id);
+    }
+
+    // Build first embed before we remove wishlist entries so the embed will
+    // show the star for wishlisted cards that were just pulled.
+    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
+    const firstEmbed = buildPullEmbed(pulledCards[0].card, username, avatarUrl, '', pulledCards[0].dup, user);
+
+    // Remove any pulled cards from the user's wishlist now that they own them.
+    if (Array.isArray(user.wishlistCards) && user.wishlistCards.length) {
+      user.wishlistCards = user.wishlistCards.filter(id => !pulledIds.includes(id));
+      if (typeof user.markModified === 'function') user.markModified('wishlistCards');
+    }
+
     // Decrement pack count
     user.packInventory[matchedPack] -= 1;
     if (user.packInventory[matchedPack] <= 0) {
@@ -565,10 +589,6 @@ module.exports = {
 
     await user.save();
 
-    // Send first card embed with next button
-    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
-    const firstEmbed = buildPullEmbed(pulledCards[0].card, username, avatarUrl, '', pulledCards[0].dup);
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`open_next:${userId}:0`)
@@ -576,9 +596,11 @@ module.exports = {
         .setStyle(ButtonStyle.Primary)
     );
 
-    // Store the pulled cards in a map for the session
+    // Store the pulled cards in a map for the session, including starIds so
+    // later pages can still render a star even though wishlist entries were
+    // removed from the persisted user.
     if (!global.packSessions) global.packSessions = new Map();
-    global.packSessions.set(`${userId}_pack`, { cards: pulledCards, pack: matchedPack });
+    global.packSessions.set(`${userId}_pack`, { cards: pulledCards, pack: matchedPack, starIds });
 
     if (message) {
       const sent = await message.channel.send({ embeds: [firstEmbed], components: [row] });
@@ -606,7 +628,12 @@ module.exports = {
 
     const username = interaction.user.username;
     const avatarUrl = interaction.user.displayAvatarURL();
-    const embed = buildPullEmbed(pulledCards[nextIndex].card, username, avatarUrl, '', pulledCards[nextIndex].dup);
+    // Fetch the latest user document to know about favorites, but use the
+    // session's starIds to force a star for cards that were wishlisted at
+    // the time of the pull.
+    const user = await User.findOne({ userId: interaction.user.id });
+    const forceStar = Array.isArray(session.starIds) && session.starIds.includes(pulledCards[nextIndex].card.id);
+    const embed = buildPullEmbed(pulledCards[nextIndex].card, username, avatarUrl, '', pulledCards[nextIndex].dup, user, { forceStar });
 
     const row = (nextIndex + 1 >= pulledCards.length) ? [] : [new ActionRowBuilder().addComponents(
       new ButtonBuilder()

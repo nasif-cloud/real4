@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const { cards } = require('../data/cards');
 const { PULL_LIMIT, PULL_RESET_HOURS, PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
-const { buildPullEmbed, getAllCardVersions, getCardById } = require('../utils/cards');
+const { buildPullEmbed, getAllCardVersions, getCardById, pickFromPoolWithWishlist } = require('../utils/cards');
 const stockUtils = require('../src/stock');
 const getPreviousPullResetDate = stockUtils.getPreviousPullResetDate;
 const getTimeUntilNextPullReset = stockUtils.getTimeUntilNextPullReset;
@@ -113,7 +113,7 @@ module.exports = {
     // final fallback: anything pullable (should be very rare)
     if (!pool || pool.length === 0) pool = pullable;
 
-    const card = pool[Math.floor(Math.random() * pool.length)];
+    const card = pickFromPoolWithWishlist(pool, user.wishlistCards);
 
     // Get all versions in this card group
     const allVersionIds = getAllCardVersions(card);
@@ -183,6 +183,18 @@ module.exports = {
       if (!user.history.includes(card.id)) user.history.push(card.id);
     }
 
+    // Build embed now (before we remove wishlist entries) so the pulled
+    // card still shows as wishlisted/favorited in the embed if it was.
+    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
+    const embed = buildPullEmbed(card, username, avatarUrl, pityProgress, duplicateText, user);
+
+    // If this card was on the user's wishlist, remove it now that they've
+    // obtained it so the favorites/wishlist UI reflects ownership.
+    if (Array.isArray(user.wishlistCards) && user.wishlistCards.includes(card.id)) {
+      user.wishlistCards = user.wishlistCards.filter(id => id !== card.id);
+      if (typeof user.markModified === 'function') user.markModified('wishlistCards');
+    }
+
     user.pullsRemaining -= 1;
     user.totalPulls = (user.totalPulls || 0) + 1;
     await user.save();
@@ -195,8 +207,6 @@ module.exports = {
       console.error('Error checking achievements after pull', err);
     }
 
-    const avatarUrl = message ? message.author.displayAvatarURL() : interaction.user.displayAvatarURL();
-    const embed = buildPullEmbed(card, username, avatarUrl, pityProgress, duplicateText);
     if (message) return message.channel.send({ embeds: [embed] });
     return interaction.reply({ embeds: [embed] });
   }

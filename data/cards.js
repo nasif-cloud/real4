@@ -1,12 +1,24 @@
 // rank metadata (color and optional image) – used by embeds
 exports.rankData = {
-  D: { color: '#B87333', badge: 'https://files.catbox.moe/gcxdld.png' },
-  C: { color: '#f9a53f', badge: 'https://files.catbox.moe/g2k0qe.png' },
-  B: { color: '#c6c6c7', badge: 'https://files.catbox.moe/hwe2sp.png' },
-  A: { color: '#bfddff', badge: 'https://files.catbox.moe/bazsnm.png' },
-  S: { color: '#9966CC', badge: 'https://files.catbox.moe/5o59c4.png' },
+  D: { color: '#B87333', badge: 'https://files.catbox.moe/a1sid9.webp' },
+  C: { color: '#f9a53f', badge: 'https://files.catbox.moe/a2v0t7.webp' },
+  B: { color: '#c6c6c7', badge: 'https://files.catbox.moe/zkcg1y.webp' },
+  A: { color: '#bfddff', badge: 'https://files.catbox.moe/bljs3q.webp' },
+  S: { color: '#9966CC', badge: 'https://files.catbox.moe/5ep3w0.webp' },
   SS: { color: '#26619C', badge: 'https://files.catbox.moe/jxtjc6.png' },
-  UR: { color: '#E0115F', badge: 'https://files.catbox.moe/07p0m2.png' }
+  UR: { color: '#ff00f0', badge: 'https://files.catbox.moe/07p0m2.png' }
+};
+
+// Optional per-rank thumbnails used specifically for artifact embeds. These
+// can be replaced with the provided CDN links for custom artifact thumbnails
+// per-rank (D/C/B/A/S). By default these point to the same badge assets as
+// the normal rank badges — override as needed.
+exports.artifactThumbnails = {
+  D: exports.rankData.D && exports.rankData.D.badge,
+  C: exports.rankData.C && exports.rankData.C.badge,
+  B: exports.rankData.B && exports.rankData.B.badge,
+  A: exports.rankData.A && exports.rankData.A.badge,
+  S: exports.rankData.S && exports.rankData.S.badge
 };
 
 const ATTRIBUTE_RANDOM_EMOJI = {
@@ -3971,7 +3983,7 @@ const consolidatedCardData = [
     id: '4162',
     pullable: true,
     attribute: 'DEX',
-    emoji: '<:1000047652:1495185412849664072>',
+    emoji: '<:1000049374:1502017780491358298>',
     title: 'Memories of Straw Hat Pirates',
     faculty: 'Strawhat Pirates',
     rank: 'UR',
@@ -4931,7 +4943,7 @@ const consolidatedCardData = [
     pullable: true,
     attribute: 'DEX',
     emoji: '<:1000048423:1498090659134050315>',
-    title: '',
+    title: 'Memories of Straw Hat Pirates',
     faculty: 'Strawhat Pirates',
     rank: 'SS',
     power: 44,

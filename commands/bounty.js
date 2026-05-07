@@ -119,9 +119,9 @@ module.exports = {
 
     const requesterBounty = requester.bounty || 100;
 
-    // Find opponents with bounty between 0.5x and 2x, but not exactly half or double
-    const minBounty = Math.floor(requesterBounty / 2) + 1;
-    const maxBounty = Math.ceil(requesterBounty * 2) - 1;
+    // Find opponents with bounty between 0.5x and 2x, inclusive
+    const minBounty = Math.ceil(requesterBounty / 2);
+    const maxBounty = Math.floor(requesterBounty * 2);
 
     // Exclude self and the last assigned bounty target to avoid giving the same target twice in a row
     const excludeIds = [userId];

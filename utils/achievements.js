@@ -105,7 +105,7 @@ const ACHIEVEMENTS = [
   (function() { return {
     id: 'pull_10000',
     title: 'collector 3',
-    icon: '',
+    icon: '<:collector3:1501987869378740364>',
     check: (user) => (user.totalPulls || 0) >= 10000,
     reward: { chests: [{ id: 'a_chest', count: 5 }, { id: 'b_chest', count: 10 }, { id: 'c_chest', count: 25 }] },
     reason: "pulling 10'000 cards"

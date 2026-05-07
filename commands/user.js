@@ -61,18 +61,17 @@ module.exports = {
       .sort((a, b) => (b.ownedCards?.length || 0) - (a.ownedCards?.length || 0))
       .findIndex(u => u.userId === targetId) + 1;
 
-    // badges display (icons only)
+    // badges display (show single equipped badge next to username)
     const { ACHIEVEMENTS } = require('../utils/achievements');
-    const equipped = (user.badgesEquipped || []).map(id => {
-      const def = ACHIEVEMENTS.find(a => a.id === id);
-      return def ? def.icon : id;
-    }).join(' ');
+    const equippedId = (user.badgesEquipped && user.badgesEquipped.length) ? user.badgesEquipped[0] : null;
+    const equippedIcon = equippedId ? (ACHIEVEMENTS.find(a => a.id === equippedId)?.icon || '') : '';
 
-    const statsValue = `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}` + (equipped ? `\nBadges: ${equipped}` : '');
+    const statsValue = `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}`;
 
+    const title = equippedIcon ? `${equippedIcon} ${username}'s Profile` : `${username}'s Profile`;
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setTitle(`${username}'s Profile`)
+      .setTitle(title)
       .setThumbnail(avatarUrl)
       .addFields(
         { name: 'Bounty', value: `<:bounty:1490738541448400976>${user.bounty || 100}`, inline: true },
@@ -106,14 +105,19 @@ module.exports.buildUserProfileEmbed = async function (targetId, discordUser) {
     .sort((a, b) => (b.ownedCards?.length || 0) - (a.ownedCards?.length || 0))
     .findIndex(u => u.userId === targetId) + 1;
 
+  const { ACHIEVEMENTS } = require('../utils/achievements');
+  const equippedId = (user.badgesEquipped && user.badgesEquipped.length) ? user.badgesEquipped[0] : null;
+  const equippedIcon = equippedId ? (ACHIEVEMENTS.find(a => a.id === equippedId)?.icon || '') : '';
+  const title = equippedIcon ? `${equippedIcon} ${username}'s Profile` : `${username}'s Profile`;
+
   const embed = new EmbedBuilder()
     .setColor('#FFFFFF')
-    .setTitle(`${username}'s Profile`)
+    .setTitle(title)
     .setThumbnail(avatarUrl)
     .addFields(
       { name: 'Bounty', value: `¥${user.bounty || 100}`, inline: true },
       { name: '**Rankings**', value: `Wealth: #${wealthRank}\nBounty: #${bountyRank}\nDex: #${dexRank}`, inline: false },
-      { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}` + ((user.badgesEquipped || []).length ? `\nBadges: ${(require('../utils/achievements').ACHIEVEMENTS.filter(a => (user.badgesEquipped || []).includes(a.id)).map(a => a.icon).join(' '))}` : ''), inline: false }
+      { name: '**Statistics**', value: `Total Pulls: **${user.totalPulls || 0}**\nUnique Cards: **${uniqueCardsCount}** / ${totalCardsCount}`, inline: false }
     );
 
   return embed;

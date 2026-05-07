@@ -23,8 +23,10 @@ async function list({ message }) {
     .addFields(
       { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack, memerod, item\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
-      { name: 'op owner setdrops <#channel>', value: 'Enable card drops in a channel (spawns every 5 min, expires in 10 min)', inline: false },
-      { name: 'op owner unsetdrops', value: 'Disable card drops globally', inline: false },
+      { name: 'op owner setdrops <#channel> <value>', value: 'Enable card drops in a channel and set messages needed per drop (default 100)', inline: false },
+      { name: 'op owner unsetdrops <#channel>', value: 'Disable card drops in the specified channel', inline: false },
+      { name: 'op owner activedrops', value: 'List active drops and per-channel progress (e.g., 37/100)', inline: false },
+      { name: 'op owner dropparty <#channel> <amount>', value: 'Spawn <amount> drops immediately in the specified channel', inline: false },
       { name: 'op owner ship <@user>', value: 'View the user\'s active ship info', inline: false },
       { name: 'op ownerlist', value: 'Show this list', inline: false }
     );
@@ -299,25 +301,96 @@ async function execute({ message, args }) {
     }
 
     const channelId = channelMatch[1];
+    const valueArg = args[2];
+    let threshold = 100;
+    if (valueArg) {
+      const parsed = parseInt(valueArg, 10);
+      if (isNaN(parsed) || parsed < 1) return message.reply('Invalid drop value. Must be a positive integer.');
+      threshold = parsed;
+    }
     const dropsModule = require('./drops');
     
     try {
-      await dropsModule.startDropTimer(message.client, channelId);
-      return message.reply(`✅ Card drops enabled in <#${channelId}>!`);
+      await dropsModule.startDropTimer(message.client, channelId, threshold);
+      return message.reply(`✅ Card drops enabled in <#${channelId}> (threshold: ${threshold})!`);
     } catch (err) {
       console.error('Error setting up drops:', err);
       return message.reply('Failed to set up drops. Make sure the bot can access that channel and that it is a text channel.');
     }
   }
 
-  if (sub === 'unsetdrops') {
+  if (sub === 'dropparty') {
+    const channelMention = args[1];
+    const amountArg = args[2];
+    if (!channelMention || !amountArg) return message.reply('Usage: op owner dropparty <#channel> <amount>');
+    const channelMatch2 = channelMention.match(/<#(\d+)>/);
+    if (!channelMatch2) return message.reply('Invalid channel format. Use: op owner dropparty <#channel> <amount>');
+    const channelId = channelMatch2[1];
+    const amount = parseInt(amountArg, 10);
+    if (isNaN(amount) || amount < 1 || amount > 100) return message.reply('Amount must be a positive number (max 100)');
     const dropsModule = require('./drops');
     try {
-      dropsModule.stopDropTimer();
-      return message.reply('✅ Card drops disabled.');
+      await dropsModule.spawnDrops(message.client, channelId, amount);
+      return message.reply(`✅ Dropped ${amount} cards in <#${channelId}>.`);
     } catch (err) {
-      console.error('Error disabling drops:', err);
-      return message.reply('Failed to disable drops.');
+      console.error('Error during dropparty:', err);
+      return message.reply('Failed to perform dropparty.');
+    }
+  }
+
+  if (sub === 'unsetdrops') {
+    const channelMention = args[1];
+    if (!channelMention) return message.reply('Usage: op owner unsetdrops <#channel>');
+    const channelMatch = channelMention.match(/<#(\d+)>/);
+    if (!channelMatch) return message.reply('Invalid channel format. Use: op owner unsetdrops <#channel>');
+    const channelId = channelMatch[1];
+    const dropsModule = require('./drops');
+    try {
+      dropsModule.stopDropTimer(channelId);
+      return message.reply(`✅ Card drops disabled in <#${channelId}>.`);
+    } catch (err) {
+      console.error('Error disabling drops for channel:', err);
+      return message.reply('Failed to disable drops for that channel.');
+    }
+  }
+
+  if (sub === 'activedrops') {
+    const dropsModule = require('./drops');
+    try {
+      const status = dropsModule.getDropStatus();
+      const lines = [];
+      if (status.configured && status.configured.length) {
+        lines.push('Configured drop channels:');
+        for (const ch of status.configured) {
+          const prog = ch.progress || 0;
+          const thresh = ch.threshold || 100;
+          lines.push(`<#${ch.channelId}> — ${prog}/${thresh}`);
+        }
+      } else {
+        lines.push('No configured drop channels.');
+      }
+
+      if (status.actives && status.actives.length) {
+        lines.push('');
+        lines.push('Active drops:');
+        for (const a of status.actives) {
+          const secs = Math.ceil((a.expiresIn || 0) / 1000);
+          const mm = Math.floor(secs / 60).toString().padStart(2, '0');
+          const ss = (secs % 60).toString().padStart(2, '0');
+          let link = '';
+          try {
+            const chObj = await message.client.channels.fetch(a.channelId);
+            const guildId = chObj && (chObj.guildId || (chObj.guild && chObj.guild.id));
+            if (guildId) link = ` | message: https://discord.com/channels/${guildId}/${a.channelId}/${a.messageId}`;
+          } catch (e) {}
+          lines.push(`<#${a.channelId}> — ${a.cardName || 'unknown'} (${a.rank || ''}) — expires in ${mm}:${ss}${link}`);
+        }
+      }
+
+      return message.channel.send(lines.join('\n'));
+    } catch (err) {
+      console.error('Error fetching active drops:', err);
+      return message.reply('Failed to fetch active drops.');
     }
   }
 

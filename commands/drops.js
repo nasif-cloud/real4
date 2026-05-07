@@ -10,28 +10,54 @@ const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
 // Store active drops: drop ID -> { messageId, channelId, userId, expiresAt, card }
 const activeDrops = new Map();
 const messageCounts = new Map(); // channelId -> current message count towards next drop
+const channelThresholds = new Map(); // channelId -> messages required for a drop
+const processingDropClaims = new Set(); // dropId -> in-progress claim
 let messageListener = null;
 
 // Global decay timer (reduces message count each minute)
 let dropIntervalTimer = null;
-let dropsChannelId = null;
+// Set of configured drop channel IDs
+const configuredDropChannels = new Set();
 let dropsClient = null; // Discord client reference
 
-function loadDropChannelId() {
+function loadDropChannelIds() {
   try {
     if (fs.existsSync(DROP_CONFIG_FILE)) {
       const data = JSON.parse(fs.readFileSync(DROP_CONFIG_FILE, 'utf8'));
-      return data.channelId || null;
+      // New format: { channels: [{ channelId, threshold, progress }] }
+      if (Array.isArray(data.channels)) {
+        return data.channels.map(c => ({
+          channelId: c.channelId,
+          threshold: typeof c.threshold === 'number' ? c.threshold : 100,
+          progress: typeof c.progress === 'number' ? c.progress : 0
+        }));
+      }
+      // Backwards compat: support old { channelIds: [...] } format
+      if (Array.isArray(data.channelIds)) return data.channelIds.map(cid => ({ channelId: cid, threshold: 100, progress: 0 }));
+      if (data.channelId) return [{ channelId: data.channelId, threshold: 100, progress: 0 }];
     }
   } catch (err) {
     console.error('Error loading drop config:', err);
   }
-  return null;
+  return [];
 }
 
-function saveDropChannelId(channelId) {
+function saveDropChannelIds(channelConfigs) {
   try {
-    fs.writeFileSync(DROP_CONFIG_FILE, JSON.stringify({ channelId }, null, 2));
+    let channels = [];
+    if (Array.isArray(channelConfigs)) {
+      if (channelConfigs.length && typeof channelConfigs[0] === 'string') {
+        channels = channelConfigs.map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }));
+      } else {
+        channels = channelConfigs.map(c => {
+          if (typeof c === 'string') return { channelId: c, threshold: channelThresholds.get(c) || 100, progress: messageCounts.get(c) || 0 };
+          return { channelId: c.channelId, threshold: typeof c.threshold === 'number' ? c.threshold : (channelThresholds.get(c.channelId) || 100), progress: typeof c.progress === 'number' ? c.progress : (messageCounts.get(c.channelId) || 0) };
+        });
+      }
+    } else {
+      channels = Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }));
+    }
+    fs.writeFileSync(DROP_CONFIG_FILE, JSON.stringify({ channels }, null, 2));
   } catch (err) {
     console.error('Error saving drop config:', err);
   }
@@ -64,7 +90,7 @@ async function createAttachmentFromUrl(url) {
   }
 }
 
-function clearDropChannelId() {
+function clearDropChannelIds() {
   try {
     if (fs.existsSync(DROP_CONFIG_FILE)) {
       fs.unlinkSync(DROP_CONFIG_FILE);
@@ -81,13 +107,16 @@ async function initializeDrops(client) {
   dropsClient = client;
   if (!client) return;
 
-  const savedChannelId = loadDropChannelId();
-  if (savedChannelId) {
-    try {
-      await startDropTimer(client, savedChannelId);
-      console.log(`Resumed card drops in channel ${savedChannelId}`);
-    } catch (err) {
-      console.error('Unable to resume saved drop channel:', err.message || err);
+  const savedChannels = loadDropChannelIds();
+  if (Array.isArray(savedChannels) && savedChannels.length) {
+    for (const entry of savedChannels) {
+      try {
+        // entry: { channelId, threshold, progress }
+        await startDropTimer(client, entry.channelId, entry.threshold, entry.progress || 0);
+        console.log(`Resumed card drops in channel ${entry.channelId} (threshold=${entry.threshold})`);
+      } catch (err) {
+        console.error('Unable to resume saved drop channel:', entry.channelId, err.message || err);
+      }
     }
   }
 }
@@ -109,14 +138,19 @@ async function validateDropsChannel(client, channelId) {
 /**
  * Spawn a single drop card in the configured channel
  */
-async function _spawnDrop() {
-  if (!dropsClient || !dropsChannelId) return;
+async function _spawnDrop(channelId) {
+  if (!dropsClient || !channelId) return;
 
   try {
-    const channel = await validateDropsChannel(dropsClient, dropsChannelId);
+    const channel = await validateDropsChannel(dropsClient, channelId);
     if (!channel) {
-      console.error('Error spawning drop: drops channel is inaccessible or not a text channel. Stopping drop timer.');
-      stopDropTimer();
+      console.error(`Error spawning drop: channel ${channelId} is inaccessible or not a text channel. Removing from configured channels.`);
+      // Remove this channel from configured list to avoid repeated errors
+      configuredDropChannels.delete(channelId);
+      // cleanup per-channel in-memory state
+      messageCounts.delete(channelId);
+      channelThresholds.delete(channelId);
+      saveDropChannelIds(Array.from(configuredDropChannels));
       return;
     }
 
@@ -218,79 +252,83 @@ async function _spawnDrop() {
 /**
  * Start the drop spawning timer
  */
-async function startDropTimer(client, channelId) {
+async function startDropTimer(client, channelId, threshold = 100, initialProgress = 0) {
   const channel = await validateDropsChannel(client, channelId);
   if (!channel) {
     throw new Error('Unable to access drops channel. Make sure the bot has view/send permission in that channel.');
   }
 
   dropsClient = client;
-  dropsChannelId = channelId;
-  saveDropChannelId(channelId);
-  
-  // Cancel existing timer
-  if (dropIntervalTimer) {
-    clearInterval(dropIntervalTimer);
-  }
 
-  // Spawn first drop immediately
-  // Prepare message counting for drop spawns
-  // ensure previous listener cleared
+  // add channel to configured set and persist
+  configuredDropChannels.add(channelId);
+  // set threshold & initial progress if not present
+  channelThresholds.set(channelId, Number.isFinite(Number(threshold)) ? Number(threshold) : 100);
+  if (!messageCounts.has(channelId)) {
+    messageCounts.set(channelId, Number.isFinite(Number(initialProgress)) ? Number(initialProgress) : 0);
+  }
+  // persist full channel configs
+  saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 })));
+
+  // ensure previous listener cleared before attaching a new one
   try {
-    if (messageListener && dropsClient && typeof dropsClient.off === 'function') {
-      dropsClient.off('messageCreate', messageListener);
+    if (!messageListener) {
+      messageListener = (message) => {
+        try {
+          if (!message || !message.channel) return;
+          const cid = message.channel.id;
+          if (!configuredDropChannels.has(cid)) return;
+          if (message.author && message.author.bot) return;
+          const cur = messageCounts.get(cid) || 0;
+          const next = cur + 1;
+          // Update counter
+          messageCounts.set(cid, next);
+          // Threshold for this channel
+          const thresh = channelThresholds.get(cid) || 100;
+          if (next >= thresh) {
+            const times = Math.floor(next / thresh);
+            messageCounts.set(cid, next - (times * thresh));
+            for (let i = 0; i < times; i++) {
+              // fire-and-forget spawn for this channel
+              _spawnDrop(cid).catch(() => {});
+            }
+          }
+        } catch (err) {
+          console.error('Error in drop message listener:', err);
+        }
+      };
+      if (dropsClient && typeof dropsClient.on === 'function') {
+        dropsClient.on('messageCreate', messageListener);
+      }
     }
   } catch (err) {}
 
-  // initialize counter for this channel
-  messageCounts.set(channelId, messageCounts.get(channelId) || 0);
-
-  messageListener = (message) => {
-    try {
-      if (!message || !message.channel) return;
-      if (message.channel.id !== dropsChannelId) return;
-      if (message.author && message.author.bot) return;
-      const cur = messageCounts.get(dropsChannelId) || 0;
-      const next = cur + 1;
-      // Update counter
-      messageCounts.set(dropsChannelId, next);
-      // For every 100 messages, spawn a drop
-      if (next >= 100) {
-        const times = Math.floor(next / 100);
-        messageCounts.set(dropsChannelId, next - (times * 100));
-        for (let i = 0; i < times; i++) {
-          // fire-and-forget
-          _spawnDrop().catch(() => {});
+  // Timer: every minute, add 1 to each configured channel's progress (counts toward next drop)
+  if (!dropIntervalTimer) {
+    dropIntervalTimer = setInterval(() => {
+      try {
+        for (const cid of Array.from(configuredDropChannels)) {
+          try {
+            const cur = messageCounts.get(cid) || 0;
+            const next = cur + 1;
+            messageCounts.set(cid, next);
+            const thresh = channelThresholds.get(cid) || 100;
+            if (next >= thresh) {
+              const times = Math.floor(next / thresh);
+              messageCounts.set(cid, next - (times * thresh));
+              for (let i = 0; i < times; i++) {
+                _spawnDrop(cid).catch(() => {});
+              }
+            }
+          } catch (e) {
+            // ignore per-channel errors
+          }
         }
+      } catch (err) {
+        // ignore
       }
-    } catch (err) {
-      console.error('Error in drop message listener:', err);
-    }
-  };
-
-  if (dropsClient && typeof dropsClient.on === 'function') {
-    dropsClient.on('messageCreate', messageListener);
+    }, 60000);
   }
-
-  // Timer: every minute, add 1 to the channel's progress (counts toward next drop)
-  // If the progress reaches 100 (or more), spawn drops immediately.
-  if (dropIntervalTimer) clearInterval(dropIntervalTimer);
-  dropIntervalTimer = setInterval(() => {
-    try {
-      const cur = messageCounts.get(dropsChannelId) || 0;
-      const next = cur + 1;
-      messageCounts.set(dropsChannelId, next);
-      if (next >= 100) {
-        const times = Math.floor(next / 100);
-        messageCounts.set(dropsChannelId, next - (times * 100));
-        for (let i = 0; i < times; i++) {
-          _spawnDrop().catch(() => {});
-        }
-      }
-    } catch (err) {
-      // ignore
-    }
-  }, 60000);
 
   return true;
 }
@@ -298,7 +336,22 @@ async function startDropTimer(client, channelId) {
 /**
  * Stop the drop spawning timer
  */
-function stopDropTimer() {
+function stopDropTimer(channelId = null) {
+  if (channelId) {
+    // remove single channel from configured set
+    configuredDropChannels.delete(channelId);
+    // persist remaining channels with their thresholds/progress
+    saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 })));
+    // remove in-memory entries
+    messageCounts.delete(channelId);
+    channelThresholds.delete(channelId);
+    // if no more channels configured, stop all listeners/timers
+    if (configuredDropChannels.size === 0) {
+      stopDropTimer();
+    }
+    return;
+  }
+
   if (dropIntervalTimer) {
     clearInterval(dropIntervalTimer);
     dropIntervalTimer = null;
@@ -311,17 +364,24 @@ function stopDropTimer() {
   } catch (err) {}
   messageListener = null;
 
-  dropsChannelId = null;
-  clearDropChannelId();
+  configuredDropChannels.clear();
+  messageCounts.clear();
+  clearDropChannelIds();
 }
 
 /**
  * Handle drop claim button
  */
 async function handleDropClaim(interaction, dropId) {
+  if (processingDropClaims.has(dropId)) {
+    return interaction.reply({ content: 'This drop is being claimed. Try again shortly.', ephemeral: true });
+  }
+  processingDropClaims.add(dropId);
+
   const drop = activeDrops.get(dropId);
 
   if (!drop) {
+    processingDropClaims.delete(dropId);
     return interaction.reply({
       content: 'This drop has expired or was already claimed.',
       ephemeral: true
@@ -364,6 +424,8 @@ async function handleDropClaim(interaction, dropId) {
       await user.save();
 
       const text = `**${card.character}** was already in your collection.\n\n+100 XP gained${gained ? ` (+${gained} lvl)` : ''}`;
+      // mark drop consumed immediately
+      activeDrops.delete(dropId);
       return interaction.reply({ content: text, ephemeral: true });
     } else {
       // Add new card
@@ -375,6 +437,8 @@ async function handleDropClaim(interaction, dropId) {
       await user.save();
 
       const text = `You got **${card.character}**!\n\nRank: ${card.rank}`;
+      // mark drop consumed immediately
+      activeDrops.delete(dropId);
       return interaction.reply({ content: text, ephemeral: true });
     }
   } catch (err) {
@@ -384,14 +448,33 @@ async function handleDropClaim(interaction, dropId) {
       ephemeral: true
     });
   } finally {
-    // Remove drop and button
-    activeDrops.delete(dropId);
+    // Ensure the drop is removed and UI cleared; release processing lock
+    try {
+      activeDrops.delete(dropId);
+    } catch {}
     try {
       const channel = await dropsClient.channels.fetch(drop.channelId);
       const msg = await channel.messages.fetch(drop.messageId);
       await msg.edit({ components: [] });
     } catch {}
+    processingDropClaims.delete(dropId);
   }
+}
+
+/**
+ * Spawn a number of drops immediately in a given channel (owner utility)
+ */
+async function spawnDrops(client, channelId, amount) {
+  if (client) dropsClient = client;
+  const channel = await validateDropsChannel(dropsClient, channelId);
+  if (!channel) throw new Error('Unable to access drops channel');
+  const toSpawn = Math.max(0, parseInt(amount, 10) || 0);
+  for (let i = 0; i < toSpawn; i++) {
+    // small delay to avoid hammering rate limits
+    await _spawnDrop(channelId).catch(() => {});
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return true;
 }
 
 module.exports = {
@@ -399,5 +482,22 @@ module.exports = {
   startDropTimer,
   stopDropTimer,
   handleDropClaim,
-  activeDrops
+  spawnDrops,
+  activeDrops,
+  // Return a snapshot of configured channels and currently active drop messages
+  getDropStatus: function() {
+    const configured = Array.from(configuredDropChannels).map(cid => ({ channelId: cid, progress: messageCounts.get(cid) || 0, threshold: channelThresholds.get(cid) || 100 }));
+    const actives = [];
+    for (const [dropId, val] of activeDrops.entries()) {
+      actives.push({
+        dropId,
+        channelId: val.channelId,
+        messageId: val.messageId,
+        expiresIn: Math.max(0, (val.expiresAt || 0) - Date.now()),
+        cardName: val.card && val.card.character || null,
+        rank: val.card && val.card.rank || null
+      });
+    }
+    return { configured, actives };
+  }
 };
