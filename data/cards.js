@@ -3983,7 +3983,7 @@ const consolidatedCardData = [
     id: '4162',
     pullable: true,
     attribute: 'DEX',
-    emoji: '<:1000049374:1502017780491358298>',
+    emoji: '<:4162:1502049156678553640>',
     title: 'Memories of Straw Hat Pirates',
     faculty: 'Strawhat Pirates',
     rank: 'UR',

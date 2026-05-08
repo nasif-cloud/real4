@@ -94,11 +94,15 @@ module.exports = {
       const loserName = (state.discordUser1 && state.discordUser1.id === loserId) ? state.discordUser1.username : (state.discordUser2 && state.discordUser2.id === loserId) ? state.discordUser2.username : `<@${loserId}>`;
       state.lastAction = `${loserName} forfeited. ${winnerName} wins!`;
 
-      // Update bounty if applicable (mirror duel logic)
+      // Update bounty if applicable (mirror duel logic and support bounty captures)
+      let bountyGain = 0;
+      let bountyClaimed = 0;
+      let beliGain = 0;
       if (winnerUser && loserUser) {
         const winnerBounty = winnerUser.bounty || 100;
         const loserBounty = loserUser.bounty || 100;
-        let bountyGain = 0;
+
+        // Small percentage gain when defeating a higher-bounty player
         if (loserBounty > winnerBounty) {
           if (loserBounty > winnerBounty * 3) {
             bountyGain = 0;
@@ -108,7 +112,6 @@ module.exports = {
         }
         if (bountyGain > 0) {
           winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
-          await winnerUser.save();
           try {
             const { checkAndAwardAll } = require('../utils/achievements');
             await checkAndAwardAll(winnerUser, message ? message.client : interaction.client, { event: 'bounty_gain', amount: bountyGain });
@@ -116,15 +119,49 @@ module.exports = {
             console.error('Achievement check after bounty gain failed', err);
           }
         }
-        // Clear cooldowns on winner
-        winnerUser.bountyCooldownUntil = null;
+
+        // If this was a bounty duel and the hunter (bountyHunter) won, capture the full target bounty
+        if (state.isBountyDuel && winnerId === state.bountyHunter) {
+          const targetBounty = loserUser.bounty || 100;
+          bountyClaimed = targetBounty;
+          // transfer target bounty to hunter's bounty total
+          winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
+          // proportional beli reward (2x advertised)
+          const baseBeli = Math.ceil(targetBounty / 100000);
+          beliGain = baseBeli * 2;
+          winnerUser.balance = (winnerUser.balance || 0) + beliGain;
+          winnerUser.activeBountyTarget = null;
+          winnerUser.lastBountyTarget = loserId;
+          winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          try {
+            const { checkAndAwardAll } = require('../utils/achievements');
+            await checkAndAwardAll(winnerUser, message ? message.client : interaction.client, { event: 'bounty_capture', amount: bountyClaimed });
+          } catch (err) {
+            console.error('Achievement check after bounty capture failed', err);
+          }
+        } else if (state.isBountyDuel && loserId === state.bountyHunter) {
+          // Hunter lost, reset their cooldown but keep target
+          const hunterUser = await User.findOne({ userId: state.bountyHunter });
+          if (hunterUser) {
+            hunterUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            await hunterUser.save();
+          }
+        }
+
+        // persist any changes to the winner
         await winnerUser.save();
       }
 
       const { EmbedBuilder } = require('discord.js');
+      // Build victory embed (include bounty info when applicable)
+      let extra = '';
+      if (bountyGain > 0) extra += `\n\nBounty Gained: **${bountyGain}**`;
+      if (bountyClaimed > 0) extra += `\n\nBounty Claimed: **${bountyClaimed}**`;
+      if (beliGain > 0) extra += `\n\nBeli Earned: ¥**${beliGain}**`;
+
       const embed = new EmbedBuilder()
         .setTitle('Duel Forfeited')
-        .setDescription(`${loserName} forfeited.\n${winnerName} wins!`)
+        .setDescription(`${loserName} forfeited.\n${winnerName} wins!${extra}`)
         .setColor('#ff0000');
 
       if (message) return message.channel.send({ embeds: [embed] });

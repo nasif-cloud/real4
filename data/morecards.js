@@ -1370,7 +1370,7 @@ exports.moreCards = [
 		id: '0161',
 		pullable: true,
 		attribute: 'INT',
-		emoji: null,
+		emoji: '<:0161:1502049717352267898>',
 		title: 'Shooter Group Crew',
 		faculty: null,
 		rank: 'C',

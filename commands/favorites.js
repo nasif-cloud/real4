@@ -35,6 +35,12 @@ module.exports = {
         { name: 'Wishlist (gives +10% within rank)', value: wishLines, inline: false }
       );
 
+    // set author to the invoking user's avatar/username (consistent with other embeds)
+    const authorUser = message ? message.author : interaction.user;
+    if (authorUser) {
+      embed.setAuthor({ name: authorUser.username, iconURL: authorUser.displayAvatarURL() });
+    }
+
     if (message) return message.channel.send({ embeds: [embed] });
     return interaction.reply({ embeds: [embed] });
   }

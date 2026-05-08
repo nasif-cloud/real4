@@ -20,6 +20,7 @@ const PRICING = {
 let currentStock = [];
 let lastStockReset = Date.now();
 let lastPullReset = Date.now();
+let globalClient = null;
 
 
 // decrement stock count for crew name, return false if insufficient
@@ -100,9 +101,28 @@ async function resetPullCounter() {
   try {
     await User.updateMany({}, { pullsRemaining: PULL_LIMIT });
     console.log('Pulls reset');
+    // If a client is set and a reset notification channel is configured, post a message
+    try {
+      if (globalClient && fs.existsSync(PULL_FILE)) {
+        const pdata = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
+        if (pdata.resetsChannel) {
+          const ch = await globalClient.channels.fetch(pdata.resetsChannel).catch(() => null);
+          if (ch) {
+            const roleMention = '<@&1389619213492158464>';
+            ch.send(`${roleMention} Pulls have been reset! you can start pulling in command channels.`).catch(() => {});
+          }
+        }
+      }
+    } catch (err2) {
+      console.error('Error sending pull reset notification:', err2);
+    }
   } catch (err) {
     console.error('Error resetting user pull counts:', err);
   }
+}
+
+function setClient(c) {
+  globalClient = c;
 }
 
 function getNextStockResetDate() {
@@ -246,5 +266,6 @@ module.exports = {
   ensureStockUpToDate,
   resetStock,
   resetPullCounter,
+  setClient,
   decrementStock
 };

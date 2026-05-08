@@ -21,7 +21,9 @@ async function list({ message }) {
     .setColor(0xFF0000)
     .setDescription('Available prefix commands for the bot owner/developer')
     .addFields(
-      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, resettoken, card, pack, memerod, item\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
+      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, bounty, resettoken, card, pack, memerod, item\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
+      { name: 'op owner removecard <cardId> <@user>', value: 'Remove all copies of a card from a user', inline: false },
+      { name: 'op owner setresets <#channel>', value: 'Configure a channel to receive pull reset notifications', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
       { name: 'op owner setdrops <#channel> <value>', value: 'Enable card drops in a channel and set messages needed per drop (default 100)', inline: false },
       { name: 'op owner unsetdrops <#channel>', value: 'Disable card drops in the specified channel', inline: false },
@@ -175,6 +177,14 @@ async function execute({ message, args }) {
         return message.reply('Target user does not have an account.');
       }
 
+      // Give bounty amount directly
+      if (type === 'bounty') {
+        const amtParsed = parseInt(amountArg, 10);
+        if (isNaN(amtParsed)) return message.reply('Amount must be a number');
+        await User.findOneAndUpdate({ userId: targetId }, { $inc: { bounty: amtParsed } });
+        return message.reply(`Given ${amtParsed} bounty to <@${targetId}>`);
+      }
+
       if (type === 'beli' || type === 'gems') {
         const amtParsed = parseInt(amountArg, 10);
         if (isNaN(amtParsed)) return message.reply('Amount must be a number');
@@ -288,6 +298,27 @@ async function execute({ message, args }) {
     return message.reply(`Set level of ${cardId} to ${level} for <@${targetId}>`);
   }
 
+  if (sub === 'removecard') {
+    // syntax: op owner removecard <cardId> <@user>
+    const cardId = args[1];
+    const mention = args[2];
+    const targetId = parseMention(mention);
+    if (!cardId || !targetId) return message.reply('Usage: op owner removecard <cardId> <@user>');
+    const cardDef = getCardById(cardId);
+    if (!cardDef) return message.reply(`No card with id ${formatCardId(cardId)} exists`);
+    const target = await User.findOne({ userId: targetId });
+    if (!target) return message.reply('Target user does not have an account.');
+    const before = (target.ownedCards || []).length;
+    target.ownedCards = (target.ownedCards || []).filter(e => e.cardId !== cardDef.id);
+    target.team = (target.team || []).filter(t => t !== cardDef.id);
+    target.favoriteCards = (target.favoriteCards || []).filter(c => c !== cardDef.id);
+    target.wishlistCards = (target.wishlistCards || []).filter(c => c !== cardDef.id);
+    target.history = (target.history || []).filter(h => h !== cardDef.id);
+    await target.save();
+    const removed = before - (target.ownedCards.length || 0);
+    return message.reply(`Removed ${removed} copies of ${formatCardId(cardDef.id)} from <@${targetId}>`);
+  }
+
   if (sub === 'setdrops') {
     const channelMention = args[1];
     if (!channelMention) {
@@ -317,6 +348,32 @@ async function execute({ message, args }) {
       console.error('Error setting up drops:', err);
       return message.reply('Failed to set up drops. Make sure the bot can access that channel and that it is a text channel.');
     }
+  }
+
+  if (sub === 'setresets') {
+    // syntax: op owner setresets <#channel>
+    const channelMention = args[1];
+    if (!channelMention) return message.reply('Usage: op owner setresets <#channel>');
+    const channelMatch = channelMention.match(/<#(\d+)>/);
+    if (!channelMatch) return message.reply('Invalid channel format. Use: op owner setresets <#channel>');
+    const channelId = channelMatch[1];
+    const fs = require('fs');
+    const path = require('path');
+    const PULL_FILE = path.join(__dirname, '..', 'pull.json');
+    let data = {};
+    try {
+      if (fs.existsSync(PULL_FILE)) data = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
+    } catch (e) {
+      data = {};
+    }
+    data.resetsChannel = channelId;
+    try {
+      fs.writeFileSync(PULL_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+      console.error('Error writing pull.json for setresets:', err);
+      return message.reply('Failed to save reset channel. Check server logs.');
+    }
+    return message.reply(`Reset notifications will be sent to <#${channelId}>`);
   }
 
   if (sub === 'dropparty') {

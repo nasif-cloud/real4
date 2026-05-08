@@ -173,6 +173,45 @@ function applyPerfectBonus(session) {
   return 'Perfect run bonus: **1x** <:Bchest:1492559568738451567> **B Chest**.';
 }
 
+function clearTriviaTimeout(session) {
+  if (!session) return;
+  try {
+    if (session.timeout) {
+      clearTimeout(session.timeout);
+      session.timeout = null;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+async function startTriviaTimeout(session, interaction) {
+  if (!session || !interaction) return;
+  clearTriviaTimeout(session);
+  try {
+    const ownerId = session.userId;
+    const channel = interaction.channel;
+    session.timeout = setTimeout(async () => {
+      try {
+        const user = await User.findOne({ userId: ownerId });
+        if (user) await applySessionRewards(user, session);
+        activeTriviaSessions.delete(ownerId);
+        const timeoutEmbed = new EmbedBuilder()
+          .setColor('#ff7070')
+          .setTitle('Trivia Timed Out')
+          .setDescription('No response received for 30 seconds. Your session has ended and rewards earned so far have been granted.');
+        if (channel && typeof channel.send === 'function') {
+          try { await channel.send({ content: `<@${ownerId}>`, embeds: [timeoutEmbed] }); } catch (e) {}
+        }
+      } catch (e) {
+        console.error('Trivia timeout error', e);
+      }
+    }, 30000);
+  } catch (e) {
+    console.error('Failed to start trivia timeout', e);
+  }
+}
+
 module.exports = {
   name: 'trivia',
   description: 'Start a trivia quiz for rewards',
@@ -248,7 +287,9 @@ module.exports = {
 
     const questionEmbed = buildQuestionEmbed(questions[0], 0, questions.length);
     const answerRow = buildAnswerRow(userId, 0);
-    return interaction.update({ content: null, embeds: [questionEmbed], components: [answerRow] });
+    await interaction.update({ content: null, embeds: [questionEmbed], components: [answerRow] });
+    await startTriviaTimeout(session, interaction);
+    return;
   },
 
   async handleButton(interaction) {
@@ -261,6 +302,8 @@ module.exports = {
     if (!session) {
       return interaction.reply({ content: 'Your trivia session is no longer active.', ephemeral: true });
     }
+    // clear any pending question timeout since the user interacted
+    clearTriviaTimeout(session);
 
     if (action === 'trivia_answer') {
       if (session.pendingNext) {
@@ -315,7 +358,9 @@ module.exports = {
 
       session.currentIndex += 1;
       session.pendingNext = true;
-      return interaction.update({ embeds: [feedbackEmbed], components: [buildContinueRow(ownerId)] });
+      await interaction.update({ embeds: [feedbackEmbed], components: [buildContinueRow(ownerId)] });
+      await startTriviaTimeout(session, interaction);
+      return;
     }
 
     if (action === 'trivia_continue') {
@@ -332,7 +377,9 @@ module.exports = {
       session.pendingNext = false;
       const questionEmbed = buildQuestionEmbed(nextQuestion, session.currentIndex, session.questions.length);
       const answerRow = buildAnswerRow(ownerId, session.currentIndex);
-      return interaction.update({ embeds: [questionEmbed], components: [answerRow] });
+      await interaction.update({ embeds: [questionEmbed], components: [answerRow] });
+      await startTriviaTimeout(session, interaction);
+      return;
     }
 
     return interaction.reply({ content: 'Unknown trivia action.', ephemeral: true });

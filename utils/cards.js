@@ -567,13 +567,8 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo, user
     INT: '#9b59b6'
   };
   const rankColor = rankData[card.rank] && rankData[card.rank].color;
-  // Prefer rank color for UR cards; otherwise fall back to attribute color.
-  let color;
-  if (rankColor && card.rank === 'UR') {
-    color = rankColor;
-  } else {
-    color = attributeColors[card.attribute] || rankColor || '#2b2d31';
-  }
+  // Use attribute color first, then rank color, then a default.
+  let color = attributeColors[card.attribute] || rankColor || '#2b2d31';
   // Artifact pull embeds should always be white
   if (card && card.artifact) color = '#FFFFFF';
   // same emoji handling as buildCardEmbed: transform `<:name:id>` into a CDN URL
@@ -720,9 +715,8 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     // Info embeds for artifacts should be white
     color = '#ffffff';
   } else {
-    // Prefer rank color for UR cards, otherwise prefer attribute color.
-    if (rankColor && cardDef.rank === 'UR') color = rankColor;
-    else color = attributeColors[cardDef.attribute] || rankColor || '#2b2d31';
+    // Use attribute color first, then rank color, then a default.
+    color = attributeColors[cardDef.attribute] || rankColor || '#2b2d31';
   }
   let iconText = crewIcons[cardDef.faculty];
   let iconUrl = iconText;
@@ -746,6 +740,10 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   const cardStats = getCardFinalStats(cardDef, lvl, user);
   const scaled = cardStats.scaled;
   const boostEntries = cardStats.boostEntries || [];
+  // Whether to show the star icon for this card when rendering embeds.
+  // Show for favorited or wishlisted cards (keeps behavior consistent
+  // with `buildPullEmbed`).
+  const showStar = user && (Array.isArray(user.favoriteCards) && user.favoriteCards.includes(cardDef.id) || Array.isArray(user.wishlistCards) && user.wishlistCards.includes(cardDef.id));
 
   if (cardDef.ship) {
     const isActiveShip = user && user.activeShip === cardDef.id;

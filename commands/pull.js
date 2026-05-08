@@ -166,7 +166,10 @@ module.exports = {
           duplicateText = `+100 XP`;
         } else {
           // normal upgrade: add new version and remove lower ones
-          user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
+          user.ownedCards = user.ownedCards || [];
+          if (!user.ownedCards.some(e => e.cardId === card.id)) {
+            user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
+          }
           // Remove all lower versions of this character
           user.ownedCards = user.ownedCards.filter(e => {
             const eCard = getCardById(e.cardId);
@@ -178,8 +181,11 @@ module.exports = {
         }
       }
     } else {
-      // Don't own any version - add this one
-      user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
+      // Don't own any version - add this one (avoid accidental duplicates)
+      user.ownedCards = user.ownedCards || [];
+      if (!user.ownedCards.some(e => e.cardId === card.id)) {
+        user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
+      }
       if (!user.history.includes(card.id)) user.history.push(card.id);
     }
 

@@ -92,8 +92,14 @@ module.exports = {
     }
 
     // Sell card
+    // Prevent selling favorited cards
+    if (Array.isArray(user.favoriteCards) && user.favoriteCards.includes(card.id)) {
+      const reply = `You can't sell **${card.character}** because it's favorited.`;
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
     // Check if card is on team
-    if (card.artifact || card.ship) {
+    if (card.ship) {
       const reply = `You can't sell **${card.character}**.`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
@@ -109,6 +115,13 @@ module.exports = {
     const ownedEntry = user.ownedCards.find(e => e.cardId === card.id);
     if (!ownedEntry) {
       const reply = `You don't own that card.`;
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    // Prevent selling an artifact that is currently equipped
+    if (card.artifact && ownedEntry && ownedEntry.equippedTo) {
+      const reply = `You must unequip **${card.character}** before selling it.`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

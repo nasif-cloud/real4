@@ -55,8 +55,8 @@ async function main() {
   }
 
   // Initialize stock system
-  const { initStockSystem } = require('./src/stock');
-  initStockSystem();
+  const stockModule = require('./src/stock');
+  stockModule.initStockSystem();
 
   // Normalize old rod inventory entries to remove duplicate/outdated rods
   try {
@@ -74,7 +74,32 @@ async function main() {
 
   client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
+    // Log some operational counts
+    try {
+      console.log(`serving ${client.guilds.cache.size} guilds`);
+      // Count active players excluding those inactive for more than 14 days
+      try {
+        const users = await User.find({}, 'lastDaily lastIsailFail lastFishFail');
+        const cutoff = Date.now() - (14 * 24 * 60 * 60 * 1000);
+        let activeCount = 0;
+        for (const u of users) {
+          let last = 0;
+          if (u.lastDaily) last = Math.max(last, new Date(u.lastDaily).getTime());
+          if (u.lastIsailFail) last = Math.max(last, new Date(u.lastIsailFail).getTime());
+          if (u.lastFishFail) last = Math.max(last, new Date(u.lastFishFail).getTime());
+          if (u._id && typeof u._id.getTimestamp === 'function') last = Math.max(last, u._id.getTimestamp().getTime());
+          if (last >= cutoff) activeCount++;
+        }
+        console.log(`${activeCount} players (excluding inactive >2 weeks)`);
+      } catch (errCount) {
+        console.error('Error counting active users', errCount);
+      }
+    } catch (err) {
+      console.error('Error during startup logging', err);
+    }
     await dropsModule.initializeDrops(client); // Initialize with client reference and restore any saved drop channel
+    // let stock module know the client so it can post reset notifications
+    try { stockModule.setClient(client); } catch (e) {}
     // start a periodic checker for daily reminders (runs every minute)
     const { EmbedBuilder } = require('discord.js');
     setInterval(async () => {
