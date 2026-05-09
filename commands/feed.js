@@ -111,18 +111,21 @@ module.exports = {
       return interaction.reply({ content: reply, flags: 64 });
     }
 
-    if (!leveler) {
+    if (!leveler && !attributeMode) {
       const reply = `No leveler found.`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, flags: 64 });
     }
 
-    // Check if user has enough
-    const item = user.items.find(i => i.itemId === leveler.id);
-    if (!item || item.quantity < amount) {
-      const reply = `You don't have enough ${leveler.name}. You have ${item ? item.quantity : 0}.`;
-      if (message) return message.reply(reply);
-      return interaction.reply({ content: reply, flags: 64 });
+    // Check if user has enough (only for explicit leveler feed)
+    let item = null;
+    if (!attributeMode) {
+      item = user.items.find(i => i.itemId === leveler.id);
+      if (!item || item.quantity < amount) {
+        const reply = `You don't have enough ${leveler.name}. You have ${item ? item.quantity : 0}.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, flags: 64 });
+      }
     }
 
     // Find card
