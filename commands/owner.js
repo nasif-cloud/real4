@@ -376,6 +376,56 @@ async function execute({ message, args }) {
     return message.reply(`Reset notifications will be sent to <#${channelId}>`);
   }
 
+  if (sub === 'setsail') {
+    // syntax: op owner setsail <island> <stage> <@user>
+    const islandQuery = args[1];
+    const stageArg = args[2];
+    const mention = args[3];
+    if (!islandQuery || !stageArg || !mention) return message.reply('Usage: op owner setsail <island> <stage> <@user>');
+    const targetId = parseMention(mention);
+    if (!targetId) return message.reply('Invalid user mention.');
+    const sailStages = require('../data/sailStages');
+    const islandDef = sailStages.find(s => (s.id && s.id.toLowerCase() === islandQuery.toLowerCase()) || (s.name && s.name.toLowerCase() === islandQuery.toLowerCase()))
+      || sailStages.find(s => s.name && s.name.toLowerCase().includes(islandQuery.toLowerCase()));
+    if (!islandDef) return message.reply(`Island "${islandQuery}" not recognized.`);
+    const stage = parseInt(stageArg, 10);
+    if (isNaN(stage) || stage < 1) return message.reply('Stage must be a positive integer.');
+    const maxStage = Array.isArray(islandDef.stages) && islandDef.stages.length ? islandDef.stages.length : 3;
+    const capped = Math.min(stage, maxStage);
+    const target = await User.findOne({ userId: targetId });
+    if (!target) return message.reply('Target user does not have an account.');
+    target.storyProgress = target.storyProgress || {};
+    // mark completed stages up to the specified stage
+    target.storyProgress[islandDef.id] = [];
+    for (let i = 1; i <= capped; i++) target.storyProgress[islandDef.id].push(i);
+    if (typeof target.markModified === 'function') target.markModified('storyProgress');
+    await target.save();
+    return message.reply(`Set story progress for <@${targetId}>: ${islandDef.id} => stage ${capped}`);
+  }
+
+  if (sub === 'setcola') {
+    // syntax: op owner setcola <ship> <colaamount> <@user>
+    const shipQuery = args[1];
+    const colaArg = args[2];
+    const mention2 = args[3];
+    if (!shipQuery || !colaArg || !mention2) return message.reply('Usage: op owner setcola <ship> <colaamount> <@user>');
+    const targetId2 = parseMention(mention2);
+    if (!targetId2) return message.reply('Invalid user mention.');
+    const { getShipById, getCardById } = require('../utils/cards');
+    const shipDef = getShipById(shipQuery) || getCardById(shipQuery);
+    if (!shipDef || !shipDef.ship) return message.reply(`Ship "${shipQuery}" not recognized.`);
+    const cola = parseInt(colaArg, 10);
+    if (isNaN(cola) || cola < 0) return message.reply('Cola amount must be a non-negative integer.');
+    const tgt = await User.findOne({ userId: targetId2 });
+    if (!tgt) return message.reply('Target user does not have an account.');
+    tgt.ships = tgt.ships || {};
+    const defaultMax = shipDef.maxCola !== undefined ? shipDef.maxCola : (shipDef.cola !== undefined ? shipDef.cola : cola);
+    tgt.ships[shipDef.id] = { cola: cola, maxCola: defaultMax };
+    if (typeof tgt.markModified === 'function') tgt.markModified('ships');
+    await tgt.save();
+    return message.reply(`Set cola for <@${targetId2}> on ship ${shipDef.id} => ${cola}`);
+  }
+
   if (sub === 'dropparty') {
     const channelMention = args[1];
     const amountArg = args[2];
@@ -482,7 +532,15 @@ async function execute({ message, args }) {
 
     try {
       const newTime = Date.now() - milliseconds;
-      fs.writeFileSync(PULL_FILE, JSON.stringify({ lastReset: newTime }, null, 2));
+      // Preserve any existing pull.json fields (e.g., resetsChannel)
+      try {
+        let pdata = {};
+        if (fs.existsSync(PULL_FILE)) pdata = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
+        pdata.lastReset = newTime;
+        fs.writeFileSync(PULL_FILE, JSON.stringify(pdata, null, 2));
+      } catch (e) {
+        fs.writeFileSync(PULL_FILE, JSON.stringify({ lastReset: newTime }, null, 2));
+      }
       
       // Reset pulls via direct function call
       const User = require('../models/User');

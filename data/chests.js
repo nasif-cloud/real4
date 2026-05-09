@@ -24,9 +24,9 @@ const chests = [
     emoji: CHEST_EMOJIS.b_chest,
     price: 930,
     contents: {
-      beli: [50, 100],
+      beli: [30, 150],
       itemRank: 'B',
-      resetTokens: { chance: 0.5, count: [1, 1] }
+      resetTokens: { chance: 0.3, count: [1, 1] }
     }
   },
   {
@@ -36,9 +36,9 @@ const chests = [
     emoji: CHEST_EMOJIS.a_chest,
     price: 3400,
     contents: {
-      beli: [100, 300],
+      beli: [75, 250],
       itemRank: 'A',
-      resetTokens: { chance: 1, count: [1, 2] }
+      resetTokens: { chance: 0.5, count: [1, 1] }
     }
   }
 ];

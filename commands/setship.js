@@ -24,6 +24,20 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    // Refresh ship balance before allowing a switch. Prevent switching if
+    // there is unclaimed money in the currently active ship.
+    try {
+      updateShipBalance(user);
+      if (typeof user.shipBalance === 'number' && user.shipBalance > 0) {
+        const reply = 'Claim the beli from your current ship before switching ships!';
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+    } catch (err) {
+      // if update fails, continue cautiously
+      console.error('Failed to refresh ship balance before switching:', err);
+    }
+
     const ship = await findBestOwnedShip(userId, shipName);
     if (!ship || !ship.ship) {
       const reply = `No ship found matching **${shipName}**.`;

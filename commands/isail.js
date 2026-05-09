@@ -497,7 +497,13 @@ function buildEmbed(state, user, discordUser) {
   const aliveMarines = state.marines.filter(m => m.currentHP > 0);
   if (aliveMarines.length > 0) {
     for (const m of aliveMarines) {
-      const statusEmojis = (m.status || []).map(st => {
+      const statusList = Array.isArray(m.status) ? m.status : [];
+      const uniqueStatuses = [];
+      for (const st of statusList) {
+        if (!uniqueStatuses.find(u => u.type === st.type)) uniqueStatuses.push(st);
+        if (uniqueStatuses.length >= 3) break;
+      }
+      const statusEmojis = uniqueStatuses.map(st => {
         const emoji = STATUS_EMOJIS[st.type] || '';
         return st.stacks && st.stacks > 1 ? `${emoji}x${st.stacks}` : emoji;
       }).join(' ');
@@ -516,7 +522,13 @@ function buildEmbed(state, user, discordUser) {
   const aliveCards = state.cards.filter(c => c.currentHP > 0);
   if (aliveCards.length > 0) {
     for (const c of aliveCards) {
-      const statusEmojis = (c.status || []).map(st => {
+      const statusList = Array.isArray(c.status) ? c.status : [];
+      const uniqueStatuses = [];
+      for (const st of statusList) {
+        if (!uniqueStatuses.find(u => u.type === st.type)) uniqueStatuses.push(st);
+        if (uniqueStatuses.length >= 3) break;
+      }
+      const statusEmojis = uniqueStatuses.map(st => {
         const emoji = STATUS_EMOJIS[st.type] || '';
         return st.stacks && st.stacks > 1 ? `${emoji}x${st.stacks}` : emoji;
       }).join(' ');

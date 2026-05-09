@@ -22,7 +22,6 @@ const COMMAND_CATEGORIES = {
       { name: 'open <pack>', desc: 'Open a card pack to get crews' },
       { name: 'equip <artifact> <card>', desc: 'Equip an artifact to a card' },
       { name: 'unequip <artifact>', desc: 'Unequip an artifact from its card' },
-      { name: 'bulkfeed <leveler>, <leveler>, etc..', desc: 'Bulk feed items to multiple cards' },
       { name: 'badges', desc: 'View or equip badges for your profile' },
       { name: 'removebadge', desc: 'Remove a badge from your profile' },
       { name: 'reset', desc: 'Reset pulls using a reset token' }

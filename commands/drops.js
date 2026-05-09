@@ -11,7 +11,7 @@ const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
 const activeDrops = new Map();
 const messageCounts = new Map(); // channelId -> current message count towards next drop
 const channelThresholds = new Map(); // channelId -> messages required for a drop
-const processingDropClaims = new Set(); // dropId -> in-progress claim
+const processingDropClaims = new Map(); // dropId -> processing userId (claim in-progress)
 let messageListener = null;
 
 // Global decay timer (reduces message count each minute)
@@ -373,29 +373,50 @@ function stopDropTimer(channelId = null) {
  * Handle drop claim button
  */
 async function handleDropClaim(interaction, dropId) {
+  // If another user is currently processing this drop, tell the caller who
+  // is claiming it (treat in-progress as effectively claimed for UX clarity).
   if (processingDropClaims.has(dropId)) {
-    return interaction.reply({ content: 'This drop is being claimed. Try again shortly.', ephemeral: true });
+    const claimerId = processingDropClaims.get(dropId);
+    let claimerName = 'Someone';
+    try {
+      if (dropsClient && dropsClient.users) {
+        const u = await dropsClient.users.fetch(claimerId);
+        if (u && u.username) claimerName = u.username;
+      }
+    } catch (e) {}
+    return interaction.reply({ content: `**${claimerName}** already claimed this drop.`, ephemeral: true });
   }
-  processingDropClaims.add(dropId);
+
+  // Lock this drop for processing by this user
+  processingDropClaims.set(dropId, interaction.user.id);
 
   const drop = activeDrops.get(dropId);
 
   if (!drop) {
     processingDropClaims.delete(dropId);
-    return interaction.reply({
-      content: 'This drop has expired or was already claimed.',
-      ephemeral: true
-    });
+    return interaction.reply({ content: 'This drop has expired or was already claimed.', ephemeral: true });
   }
 
   // Check if drop has expired
   if (Date.now() > drop.expiresAt) {
     activeDrops.delete(dropId);
-    return interaction.reply({
-      content: 'This drop has expired.',
-      ephemeral: true
-    });
+    processingDropClaims.delete(dropId);
+    return interaction.reply({ content: 'This drop has expired.', ephemeral: true });
   }
+
+  // If another earlier claim already marked this drop, show friendly message
+  if (drop.claimedBy && drop.claimedBy !== interaction.user.id) {
+    let claimerName = 'Someone';
+    try { if (dropsClient && dropsClient.users) { const u = await dropsClient.users.fetch(drop.claimedBy); if (u && u.username) claimerName = u.username; } } catch (e) {}
+    processingDropClaims.delete(dropId);
+    return interaction.reply({ content: `**${claimerName}** already claimed this drop.`, ephemeral: true });
+  }
+
+  // Mark as claimed by this user immediately to avoid races
+  try {
+    drop.claimedBy = interaction.user.id;
+    activeDrops.set(dropId, drop);
+  } catch (e) {}
 
   try {
     const user = await User.findOne({ userId: interaction.user.id });

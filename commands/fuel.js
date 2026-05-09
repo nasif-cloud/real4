@@ -89,6 +89,29 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
+    // Enforce ownership and active-ship restriction:
+    // - If the user has an active ship they own, only allow fueling that active ship.
+    // - Otherwise ensure the selected ship is owned by the user.
+    const ownsActive = user.activeShip && (user.ownedCards || []).some(e => e.cardId === user.activeShip);
+    if (ownsActive) {
+      // Only allow fueling the active ship
+      if (shipDef.id !== user.activeShip) {
+        const activeDef = getShipById(user.activeShip) || shipDef;
+        const reply = `You can only fuel your active ship (${activeDef.character}). Use \`op setship\` to change your active ship.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+      // ensure we are using the canonical active shipDef
+      shipDef = getShipById(user.activeShip) || shipDef;
+    } else {
+      const ownsShip = (user.ownedCards || []).some(e => e.cardId === shipDef.id);
+      if (!ownsShip) {
+        const reply = `You don't own **${shipDef.character}**.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, ephemeral: true });
+      }
+    }
+
     // Check cola item in inventory
     user.items = user.items || [];
     const colaEntry = user.items.find(it => it.itemId === 'cola');

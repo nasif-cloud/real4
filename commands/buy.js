@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { EmbedBuilder } = require('discord.js');
-const { getCurrentStock, getPricing, decrementStock } = require('../src/stock');
+const { getCurrentStock, getPricing } = require('../src/stock');
 const crews = require('../data/crews');
 const { rods } = require('../data/rods');
 const { chests } = require('../data/chests');
@@ -173,17 +173,24 @@ module.exports = {
         if (message) return message.reply(reply);
         return interaction.reply({ content: reply, ephemeral: true });
       }
-      // check global stock
-      const { decrementStock } = require('../src/stock');
-      if (!decrementStock(item.crew.name, amount)) {
+      // per-user stock: initialize local copy on first purchase and decrement only for this user
+      user.localStock = user.localStock || {};
+      if (typeof user.localStock[item.crew.name] === 'undefined') {
+        const globalStock = getCurrentStock();
+        const match = globalStock.find(s => s.name === item.crew.name);
+        user.localStock[item.crew.name] = match ? (match.quantity || 0) : 0;
+      }
+      if (user.localStock[item.crew.name] < amount) {
         const reply = `Not enough stock remaining for ${item.crew.name} packs.`;
         if (message) return message.reply(reply);
         return interaction.reply({ content: reply, ephemeral: true });
       }
+      user.localStock[item.crew.name] -= amount;
       // deduct user gems and add packs
       user.gems -= totalCost;
       user.packInventory[item.crew.name] = (user.packInventory[item.crew.name] || 0) + amount;
       user.markModified('packInventory');
+      user.markModified('localStock');
     } else if (item.type === 'rod') {
       // Rod purchase: Rods cost Beli and add to inventory
       if (amount !== 1) {

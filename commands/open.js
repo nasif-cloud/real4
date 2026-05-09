@@ -122,48 +122,22 @@ module.exports = {
           rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] = (rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] || 0) + resetCount;
         }
 
-        // C-Chest special 80% chance extra drop: Cola, Beli(30), or Random Shard
-        if (chest.id === 'c_chest' && Math.random() < 0.80) {
-          const choices = ['cola', 'beli30', 'shard'];
-          const pick = choices[Math.floor(Math.random() * choices.length)];
-          if (pick === 'cola') {
+        // Independent extra rolls per chest type (new probabilities)
+        if (chest.id === 'c_chest') {
+          // 30%: 1-2 Cola
+          if (Math.random() < 0.30) {
+            const colaCount = randomInt(1, 2);
             user.items = user.items || [];
             const it = user.items.find(itm => itm.itemId === 'cola');
-            if (it) it.quantity = (it.quantity || 0) + 1;
-            else user.items.push({ itemId: 'cola', quantity: 1 });
-            rewardTotals['Cola'] = (rewardTotals['Cola'] || 0) + 1;
-          } else if (pick === 'beli30') {
-            user.balance = (user.balance || 0) + 30;
-            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + 30;
-          } else if (pick === 'shard') {
-            const colors = Object.keys(SHARD_EMOJIS);
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const shardId = `${color.toLowerCase()}_shard`;
-            user.items = user.items || [];
-            const it = user.items.find(itm => itm.itemId === shardId);
-            if (it) it.quantity = (it.quantity || 0) + 1;
-            else user.items.push({ itemId: shardId, quantity: 1 });
-            rewardTotals[`${color} Shard`] = (rewardTotals[`${color} Shard`] || 0) + 1;
+            if (it) it.quantity = (it.quantity || 0) + colaCount;
+            else user.items.push({ itemId: 'cola', quantity: colaCount });
+            rewardTotals['Cola'] = (rewardTotals['Cola'] || 0) + colaCount;
           }
-        }
-
-        // B-Chest special 80% chance extra drop: one of several goodies
-        if (chest.id === 'b_chest' && Math.random() < 0.80) {
-          const choices = ['beli50to100', 'cola2', 'shards2', 'gem', 'reset1'];
-          const pick = choices[Math.floor(Math.random() * choices.length)];
-          if (pick === 'beli50to100') {
-            const amt = randomInt(50, 100);
-            user.balance = (user.balance || 0) + amt;
-            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + amt;
-          } else if (pick === 'cola2') {
-            user.items = user.items || [];
-            const it = user.items.find(itm => itm.itemId === 'cola');
-            if (it) it.quantity = (it.quantity || 0) + 2;
-            else user.items.push({ itemId: 'cola', quantity: 2 });
-            rewardTotals['Cola'] = (rewardTotals['Cola'] || 0) + 2;
-          } else if (pick === 'shards2') {
+          // 30%: 1-2 Shards
+          if (Math.random() < 0.30) {
+            const shardCount = randomInt(1, 2);
             const colors = Object.keys(SHARD_EMOJIS);
-            for (let s = 0; s < 2; s += 1) {
+            for (let s = 0; s < shardCount; s += 1) {
               const color = colors[Math.floor(Math.random() * colors.length)];
               const shardId = `${color.toLowerCase()}_shard`;
               user.items = user.items || [];
@@ -172,98 +146,83 @@ module.exports = {
               else user.items.push({ itemId: shardId, quantity: 1 });
               rewardTotals[`${color} Shard`] = (rewardTotals[`${color} Shard`] || 0) + 1;
             }
-          } else if (pick === 'gem') {
-            user.gems = (user.gems || 0) + 1;
-            rewardTotals['Gems'] = (rewardTotals['Gems'] || 0) + 1;
-          } else if (pick === 'reset1') {
-            user.resetTokens = (user.resetTokens || 0) + 1;
-            rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] = (rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] || 0) + 1;
+          }
+          // 30%: +30 Beli
+          if (Math.random() < 0.30) {
+            user.balance = (user.balance || 0) + 30;
+            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + 30;
           }
         }
 
-        // A-Chest special 50% chance extra drop: higher tier goodies including forced artifact/ship/pack
-        if (chest.id === 'a_chest' && Math.random() < 0.50) {
-          const choices = ['beli100to300', 'gem', 'reset1', 'godtoken', 'artifact_force', 'ship_force', 'pack_force'];
-          const pick = choices[Math.floor(Math.random() * choices.length)];
-          if (pick === 'beli100to300') {
-            const amt = randomInt(100, 300);
-            user.balance = (user.balance || 0) + amt;
-            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + amt;
-          } else if (pick === 'gem') {
-            user.gems = (user.gems || 0) + 1;
-            rewardTotals['Gems'] = (rewardTotals['Gems'] || 0) + 1;
-          } else if (pick === 'reset1') {
-            user.resetTokens = (user.resetTokens || 0) + 1;
-            rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] = (rewardTotals[`<:resettoken:1490738386540171445> Reset Token`] || 0) + 1;
-          } else if (pick === 'godtoken') {
+        if (chest.id === 'b_chest') {
+          // 40%: 1-3 Cola
+          if (Math.random() < 0.40) {
+            const colaCount = randomInt(1, 3);
+            user.items = user.items || [];
+            const it = user.items.find(itm => itm.itemId === 'cola');
+            if (it) it.quantity = (it.quantity || 0) + colaCount;
+            else user.items.push({ itemId: 'cola', quantity: colaCount });
+            rewardTotals['Cola'] = (rewardTotals['Cola'] || 0) + colaCount;
+          }
+          // 40%: 1-3 Shards
+          if (Math.random() < 0.40) {
+            const shardCount = randomInt(1, 3);
+            const colors = Object.keys(SHARD_EMOJIS);
+            for (let s = 0; s < shardCount; s += 1) {
+              const color = colors[Math.floor(Math.random() * colors.length)];
+              const shardId = `${color.toLowerCase()}_shard`;
+              user.items = user.items || [];
+              const it = user.items.find(itm => itm.itemId === shardId);
+              if (it) it.quantity = (it.quantity || 0) + 1;
+              else user.items.push({ itemId: shardId, quantity: 1 });
+              rewardTotals[`${color} Shard`] = (rewardTotals[`${color} Shard`] || 0) + 1;
+            }
+          }
+          // 40%: +30 Beli
+          if (Math.random() < 0.40) {
+            user.balance = (user.balance || 0) + 30;
+            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + 30;
+          }
+          // Reset tokens are handled by contents.resetTokens (configured in data/chests)
+        }
+
+        if (chest.id === 'a_chest') {
+          // 50%: 2-3 Cola
+          if (Math.random() < 0.50) {
+            const colaCount = randomInt(2, 3);
+            user.items = user.items || [];
+            const it = user.items.find(itm => itm.itemId === 'cola');
+            if (it) it.quantity = (it.quantity || 0) + colaCount;
+            else user.items.push({ itemId: 'cola', quantity: colaCount });
+            rewardTotals['Cola'] = (rewardTotals['Cola'] || 0) + colaCount;
+          }
+          // 50%: 2-3 Shards
+          if (Math.random() < 0.50) {
+            const shardCount = randomInt(2, 3);
+            const colors = Object.keys(SHARD_EMOJIS);
+            for (let s = 0; s < shardCount; s += 1) {
+              const color = colors[Math.floor(Math.random() * colors.length)];
+              const shardId = `${color.toLowerCase()}_shard`;
+              user.items = user.items || [];
+              const it = user.items.find(itm => itm.itemId === shardId);
+              if (it) it.quantity = (it.quantity || 0) + 1;
+              else user.items.push({ itemId: shardId, quantity: 1 });
+              rewardTotals[`${color} Shard`] = (rewardTotals[`${color} Shard`] || 0) + 1;
+            }
+          }
+          // 50%: +30 Beli
+          if (Math.random() < 0.50) {
+            user.balance = (user.balance || 0) + 30;
+            rewardTotals['Beli'] = (rewardTotals['Beli'] || 0) + 30;
+          }
+          // Reset tokens handled above via contents.resetTokens (configured in data/chests)
+          // 30%: God Token
+          if (Math.random() < 0.30) {
             user.items = user.items || [];
             const g = user.items.find(itm => itm.itemId === 'god_token');
             if (g) g.quantity = (g.quantity || 0) + 1;
             else user.items.push({ itemId: 'god_token', quantity: 1 });
             rewardTotals[`${GOD_EMOJI} God Token`] = (rewardTotals[`${GOD_EMOJI} God Token`] || 0) + 1;
-          } else if (pick === 'artifact_force') {
-            // pick a random artifact globally
-            const artifactPool = cards.filter(c => c.artifact && c.pullable);
-            const card = artifactPool.length ? artifactPool[Math.floor(Math.random() * artifactPool.length)] : null;
-            if (card) {
-              // handle duplicate similar to pack logic
-              const allVersions = getAllCardVersions(card);
-              let bestOwnedEntry = null;
-              let bestOwnedId = null;
-              for (const versionId of allVersions) {
-                const entry = user.ownedCards.find(e => e.cardId === versionId);
-                if (entry) {
-                  bestOwnedEntry = entry;
-                  bestOwnedId = versionId;
-                }
-              }
-              if (bestOwnedEntry && bestOwnedId) {
-                // duplicate -> give XP
-                bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
-                const gained = Math.floor(bestOwnedEntry.xp / 100);
-                if (gained > 0) {
-                  bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
-                  bestOwnedEntry.xp = bestOwnedEntry.xp % 100;
-                }
-                rewardTotals[`${card.character || card.id} (duplicate)`] = (rewardTotals[`${card.character || card.id} (duplicate)`] || 0) + 1;
-              } else {
-                user.ownedCards = user.ownedCards || [];
-                user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
-                rewardTotals[`${card.character || card.id}`] = (rewardTotals[`${card.character || card.id}`] || 0) + 1;
-              }
-            }
-          } else if (pick === 'ship_force') {
-            const shipPool = cards.filter(c => c.ship && c.pullable);
-            const card = shipPool.length ? shipPool[Math.floor(Math.random() * shipPool.length)] : null;
-            if (card) {
-              const allVersions = getAllCardVersions(card);
-              let bestOwnedEntry = null;
-              let bestOwnedId = null;
-              for (const versionId of allVersions) {
-                const entry = user.ownedCards.find(e => e.cardId === versionId);
-                if (entry) {
-                  bestOwnedEntry = entry;
-                  bestOwnedId = versionId;
-                }
-              }
-              if (bestOwnedEntry && bestOwnedId) {
-                rewardTotals[`${card.character || card.id} (duplicate ship)`] = (rewardTotals[`${card.character || card.id} (duplicate ship)`] || 0) + 1;
-              } else {
-                user.ownedCards = user.ownedCards || [];
-                user.ownedCards.push({ cardId: card.id, level: 1, xp: 0 });
-                rewardTotals[`${card.character || card.id}`] = (rewardTotals[`${card.character || card.id}`] || 0) + 1;
-              }
-            }
-          } else if (pick === 'pack_force') {
-            // give a random pack (crew)
-            const crew = crews[Math.floor(Math.random() * crews.length)];
-            if (crew) {
-              user.packInventory = user.packInventory || {};
-              user.packInventory[crew.name] = (user.packInventory[crew.name] || 0) + 1;
-              user.markModified('packInventory');
-              const key = `${crew.packEmoji || ''} ${crew.name}`.trim();
-              rewardTotals[key] = (rewardTotals[key] || 0) + 1;
-            }
           }
         }
       }
@@ -274,6 +233,7 @@ module.exports = {
         if (key === 'Beli') return `<:beri:1490738445319016651> ${value} Beli`;
         if (key === 'Gems') return `<:gem:1490741488081043577> ${value}x gem${value > 1 ? 's' : ''}`;
         if (key === 'Cola') return `${COLA_EMOJI} ${value}x Cola`;
+        if (key && key.includes('Reset Token')) return `<:resettoken:1490738386540171445> ${value}x Reset Token`;
         // color shard lines like 'Red Shard'
         if (key && key.endsWith('Shard')) {
           const color = key.split(' ')[0];

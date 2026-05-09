@@ -208,7 +208,7 @@ const triviaQuestions = {
         C: 'Reindeer',
         D: 'Cat'
       },
-      answer: 'B'
+      answer: 'C'
     },
     {
       question: 'What is sanji\'s dream?',

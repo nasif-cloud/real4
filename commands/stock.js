@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, AttachmentBuilder } = require('discord.js');
 const { createCanvas, loadImage } = require('@napi-rs/canvas');
-const { getCurrentStock, getStockCountdownString, getPricing, decrementStock, ensureStockUpToDate } = require('../src/stock');
+const { getCurrentStock, getStockCountdownString, getPricing, ensureStockUpToDate, getNextStockResetDate } = require('../src/stock');
 const User = require('../models/User');
 
 const RANK_COLORS = {
@@ -120,7 +120,6 @@ async function createStockImage(stock) {
   return canvas.toBuffer('image/png');
 }
 
-const { getNextStockResetDate } = require('../src/stock');
 function getStockResetTimestamp() {
   return getNextStockResetDate();
 }
@@ -130,7 +129,22 @@ module.exports = {
   description: 'View current pack stock',
   async execute({ message, interaction }) {
     ensureStockUpToDate();
-    const stock = getCurrentStock().slice(0, 3);
+    const globalStock = getCurrentStock().slice(0, 3);
+    let stock = globalStock;
+    // show per-user local stock when possible (do not decrement global stock on buy)
+    let user = null;
+    try {
+      user = await User.findOne({ userId: message ? message.author.id : interaction.user.id });
+    } catch (err) {
+      user = null;
+    }
+    if (user && user.localStock) {
+      stock = globalStock.map(p => {
+        const qty = typeof user.localStock[p.name] !== 'undefined' ? user.localStock[p.name] : p.quantity;
+        return { ...p, quantity: qty };
+      });
+    }
+
     if (!stock.length) {
       const reply = 'No stock is available right now.';
       if (message) return message.channel.send(reply);
@@ -154,13 +168,13 @@ module.exports = {
 
   async handleButton(interaction, buttonIndex) {
     ensureStockUpToDate();
-    const stock = getCurrentStock().slice(0, 3);
+    const globalStock = getCurrentStock().slice(0, 3);
     const index = Number(buttonIndex);
-    if (Number.isNaN(index) || index < 0 || index >= stock.length) {
+    if (Number.isNaN(index) || index < 0 || index >= globalStock.length) {
       return interaction.reply({ content: 'Invalid pack selection.', ephemeral: true });
     }
 
-    const pack = stock[index];
+    const pack = globalStock[index];
     if (pack.quantity <= 0) {
       return interaction.reply({ content: 'That pack is sold out.', ephemeral: true });
     }
@@ -175,17 +189,30 @@ module.exports = {
       return interaction.reply({ content: `You need **${price}** Gems to buy ${pack.icon} **${pack.name}**.`, ephemeral: true });
     }
 
-    if (!decrementStock(pack.name, 1)) {
+    // Per-user stock: initialize local stock on first interaction and decrement only for this user
+    user.localStock = user.localStock || {};
+    if (typeof user.localStock[pack.name] === 'undefined') {
+      const match = globalStock.find(s => s.name === pack.name);
+      user.localStock[pack.name] = match ? (match.quantity || 0) : (pack.quantity || 0);
+    }
+    if (user.localStock[pack.name] < 1) {
       return interaction.reply({ content: `Not enough stock remaining for ${pack.name} packs.`, ephemeral: true });
     }
 
+    user.localStock[pack.name] -= 1;
     user.gems -= price;
     user.packInventory = user.packInventory || {};
     user.packInventory[pack.name] = (user.packInventory[pack.name] || 0) + 1;
     user.markModified('packInventory');
+    user.markModified('localStock');
     await user.save();
 
-    const updatedStock = getCurrentStock().slice(0, 3);
+    const updatedGlobal = getCurrentStock().slice(0, 3);
+    const updatedStock = (user && user.localStock) ? updatedGlobal.map(p => {
+      const qty = typeof user.localStock[p.name] !== 'undefined' ? user.localStock[p.name] : p.quantity;
+      return { ...p, quantity: qty };
+    }) : updatedGlobal;
+
     const countdown = getStockCountdownString();
     const resetTimestamp = getStockResetTimestamp();
     const imageBuffer = await createStockImage(updatedStock);

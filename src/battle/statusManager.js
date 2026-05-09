@@ -16,22 +16,26 @@ function randomInt(min, max) {
 function addStatus(entity, type, duration, data = {}) {
   if (!entity) return;
   if (!entity.status) entity.status = [];
-  
+  // Cap the number of distinct status types shown/managed per entity
+  const MAX_STATUS_TYPES = 3;
+
   // Check if this status type already exists
-  const existingStatus = entity.status.find(st => st.type === type);
-  
+  const existingStatus = entity.status.find(st => st && st.type === type);
+
   if (existingStatus) {
     // Stack up to 3 of the same status effect
     if (!existingStatus.stacks) existingStatus.stacks = 1;
-    if (existingStatus.stacks < 3) {
-      existingStatus.stacks += 1;
-      // Also update the duration to the new one
-      existingStatus.remaining = duration;
-      // Update data fields too
-      Object.assign(existingStatus, { ...data, stacks: existingStatus.stacks });
-    }
+    if (existingStatus.stacks < 3) existingStatus.stacks += 1;
+    // Update remaining/duration and merge provided data
+    existingStatus.remaining = duration;
+    Object.assign(existingStatus, { ...data, stacks: existingStatus.stacks });
   } else {
-    // New status effect
+    // If we're at capacity for distinct status types, drop the oldest one
+    // so the most recent statuses are kept visible/active.
+    if (entity.status.length >= MAX_STATUS_TYPES) {
+      entity.status.shift();
+    }
+    // Add the new status
     entity.status.push({ type, remaining: duration, stacks: 1, ...data });
   }
 }

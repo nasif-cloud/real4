@@ -111,12 +111,24 @@ module.exports = {
           }
         }
         if (bountyGain > 0) {
-          winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
-          try {
-            const { checkAndAwardAll } = require('../utils/achievements');
-            await checkAndAwardAll(winnerUser, message ? message.client : interaction.client, { event: 'bounty_gain', amount: bountyGain });
-          } catch (err) {
-            console.error('Achievement check after bounty gain failed', err);
+          const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
+          if (winnerAllowed) {
+            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+            try {
+              const { checkAndAwardAll } = require('../utils/achievements');
+              await checkAndAwardAll(winnerUser, message ? message.client : interaction.client, { event: 'bounty_gain', amount: bountyGain });
+            } catch (err) {
+              console.error('Achievement check after bounty gain failed', err);
+            }
+            // Deduct gained bounty from the loser
+            try {
+              if (loserUser) {
+                loserUser.bounty = Math.max(0, (loserUser.bounty || 100) - bountyGain);
+                await loserUser.save();
+              }
+            } catch (err) {
+              console.error('Failed to deduct bounty from loser after forfeit:', err);
+            }
           }
         }
 
@@ -124,20 +136,32 @@ module.exports = {
         if (state.isBountyDuel && winnerId === state.bountyHunter) {
           const targetBounty = loserUser.bounty || 100;
           bountyClaimed = targetBounty;
-          // transfer target bounty to hunter's bounty total
-          winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
-          // proportional beli reward (2x advertised)
-          const baseBeli = Math.ceil(targetBounty / 100000);
-          beliGain = baseBeli * 2;
-          winnerUser.balance = (winnerUser.balance || 0) + beliGain;
-          winnerUser.activeBountyTarget = null;
-          winnerUser.lastBountyTarget = loserId;
-          winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
-          try {
-            const { checkAndAwardAll } = require('../utils/achievements');
-            await checkAndAwardAll(winnerUser, message ? message.client : interaction.client, { event: 'bounty_capture', amount: bountyClaimed });
-          } catch (err) {
-            console.error('Achievement check after bounty capture failed', err);
+          const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
+          if (winnerAllowed) {
+            // transfer target bounty to hunter's bounty total
+            winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
+            // proportional beli reward (2x advertised)
+            const baseBeli = Math.ceil(targetBounty / 100000);
+            beliGain = baseBeli * 2;
+            winnerUser.balance = (winnerUser.balance || 0) + beliGain;
+            winnerUser.activeBountyTarget = null;
+            winnerUser.lastBountyTarget = loserId;
+            winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
+            // Remove the claimed bounty from the loser (reset to baseline)
+            try {
+              if (loserUser) {
+                loserUser.bounty = 100;
+                await loserUser.save();
+              }
+            } catch (err) {
+              console.error('Failed to reset loser bounty after forfeit capture:', err);
+            }
+            try {
+              const { checkAndAwardAll } = require('../utils/achievements');
+              await checkAndAwardAll(winnerUser, message ? message.client : interaction.client, { event: 'bounty_capture', amount: bountyClaimed });
+            } catch (err) {
+              console.error('Achievement check after bounty capture failed', err);
+            }
           }
         } else if (state.isBountyDuel && loserId === state.bountyHunter) {
           // Hunter lost, reset their cooldown but keep target

@@ -84,7 +84,15 @@ function loadPullReset() {
 
 function savePullReset() {
   try {
-    fs.writeFileSync(PULL_FILE, JSON.stringify({ lastReset: lastPullReset }, null, 2));
+    // Preserve any existing fields (e.g., configured resetsChannel)
+    let data = {};
+    try {
+      if (fs.existsSync(PULL_FILE)) data = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
+    } catch (e) {
+      data = {};
+    }
+    data.lastReset = lastPullReset;
+    fs.writeFileSync(PULL_FILE, JSON.stringify(data, null, 2));
   } catch (err) {
     console.error('Error saving pull reset:', err);
   }
@@ -187,7 +195,8 @@ function getStockCountdownString() {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  return `${hours}h ${minutes}m ${seconds}s`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  return `${minutes}m ${seconds}s`;
 }
 
 function ensureStockUpToDate() {
@@ -202,14 +211,10 @@ function ensureStockUpToDate() {
 function getPullCountdownString() {
   const ms = getTimeUntilNextPullReset();
   const totalSeconds = Math.ceil(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  let out = '';
-  if (minutes > 0) out += `${minutes} min`;
-  if (minutes > 0 && seconds > 0) out += ' ';
-  if (seconds > 0) out += `${seconds} sec`;
-  if (!out) out = '0 sec';
-  return out;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 function initStockSystem() {

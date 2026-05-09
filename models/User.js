@@ -49,6 +49,8 @@ const UserSchema = new Schema({
   storyCompletions: { type: Object, default: {} },
   // pack inventory for global stock system
   packInventory: { type: Object, default: {} },
+  // per-user local stock for stock purchases (initialized from global stock on first purchase/view)
+  localStock: { type: Object, default: {} },
   // daily rewards
   lastDaily: { type: Date, default: null },
   dailyStreak: { type: Number, default: 0 },

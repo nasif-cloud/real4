@@ -49,36 +49,53 @@ module.exports = {
   async execute({ message, interaction, args }) {
     let leveler, cardQuery, amount = 1;
     const userId = message ? message.author.id : interaction.user.id;
-    
+
+    // Detect attribute / "all" mode (e.g., `op feed STR luffy` or `op feed all luffy`)
+    const ATTRS = new Set(['str','dex','qck','psy','int','all']);
+    let attributeMode = false;
+    let attributeQuery = null;
+
     if (message) {
       if (args.length < 2) {
-        return message.reply('Usage: `op feed <leveler> <card> [amount]`');
+        return message.reply('Usage: `op feed <leveler|STR|all> <card> [amount]`');
       }
-      
-      // Find leveler from multi-word args
-      const result = findLevelerFromArgs(args);
-      if (!result) {
-        return message.reply('No leveler found matching those keywords.');
-      }
-      leveler = result.leveler;
-      const cardArgs = result.cardArgs;
-      if (cardArgs.length < 1) {
-        return message.reply('Please specify a card name.');
-      }
-      cardQuery = cardArgs.join(' ');
-      // If the last token looks like a number treat it as an amount ONLY when
-      // there is also a card identifier present before it. This prevents
-      // numeric card IDs like `0520` from being misinterpreted as the amount.
-      const lastToken = cardArgs[cardArgs.length - 1];
-      if (cardArgs.length > 1 && lastToken && !isNaN(parseInt(lastToken))) {
-        amount = parseInt(lastToken);
-        cardQuery = cardArgs.slice(0, -1).join(' ');
+
+      const first = args[0] ? String(args[0]).toLowerCase() : '';
+      if (ATTRS.has(first)) {
+        attributeMode = true;
+        attributeQuery = first.toUpperCase();
+        cardQuery = args.slice(1).join(' ');
+      } else {
+        // Find leveler from multi-word args
+        const result = findLevelerFromArgs(args);
+        if (!result) {
+          return message.reply('No leveler found matching those keywords.');
+        }
+        leveler = result.leveler;
+        const cardArgs = result.cardArgs;
+        if (cardArgs.length < 1) {
+          return message.reply('Please specify a card name.');
+        }
+        cardQuery = cardArgs.join(' ');
+        // If the last token looks like a number treat it as an amount ONLY when
+        // there is also a card identifier present before it.
+        const lastToken = cardArgs[cardArgs.length - 1];
+        if (cardArgs.length > 1 && lastToken && !isNaN(parseInt(lastToken))) {
+          amount = parseInt(lastToken);
+          cardQuery = cardArgs.slice(0, -1).join(' ');
+        }
       }
     } else {
       const levelerQuery = interaction.options.getString('leveler');
-      leveler = findFirstLeveler(levelerQuery);
-      cardQuery = interaction.options.getString('card');
-      amount = interaction.options.getInteger('amount') || 1;
+      if (levelerQuery && ATTRS.has(levelerQuery.toLowerCase())) {
+        attributeMode = true;
+        attributeQuery = levelerQuery.toUpperCase();
+        cardQuery = interaction.options.getString('card');
+      } else {
+        leveler = findFirstLeveler(levelerQuery);
+        cardQuery = interaction.options.getString('card');
+        amount = interaction.options.getInteger('amount') || 1;
+      }
     }
 
     const user = await User.findOne({ userId });
@@ -124,6 +141,68 @@ module.exports = {
       return interaction.reply({ content: reply, flags: 64 });
     }
 
+    // Attribute mode: feed all matching levelers in inventory
+    if (attributeMode) {
+      // For explicit attribute (STR/DEX/...), require the card to match that attribute
+      if (attributeQuery !== 'ALL' && card.attribute !== attributeQuery) {
+        const reply = `This card is ${card.attribute}. Use \'op feed ${card.attribute} <card>\' or \'op feed all <card>\' to feed matching levelers.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, flags: 64 });
+      }
+
+      // Collect candidate leveler defs to consume
+      const defsToUse = levelers.filter(l => {
+        if (attributeQuery === 'ALL') {
+          // Feed levelers matching the card attribute plus rainbow/ALL types
+          return (l.attribute === card.attribute) || (l.attribute === 'ALL') || (typeof l.xp === 'object' && l.xp && l.xp[card.attribute]);
+        }
+        return l.attribute === attributeQuery;
+      });
+
+      let totalXp = 0;
+      let consumed = 0;
+      const consumedLines = [];
+      for (const def of defsToUse) {
+        const it = user.items.find(i => i.itemId === def.id && i.quantity > 0);
+        if (!it) continue;
+        const qty = it.quantity;
+        // xp per item for this card
+        let xpPer = 0;
+        if (typeof def.xp === 'object') xpPer = Number(def.xp[card.attribute] || 0);
+        else xpPer = Number(def.xp || 0);
+        if (!xpPer) continue;
+        totalXp += xpPer * qty;
+        consumed += qty;
+        consumedLines.push(`${def.emoji} ${qty}x ${def.name} (+${xpPer * qty} XP)`);
+        // remove items
+        it.quantity = 0;
+      }
+      if (consumed === 0) {
+        const reply = `You have no matching levelers to feed to ${card.character}.`;
+        if (message) return message.reply(reply);
+        return interaction.reply({ content: reply, flags: 64 });
+      }
+
+      // Apply XP
+      const currentXp = Number(ownedCard.xp) || 0;
+      const currentLevel = Number(ownedCard.level) || 1;
+      const total = currentXp + totalXp;
+      const levelsGained = Math.floor(total / 100);
+      ownedCard.level = currentLevel + levelsGained;
+      ownedCard.xp = total % 100;
+
+      // Clean up consumed items
+      user.items = (user.items || []).filter(i => i.quantity > 0);
+      await user.save();
+
+      const embed = new EmbedBuilder()
+        .setDescription(`**Fed Levelers**\nFed ${consumed} leveler(s) to **${card.character}**.\n\n-# Items consumed:\n${consumedLines.join('\n')}\n\n-# Gained ${totalXp} XP!\n-# Current Level: ${ownedCard.level} (${ownedCard.xp} XP)`);
+      applyDefaultEmbedStyle(embed, message ? message.author : interaction.user);
+      if (message) return message.reply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed] });
+    }
+
+    // Single-leveler mode (original behavior)
     // Validate attribute compatibility
     if (typeof leveler.xp !== 'object' && leveler.attribute !== 'ALL' && leveler.attribute !== card.attribute) {
       const reply = `${leveler.emoji} **${leveler.name}** (${leveler.attribute}) cannot be fed to **${card.character}** (${card.attribute}). Only ${leveler.attribute} cards can use this leveler!`;

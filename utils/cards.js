@@ -163,7 +163,7 @@ function updateShipBalance(user) {
   if (!user || !user.activeShip) return;
   const ship = getShipById(user.activeShip);
   if (!ship) return;
-  const startingBalance = 0;
+  const startingBalance = (ship.startingBalance !== undefined) ? ship.startingBalance : 0;
   if (typeof user.shipBalance !== 'number' || user.shipBalance <= 0) {
     user.shipBalance = startingBalance;
   }
@@ -174,7 +174,7 @@ function updateShipBalance(user) {
     user.shipLastUpdated = user.shipLastUpdated || now;
     return;
   }
-  let nextBalance = user.shipBalance * Math.pow(ship.incomeMultiplier, minutesPassed);
+  let nextBalance = (user.shipBalance || startingBalance) * Math.pow(ship.incomeMultiplier, minutesPassed);
   nextBalance = Math.min(ship.capacity, Math.ceil(nextBalance));
   user.shipBalance = nextBalance;
   user.shipLastUpdated = now;
@@ -403,11 +403,13 @@ async function findBestOwnedShip(userId, query) {
   if (!matches.length) return null;
 
   const user = await User.findOne({ userId });
-  if (!user || !Array.isArray(user.ownedCards)) return matches[0];
+  // Require ownership for ship selection: if the user isn't found or has no owned ships,
+  // do not return an unowned match. This prevents fueling/setting ships the user does not own.
+  if (!user || !Array.isArray(user.ownedCards)) return null;
 
   const ownedIds = user.ownedCards.map(e => e.cardId);
   const ownedMatches = matches.filter(m => ownedIds.includes(m.id));
-  if (!ownedMatches.length) return matches[0];
+  if (!ownedMatches.length) return null;
 
   // Prefer by team or favorites
   const preferred = preferMatchForUser(user, ownedMatches);

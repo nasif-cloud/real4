@@ -66,4 +66,12 @@ module.exports = [
     rank: 'S',
     color: '#e8e8e8'
   },
+  {
+    name: "Roger Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    packEmoji: '<:whitebeardpiratespack:1491568020118835362>',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
 ];
