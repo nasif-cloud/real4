@@ -635,10 +635,12 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo, user
   } else {
     // Calculate attack value for display
     const attackVal = `${card.attack_min} - ${card.attack_max}`;
+    // Determine count/scount icons if present
+    const pullCountIcon = card.countIcon || (card.count === 2 ? '<:2_:1503002986560094228>' : (card.count ? '<:3_:1503002985578365118>' : null));
     // Build stats field - exclude attack for cards that are pure boosts
     let statsText = `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}`;
     if (!card.boost) {
-      statsText += `\n**Attack:** ${attackVal}`;
+      statsText += `\n**Attack:** ${attackVal}` + (pullCountIcon ? ` (${pullCountIcon})` : '');
     }
     const descLines = [
       card.title || '',
@@ -955,7 +957,8 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   }
   statsLines.push(`**Speed:** ${scaled.speed}`);
   if (!cardDef.boost) {
-    statsLines.push(`**Attack:** ${scaled.attack_min} - ${scaled.attack_max}`);
+    const infoCountIcon = cardDef.countIcon || (cardDef.count === 2 ? '<:2_:1503002986560094228>' : (cardDef.count ? '<:3_:1503002985578365118>' : null));
+    statsLines.push(`**Attack:** ${scaled.attack_min} - ${scaled.attack_max}` + (infoCountIcon ? ` (${infoCountIcon})` : ''));
   } else {
     // Show boost line with correct emoji(s), stat, and percent
     const targets = [];
@@ -1005,7 +1008,8 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     const sa = cardDef.special_attack;
     const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
     const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
-    let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)`;
+    const infoScountIcon = cardDef.scountIcon || (cardDef.scount === 2 ? '<:2_:1503002986560094228>' : (cardDef.scount ? '<:3_:1503002985578365118>' : null));
+    let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
     if (cardDef.effect && cardDef.effectDuration) {
       const effectDesc = cardDef.effect === 'undead' && cardDef.itself
         ? 'Keeps itself alive at 1 HP until the effect ends'

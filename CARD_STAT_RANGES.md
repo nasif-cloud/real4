@@ -107,6 +107,12 @@ Every card must have the following properties:
    - Don't use extremes for every stat unless it's a special mechanic
    - Vary stats to give cards different feels (some high power, some high health, etc.)
 
+7. **`all` targeting and validation:** If a card includes an `all` property it means the authored attack values represent the card's total attack pool and are divided across targets at runtime:
+  - `all: 2` — attack values are split between 2 targets (per-target damage = original attack / 2)
+  - `all: true` or `all: 3` — attack values are split among 3 targets (per-target damage = original attack / 3)
+  - When validating a card against these ranges, compare the *per-target* attack values (i.e. `attack_min / divisor` and `attack_max / divisor`) to the maxima in this document. Suggested corrected original attack values can be computed as `max_allowed_per_target * divisor`.
+  - Note: `special_attack` fields are not automatically divided by these rules unless they are explicitly documented to behave the same; consult the card's `effect` and game mechanics when in doubt.
+
 ## Example: Adding a Multi-Upgrade Character
 
 If adding "Example Character" with Buggy Pirates u1 and Cross Guild u2:

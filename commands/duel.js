@@ -67,7 +67,11 @@ function resolveDuelEffectTarget(card, myTeam, opponentTeam, selectedTarget) {
     if (card.def.effect === 'team_stun') {
     return opponentTeam.filter(c => c.currentHP > 0);
   }
-  if (card.def.all) {
+  // Prefer special-attack multi-target (`scount`) for effect targeting, fall back to normal `count`
+  if (card.def.scount) {
+    return card.def.itself ? myTeam.filter(c => c.alive) : opponentTeam.filter(c => c.currentHP > 0);
+  }
+  if (card.def.count) {
     return card.def.itself ? myTeam.filter(c => c.alive) : opponentTeam.filter(c => c.currentHP > 0);
   }
   return selectedTarget;
@@ -94,7 +98,7 @@ async function refreshDuelMessage(oldMsg, state) {
   const row = makeSelectionRow(state, state.turn === 'player1');
   const components = [row];
   if (state.awaitingTarget) {
-    const targetRow = makeTargetRow(state);
+    const targetRow = makeTargetRow(state, state.turn === 'player1');
     if (targetRow) components.push(targetRow);
   }
   if (state.finished) {
@@ -173,7 +177,8 @@ function getEffectString(card, target) {
     const verb = effectVerbs[card.def.effect] || 'affects';
     const duration = card.def.effectDuration ?? (card.def.effect === 'doomed' ? 3 : 1);
     const isPermanent = duration === -1 || duration === 0 || card.def.effect === 'freeze' || card.def.effect === 'hungry';
-    const targetName = card.def.all ? (card.def.itself ? 'your whole team' : 'the whole team') : (card.def.itself ? card.def.character : (target ? target.def.character : 'target'));
+    const targetIsMulti = !!(card.def.scount || card.def.count);
+    const targetName = targetIsMulti ? (card.def.itself ? 'your whole team' : 'the whole team') : (card.def.itself ? card.def.character : (target ? target.def.character : 'target'));
     const icon = STATUS_EMOJIS[card.def.effect] || '';
     const defaultAmount = 12;
     const rawAmount = card.def.effectAmount ?? (card.def.effect === 'regen' ? 10 : defaultAmount);
@@ -328,6 +333,15 @@ function buildEmbed(state) {
   // footer: forfeit hint
   embed.setFooter({ text: 'Use /forfeit to forfeit the battle' });
 
+  // If we're awaiting multiple target selections, show a short hint
+  if (state.awaitingTarget && typeof state.awaitingTarget === 'object') {
+    const isPlayer1Turn = state.turn === 'player1';
+    const targetTeam = isPlayer1Turn ? state.player2Cards : state.player1Cards;
+    const sel = state.awaitingTarget.selections || [];
+    const names = sel.map(i => (targetTeam[i] && targetTeam[i].def ? `${targetTeam[i].def.emoji || ''} ${targetTeam[i].def.character}` : null)).filter(Boolean).join(', ') || 'None';
+    embed.addFields({ name: 'Select Targets', value: `Pick ${state.awaitingTarget.required} target(s): ${names} (${sel.length}/${state.awaitingTarget.required})`, inline: false });
+  }
+
   // action columns
   if (state.lastP1Action || state.lastP2Action) {
     embed.addFields(
@@ -398,8 +412,11 @@ function makeTargetRow(state, isPlayer1Turn) {
   const attackerTeam = isPlayer1Turn ? state.player1Cards : state.player2Cards;
   const attacker = attackerTeam[state.selected];
   // All live cards can be targeted (no tank restriction)
+  // If awaitingTarget is an object, it contains multi-select state
+  const awaiting = state.awaitingTarget && typeof state.awaitingTarget === 'object' ? state.awaitingTarget : null;
+  const preselected = awaiting && Array.isArray(awaiting.selections) ? awaiting.selections : [];
   targetTeam.forEach((c, i) => {
-    const disabled = c.currentHP <= 0;
+    const disabled = c.currentHP <= 0 || preselected.includes(i);
     const multiplier = getDamageMultiplier(attacker.def.attribute, c.def.attribute);
     let style = ButtonStyle.Secondary; // Grey for neutral
     if (multiplier > 1) style = ButtonStyle.Success; // Green for effective
@@ -1213,15 +1230,43 @@ module.exports = {
     const discordUser1 = await interaction.client.users.fetch(state.player1Id);
     const discordUser2 = await interaction.client.users.fetch(state.player2Id);
 
-    // Handle target selection
+    // Handle target selection (single or multi-select)
     if (rawAction === 'duel_target') {
       const targetIdx = parseInt(cardId, 10);
       if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= opponentTeam.length) {
         return interaction.reply({ content: 'Invalid target.', ephemeral: true });
       }
-      const action = state.awaitingTarget;
-      state.awaitingTarget = null;
+
+      const awaiting = state.awaitingTarget;
+      if (!awaiting) return interaction.reply({ content: 'No action is awaiting a target.', ephemeral: true });
+
       const card = myTeam[state.selected];
+      if (!card) return interaction.reply({ content: 'Selected card is unavailable.', ephemeral: true });
+
+      // Multi-select flow: accumulate selections until required count reached
+      let action;
+      let selectedIndices = [];
+      if (typeof awaiting === 'object') {
+        action = awaiting.action;
+        awaiting.selections = awaiting.selections || [];
+        if (awaiting.selections.includes(targetIdx)) {
+          return interaction.reply({ content: 'That target is already selected.', ephemeral: true });
+        }
+        awaiting.selections.push(targetIdx);
+        // still need more picks
+        if (awaiting.selections.length < awaiting.required) {
+          state.awaitingTarget = awaiting;
+          await updateDuelMessage(interaction.message, state);
+          return safeDefer(interaction);
+        }
+        // have enough picks
+        selectedIndices = awaiting.selections.slice();
+        state.awaitingTarget = null;
+      } else {
+        action = awaiting;
+        selectedIndices = [targetIdx];
+        state.awaitingTarget = null;
+      }
 
       // Check if card is locked by status effect
       if (hasStatusLock(card)) {
@@ -1234,8 +1279,7 @@ module.exports = {
         return safeDefer(interaction);
       }
 
-      const target = opponentTeam[targetIdx];
-
+      // Confusion: hits self instead of performing multi-attack
       const confusionStatus = getConfusionChance(card);
       if (confusionStatus > 0 && randomInt(1, 100) <= confusionStatus) {
         const cost = action === 'special' ? 3 : 1;
@@ -1257,150 +1301,90 @@ module.exports = {
         return safeDefer(interaction);
       }
 
-      const drunkChance = getDrunkChance(card);
-      if (drunkChance > 0 && Math.random() * 100 <= drunkChance) {
-        const alternateTargets = aliveOpponents.filter(c => c !== target);
-        if (alternateTargets.length > 0) {
-          const wrongTarget = alternateTargets[Math.floor(Math.random() * alternateTargets.length)];
-          appendLog(state, `${card.def.character} is drunk and hits the wrong target!`);
-          target = wrongTarget;
-        } else {
-          const actionText = `${card.def.character} is drunk and misses the attack! <:energy:1478051414558118052> -1`;
-          if (isPlayer1) state.lastP1Action = actionText;
-          else state.lastP2Action = actionText;
-          state.selected = null;
-          await finalizeAction(state, interaction.message);
-          return safeDefer(interaction);
-        }
-      }
+      // Resolve target objects and filter alive
+      const targets = Array.from(new Set(selectedIndices)).map(i => opponentTeam[i]).filter(t => t && t.currentHP > 0);
+      if (!targets.length) return interaction.reply({ content: 'No valid targets selected.', ephemeral: true });
 
-      if (hasTruesight(target)) {
-        consumeTruesight(target);
-        const actionText = `${card.def.character} attacks ${target.def.character} but ${target.def.character} dodges with truesight! <:energy:1478051414558118052> -1`;
-        appendLog(state, `${target.def.character} used truesight and avoided the attack!`);
-        if (isPlayer1) state.lastP1Action = actionText;
-        else state.lastP2Action = actionText;
-        state.selected = null;
-        await finalizeAction(state, interaction.message);
-        return safeDefer(interaction);
-      }
-
+      // Apply energy cost and bleed once per action
       if (action === 'attack') {
-        if (card.energy < 1) {
-          return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
-        }
-        if (isCharmedAgainstTarget(card, target)) {
-          return interaction.reply({ content: `${card.def.character} is charmed and cannot attack a same-attribute target!`, ephemeral: true });
-        }
+        if (card.energy < 1) return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         card.energy -= 1;
         card.turnsUntilRecharge = 2;
-        try {
-          const bleedLogsLocal = applyBleedOnEnergyUse(card, 1);
-          if (bleedLogsLocal && bleedLogsLocal.length) bleedLogsLocal.forEach(l => logs.push(l));
-        } catch (e) {}
-
-        let baseDmg = calculateUserDamage(card, 'attack');
-        const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
-        const proneMultiplier = getProneMultiplier(card, target);
-        const attackMod = getAttackModifier(card);
-        const defenseMultiplier = getDefenseMultiplier(card, target);
-        let dmg = Math.floor(baseDmg * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier);
-        dmg = Math.max(0, dmg);
-
-        const reflect = getReflectStatus(target);
-        if (reflect) {
-          card.currentHP = Math.max(0, (card.currentHP || 0) - dmg);
-          const reflectKO = handleKO(card);
-          if (reflectKO) logs.push(reflectKO);
-          logs.push(`${target.def.character}'s reflect sends the attack back to ${card.def.character} for **${dmg} DMG**!`);
-        } else {
-          target.currentHP -= dmg;
-          if (target.currentHP <= 0) {
-            target.currentHP = 0;
-            const ko = handleKO(target);
-            if (ko) logs.push(ko);
-          }
-        }
-
-        const effectiveness = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
-        const actionText = `${card.def.emoji} **${card.def.character}** attacked ${target.def.emoji} **${target.def.character}** for **${dmg} DMG**${effectiveness}! **<:energy:1478051414558118052> -1**`;
-        if (isPlayer1) state.lastP1Action = actionText;
-        else state.lastP2Action = actionText;
+        try { const bleedLogsLocal = applyBleedOnEnergyUse(card, 1); if (bleedLogsLocal && bleedLogsLocal.length) bleedLogsLocal.forEach(l => logs.push(l)); } catch (e) {}
       } else if (action === 'special') {
-        if (card.energy < 3) {
-          return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
-        }
-        if (isCharmedAgainstTarget(card, target)) {
-          return interaction.reply({ content: `${card.def.character} is charmed and cannot attack a same-attribute target!`, ephemeral: true });
-        }
+        if (card.energy < 3) return interaction.reply({ content: 'Not enough energy.', ephemeral: true });
         card.energy -= 3;
         card.turnsUntilRecharge = 2;
-        try {
-          const bleedLogsLocal = applyBleedOnEnergyUse(card, 3);
-          if (bleedLogsLocal && bleedLogsLocal.length) bleedLogsLocal.forEach(l => logs.push(l));
-        } catch (e) {}
+        try { const bleedLogsLocal = applyBleedOnEnergyUse(card, 3); if (bleedLogsLocal && bleedLogsLocal.length) bleedLogsLocal.forEach(l => logs.push(l)); } catch (e) {}
+      }
 
-        let baseDmg = calculateUserDamage(card, 'special');
-        const attrMultiplier = getDamageMultiplier(card.def.attribute, target.def.attribute);
-        const proneMultiplier = getProneMultiplier(card, target);
+      // Perform damage for each target
+      const perTargetDmg = [];
+      for (const tgt of targets) {
+        if (!tgt) continue;
+        const base = calculateUserDamage(card, action);
+        const attrMultiplier = getDamageMultiplier(card.def.attribute, tgt.def.attribute);
+        const proneMultiplier = getProneMultiplier(card, tgt);
         const attackMod = getAttackModifier(card);
-        const defenseMultiplier = getDefenseMultiplier(card, target);
-        let dmg = Math.floor(baseDmg * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier);
-        dmg = Math.max(0, dmg);
+        const defenseMultiplier = getDefenseMultiplier(card, tgt);
+        let dmg = Math.max(0, Math.floor(base * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier));
 
-        const reflect = getReflectStatus(target);
+        const reflect = getReflectStatus(tgt);
         if (reflect) {
           card.currentHP = Math.max(0, (card.currentHP || 0) - dmg);
           const reflectKO = handleKO(card);
           if (reflectKO) logs.push(reflectKO);
-          logs.push(`${target.def.character}'s reflect sends the attack back to ${card.def.character} for **${dmg} DMG**!`);
+          logs.push(`${tgt.def.character}'s reflect sends the attack back to ${card.def.character} for **${dmg} DMG**!`);
         } else {
-          target.currentHP -= dmg;
-          if (target.currentHP <= 0) {
-            target.currentHP = 0;
-            const ko = handleKO(target);
+          tgt.currentHP -= dmg;
+          if (tgt.currentHP <= 0) {
+            tgt.currentHP = 0;
+            const ko = handleKO(tgt);
             if (ko) logs.push(ko);
           }
         }
+        // unfreeze the damage target if it was frozen
+        if (tgt.status) {
+          const freezeIdx = tgt.status.findIndex(st => st.type === 'freeze');
+          if (freezeIdx >= 0) tgt.status.splice(freezeIdx, 1);
+        }
+        perTargetDmg.push(dmg);
+      }
 
-        const effectTarget = resolveDuelEffectTarget(card, myTeam, opponentTeam, target);
-        try {
-          console.log(`[duel] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
-        } catch (e) {}
-        const effectLogsD2 = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
-        effectLogsD2.forEach(l => appendLog(state, l));
-
-        const effectStr = getEffectString(card, target);
-        const effectiveness = attrMultiplier > 1 ? ' (Effective!)' : attrMultiplier < 1 ? ' (Weak)' : '';
-        const actionText = `${card.def.emoji} **${card.def.character}** used ${card.def.special_attack?.name || 'Special Attack'} for **${dmg} DMG**${effectiveness}${effectStr}! **<:energy:1478051414558118052> -3**`;
-        if (isPlayer1) state.lastP1Action = actionText;
-        else state.lastP2Action = actionText;
-
-        if (card.def.special_attack?.gif) {
-          const gifUrl = normalizeGifUrl(card.def.special_attack.gif);
-          state.embedImage = gifUrl;
+      // Apply status effects for specials according to `all` rules
+      let effectLogs = [];
+      if (action === 'special') {
+        let effectTarget = null;
+        if (card.def.effect === 'team_stun') {
+          effectTarget = opponentTeam.filter(c => c.currentHP > 0);
+        } else if (card.def.all) {
+          // If special has an effect, apply it to the same selected targets; if no effect present, nothing to apply
+          if (card.def.effect) effectTarget = targets;
+        } else {
+          // default: effect targets the first selected target (or resolved target)
+          effectTarget = targets[0] || null;
+        }
+        if (effectTarget) {
           try {
-            let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
-            if (card.def.effect && card.def.effectDuration) {
-              const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration, !!card.def.itself, card.def.effectAmount, card.def.effectChance);
-              if (effectDesc) desc += `\n*${effectDesc}*`;
-            }
-            const gifEmbed = new EmbedBuilder()
-              .setColor('#FFFFFF')
-              .setImage(gifUrl)
-              .setDescription(desc)
-              .setAuthor({ name: state.discordUser1.username, iconURL: state.discordUser1.displayAvatarURL() });
-            const gifMsg = await interaction.channel.send({ embeds: [gifEmbed] });
-            state.gifMessageId = gifMsg.id;
+            effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
           } catch (e) {
-            console.error('Failed to send special attack GIF:', e);
+            console.error('Error applying effect:', e);
           }
         }
       }
 
-      if (logs.length > 0) {
-        logs.forEach(l => appendLog(state, l));
-      }
+      // Build a compact action summary
+      const names = targets.map(t => `${t.def.emoji || ''} ${t.def.character}`).join(', ');
+      const dmgSummary = perTargetDmg.length ? (perTargetDmg.every(d => d === perTargetDmg[0]) ? `**${perTargetDmg[0]} DMG** each` : perTargetDmg.map(d => `**${d}**`).join('/')) : '**0 DMG**';
+      const cost = action === 'attack' ? 1 : action === 'special' ? 3 : 0;
+      const actionVerb = action === 'special' ? (card.def.special_attack?.name || 'Special Attack') : 'attacked';
+      const actionText = `${card.def.emoji} **${card.def.character}** ${action === 'special' ? 'used' : 'attacked'} ${action === 'special' ? actionVerb : names} for ${dmgSummary}! **<:energy:1478051414558118052> -${cost}**`;
+      if (isPlayer1) state.lastP1Action = actionText; else state.lastP2Action = actionText;
+
+      // Append effect logs and damage/reflection logs
+      if (effectLogs && effectLogs.length) effectLogs.forEach(l => appendLog(state, l));
+      if (logs.length > 0) logs.forEach(l => appendLog(state, l));
+
       state.selected = null;
       await finalizeAction(state, interaction.message);
       return safeDefer(interaction);
@@ -1480,7 +1464,20 @@ module.exports = {
         let targetIdx = opponentTeam.findIndex(c => c.currentHP > 0);
         // if there are multiple opponents, prompt the player
         if (aliveOpponents.length > 1 && !state.awaitingTarget) {
-          state.awaitingTarget = act;
+          // If the selected card has a `count` or `scount` property, prompt for multiple targets
+          let required = 1;
+          if (act === 'attack' && card.def.count) {
+            if (typeof card.def.count === 'number') required = Math.min(card.def.count, aliveOpponents.length);
+            else required = aliveOpponents.length;
+          } else if (act === 'special' && card.def.scount) {
+            if (typeof card.def.scount === 'number') required = Math.min(card.def.scount, aliveOpponents.length);
+            else required = aliveOpponents.length;
+          }
+          if (required > 1) {
+            state.awaitingTarget = { action: act, required, selections: [] };
+          } else {
+            state.awaitingTarget = act;
+          }
           await updateDuelMessage(interaction.message, state);
           return safeDefer(interaction);
         }
@@ -1541,7 +1538,7 @@ module.exports = {
         let effectSummary = '';
         if (act === 'special') {
           try {
-            console.log(`[duel] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
+            console.log(`[duel] applying effect=${card.def.effect} id=${card.def.id} count=${card.def.count || 0} scount=${card.def.scount || 0} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
           } catch (e) {}
           effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
           // Build effect summary for GIF embed (e.g., "and stuns Roronoa Zoro")

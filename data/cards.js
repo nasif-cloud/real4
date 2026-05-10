@@ -145,7 +145,23 @@ function flattenCards(consolidatedCards) {
     if (card.effectAmount !== undefined) flattedCard.effectAmount = card.effectAmount;
     if (card.effectChance !== undefined) flattedCard.effectChance = card.effectChance;
     if (card.itself !== undefined) flattedCard.itself = card.itself;
-    if (card.all !== undefined) flattedCard.all = card.all;
+    // Support new `count` (normal attack multi-target) and `scount` (special attack multi-target)
+    if (card.count !== undefined) flattedCard.count = card.count;
+    if (card.scount !== undefined) flattedCard.scount = card.scount;
+    // Backwards compatibility: migrate legacy `all` to `scount` for cards
+    // that define a special attack, otherwise to `count`.
+    if (card.all !== undefined) {
+      const val = card.all === true ? 3 : card.all;
+      if (card.special_attack) flattedCard.scount = val;
+      else flattedCard.count = val;
+    }
+    // Icon fields: prefer explicit count/scount icons, fall back to legacy allIcon
+    if (card.countIcon) flattedCard.countIcon = card.countIcon;
+    if (card.scountIcon) flattedCard.scountIcon = card.scountIcon;
+    if (card.allIcon) {
+      if (card.special_attack) flattedCard.scountIcon = card.allIcon;
+      else flattedCard.countIcon = card.allIcon;
+    }
     const isArtifact = !!card.artifact;
     if (card.attribute && !isArtifact) flattedCard.attribute = card.attribute;
     if (card.emoji) {
@@ -192,6 +208,15 @@ const consolidatedCardData = [
     speed: 3,
     attack_min: 2,
     attack_max: 3,
+    special_attack: {
+      name: 'Gum-Gum Pistol',
+      min_atk: 6,
+      max_atk: 9,
+      gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
+    },
+    effect: 'stun',
+    effectDuration: 1,
+    scount: 3,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0001.png'
   }, 
   {
@@ -453,15 +478,15 @@ const consolidatedCardData = [
     title: 'Voyage Dream: Pirate King',
     faculty: 'Strawhat Pirates',
     rank: 'S',
-    power: 42,
-    health: 72,
-    speed: 17,
-    attack_min: 15,
-    attack_max: 19,
+    power: 30,
+    health: 45,
+    speed: 12,
+    attack_min: 8,
+    attack_max: 12,
     special_attack: {
       name: 'Gum-Gum Jet Gatling',
-      min_atk: 30,
-      max_atk: 38,
+      min_atk: 16,
+      max_atk: 25,
       gif: 'https://media1.tenor.com/m/dMFIkRa_YTgAAAAC/luffy-one.gif'
     },
     effect: 'stun',
@@ -1507,7 +1532,6 @@ const consolidatedCardData = [
     effect: 'attackdown',
     effectDuration: 3,
     effectAmount: 80,
-    all: true,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/200/0223.png'
   },
   {
@@ -3972,9 +3996,14 @@ const consolidatedCardData = [
     speed: 14,
     attack_min: 12,
     attack_max: 16,
+    special_attack: {
+      name: 'Gomu Gomu no Gigant',
+      min_atk: 23,
+      max_atk: 32,
+      gif: null
+    },
     effect: 'confusion',
     effectDuration: 1,
-    all: true,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/200/4290.png'
   },
   {
@@ -4761,7 +4790,7 @@ const consolidatedCardData = [
     },
     effect: 'stun',
     effectDuration: 1,
-    all: true,
+    scount: 3,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4187.png'
   },
   {
@@ -4839,7 +4868,7 @@ const consolidatedCardData = [
     effect: 'regen',
     effectAmount: 20,
     effectDuration: 3,
-    all: true,
+    scount: 3,
     itself: true,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4182.png'
   },
