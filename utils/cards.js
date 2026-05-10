@@ -633,10 +633,18 @@ function buildPullEmbed(card, username, avatarUrl, pityText, duplicateInfo, user
     }
     embed.setDescription(descLines.join('\n'));
   } else {
-    // Calculate attack value for display
-    const attackVal = `${card.attack_min} - ${card.attack_max}`;
+    // Calculate attack value for display (show per-target split when `count` is used)
+    let attackVal;
     // Determine count/scount icons if present
     const pullCountIcon = card.countIcon || (card.count === 2 ? '<:2_:1503002986560094228>' : (card.count ? '<:3_:1503002985578365118>' : null));
+    if (card.count && Number.isFinite(card.count) && card.count > 1) {
+      const divisor = card.count;
+      const minPer = Math.floor(card.attack_min / divisor);
+      const maxPer = Math.floor(card.attack_max / divisor);
+      attackVal = `${minPer} - ${maxPer}`;
+    } else {
+      attackVal = `${card.attack_min} - ${card.attack_max}`;
+    }
     // Build stats field - exclude attack for cards that are pure boosts
     let statsText = `**Health:** ${card.health}\n**Power:** ${card.power}\n**Speed:** ${card.speed}`;
     if (!card.boost) {
@@ -958,7 +966,14 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   statsLines.push(`**Speed:** ${scaled.speed}`);
   if (!cardDef.boost) {
     const infoCountIcon = cardDef.countIcon || (cardDef.count === 2 ? '<:2_:1503002986560094228>' : (cardDef.count ? '<:3_:1503002985578365118>' : null));
-    statsLines.push(`**Attack:** ${scaled.attack_min} - ${scaled.attack_max}` + (infoCountIcon ? ` (${infoCountIcon})` : ''));
+    if (cardDef.count && Number.isFinite(cardDef.count) && cardDef.count > 1) {
+      const divisor = cardDef.count;
+      const perMin = Math.floor(scaled.attack_min / divisor);
+      const perMax = Math.floor(scaled.attack_max / divisor);
+      statsLines.push(`**Attack:** ${perMin} - ${perMax}` + (infoCountIcon ? ` (${infoCountIcon})` : ''));
+    } else {
+      statsLines.push(`**Attack:** ${scaled.attack_min} - ${scaled.attack_max}` + (infoCountIcon ? ` (${infoCountIcon})` : ''));
+    }
   } else {
     // Show boost line with correct emoji(s), stat, and percent
     const targets = [];
@@ -1009,11 +1024,19 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
     const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
     const infoScountIcon = cardDef.scountIcon || (cardDef.scount === 2 ? '<:2_:1503002986560094228>' : (cardDef.scount ? '<:3_:1503002985578365118>' : null));
-    let specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
+    let specialAttackValue;
+    if (cardDef.scount && Number.isFinite(cardDef.scount) && cardDef.scount > 1) {
+      const divisor = cardDef.scount;
+      const perMin = Math.floor(scaled.special_attack.min / divisor);
+      const perMax = Math.floor(scaled.special_attack.max / divisor);
+      specialAttackValue = `${sa.name} (${perMin}-${perMax} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
+    } else {
+      specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
+    }
     if (cardDef.effect && cardDef.effectDuration) {
       const effectDesc = cardDef.effect === 'undead' && cardDef.itself
         ? 'Keeps itself alive at 1 HP until the effect ends'
-        : getEffectDescription(cardDef.effect, cardDef.effectDuration, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance);
+        : getEffectDescription(cardDef.effect, cardDef.effectDuration, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance, !!cardDef.scount);
       if (effectDesc) {
         let amountLabel = '';
         if (['cut', 'bleed'].includes(cardDef.effect)) {
@@ -1041,7 +1064,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   if (cardDef.effect && (!cardDef.special_attack || !scaled.special_attack)) {
     const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
     const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
-    const effectDescription = getEffectDescription(cardDef.effect, cardDef.effectDuration || 0, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance);
+    const effectDescription = getEffectDescription(cardDef.effect, cardDef.effectDuration || 0, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance, !!cardDef.count);
     if (effectDescription) {
       embed.addFields({ name: 'Effect', value: effectDescription, inline: false });
     }
@@ -1144,10 +1167,11 @@ function normalizeEffectValue(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function getEffectDescription(effectType, duration, isSelf = false, effectAmount = null, effectChance = null) {
+function getEffectDescription(effectType, duration, isSelf = false, effectAmount = null, effectChance = null, isMultiTarget = false) {
   const isPermanent = duration === -1;
   const durationText = isPermanent ? '' : `${duration} turn${duration > 1 ? 's' : ''}`;
-  const targetLabel = isSelf ? 'own' : `opponent's`;
+  const targetLabel = isSelf ? 'own' : `opponent${isMultiTarget ? 's' : ''}'s`;
+  const targetWord = isSelf ? 'target' : `opponent${isMultiTarget ? 's' : ''}`;
   const amount = normalizeEffectValue(effectAmount, effectType === 'regen' ? 10 : 12);
   const chance = normalizeEffectValue(effectChance ?? effectAmount, 50);
   const amountText = ['attackup', 'attackdown', 'defenseup', 'defensedown'].includes(effectType)
@@ -1164,7 +1188,7 @@ function getEffectDescription(effectType, duration, isSelf = false, effectAmount
     regen: isPermanent
       ? `Permanently regenerates HP each turn${amountText}`
       : `Regenerates HP each turn${durationText ? ` for ${durationText}` : ''}${amountText}`,
-    confusion: `Confuses the opponent${durationText ? ` for ${durationText}` : ''}${amountText}`,
+    confusion: `Confuses the ${targetWord}${durationText ? ` for ${durationText}` : ''}${amountText}`,
     attackup: isPermanent
       ? `Permanently boosts ${targetLabel} attack by${amountText}`
       : `Boosts ${targetLabel} attack${durationText ? ` for ${durationText}` : ''} by${amountText}`,
@@ -1179,12 +1203,12 @@ function getEffectDescription(effectType, duration, isSelf = false, effectAmount
       : `Reduces ${targetLabel} defense${durationText ? ` for ${durationText}` : ''} by${amountText}`,
     truesight: `Can't be attacked${durationText ? ` for ${durationText}` : ''}`,
     undead: `Keeps the target alive at 0 HP until the effect ends`,
-    stun: `Stuns the opponent${durationText ? ` for ${durationText}` : ''}`,
-    freeze: `Freezes the opponent${durationText ? ` for ${durationText}` : ''}`,
-    cut: `Cuts the opponent${durationText ? ` for ${durationText}` : ''}`,
+    stun: `Stuns the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
+    freeze: `Freezes the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
+    cut: `Cuts the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
     // bleed triggers when the affected card spends energy
     // (attack/special/ability); duration counts the number of uses
-    bleed: `Bleeds the opponent${durationText ? ` for ${durationText}` : ''}`,
+    bleed: `Bleeds the ${targetWord}${durationText ? ` for ${durationText}` : ''}`,
   };
   return effectDescriptions[effectType] || null;
 }

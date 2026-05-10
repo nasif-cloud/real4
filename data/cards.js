@@ -215,8 +215,8 @@ const consolidatedCardData = [
       gif: 'https://media1.tenor.com/m/eTo-ytFNLX8AAAAC/luffy-pistol.gif'
     },
     effect: 'stun',
+    count: 2,
     effectDuration: 1,
-    scount: 3,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/0/000/0001.png'
   }, 
   {
@@ -4046,6 +4046,12 @@ const consolidatedCardData = [
     speed: 14,
     attack_min: 12,
     attack_max: 16,
+    special_attack: {
+      name: 'Gomu Gomu no Gigant',
+      min_atk: 23,
+      max_atk: 33,
+      gif: null
+    },
     effect: 'confusion',
     effectDuration: 2,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4150.png'
@@ -4082,6 +4088,12 @@ const consolidatedCardData = [
     speed: 14,
     attack_min: 12,
     attack_max: 16,
+    special_attack: {
+      name: 'Gomu Gomu no Gigant',
+      min_atk: 23,
+      max_atk: 33,
+      gif: null
+    },
     effect: 'confusion',
     effectDuration: 2,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4131.png'
@@ -4790,7 +4802,6 @@ const consolidatedCardData = [
     },
     effect: 'stun',
     effectDuration: 1,
-    scount: 3,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4187.png'
   },
   {
@@ -4868,7 +4879,6 @@ const consolidatedCardData = [
     effect: 'regen',
     effectAmount: 20,
     effectDuration: 3,
-    scount: 3,
     itself: true,
     image_url: 'https://2shankz.github.io/optc-db.github.io/api/images/full/transparent/4/100/4182.png'
   },

@@ -70,6 +70,13 @@ Example:
 - Normal attack: attack_max = 10
 - Special attack: max_atk = 18-25 (roughly 2-2.5x)
 
+### Multi-target (`count` / `scount`) guidance
+
+- If a card uses `count` (normal attack multi-target) or `scount` (special multi-target), the intended behavior is to split the card's attack across the chosen targets.
+- For data authors and card-adder tools: when specifying `count: 2` set the per-target attack to approximately half the usual value (or author the total attack and the runtime will divide it by 2). For `count: 3` divide by 3.
+- Example: a special that normally does `18` total damage with `scount: 2` should deal ~`9` to each target; with `scount: 3` it should be ~`6` each.
+- The runtime also supports dividing the computed base damage across selected targets, so card-adder tools may either provide total attack values or pre-divided per-target values — but be consistent.
+
 ## Attributes
 
 Map character abilities to attributes based on the colored icon in the image. The letter shown is the first letter of the attribute:

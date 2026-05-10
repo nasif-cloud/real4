@@ -164,11 +164,12 @@ function applyCardEffect(attacker, target, context = {}) {
     return true;
   };
   let resolvedTarget = target;
-  if (def.all && !Array.isArray(target)) {
+  const defAllish = def.all || def.scount || def.count;
+  if (defAllish && !Array.isArray(target)) {
     // Debugging: log resolution attempt for `all:true` effects (include def id/all)
     try {
       const attackerName = (attacker && attacker.def && (attacker.def.character || attacker.def.id)) || 'unknown';
-      console.log(`[statusManager] resolving all:true for ${attackerName} defId=${def.id} defAll=${!!def.all} (effect=${def.effect}) - targetIsArray=${Array.isArray(target)}`);
+      console.log(`[statusManager] resolving all:true for ${attackerName} defId=${def.id} defAllish=${!!defAllish} (effect=${def.effect}) - targetIsArray=${Array.isArray(target)}`);
     } catch (e) {}
     if (Array.isArray(context.playerTeam) && Array.isArray(context.opponentTeam)) {
       if (context.playerTeam.includes(attacker)) {
@@ -184,7 +185,7 @@ function applyCardEffect(attacker, target, context = {}) {
       resolvedTarget = context.cards.filter(isAlive);
     }
     try {
-      console.log(`[statusManager] resolvedTarget for defId=${def.id} defAll=${!!def.all} length=${Array.isArray(resolvedTarget)?resolvedTarget.length:'N/A'}`);
+      console.log(`[statusManager] resolvedTarget for defId=${def.id} defAllish=${!!defAllish} length=${Array.isArray(resolvedTarget)?resolvedTarget.length:'N/A'}`);
     } catch (e) {}
   }
   // Store original duration for message display
@@ -198,7 +199,7 @@ function applyCardEffect(attacker, target, context = {}) {
   const selfEffects = ['truesight', 'undead'];
   const applyTo = def.effect === 'team_stun'
     ? resolvedTarget
-    : (def.all && Array.isArray(resolvedTarget))
+    : (defAllish && Array.isArray(resolvedTarget))
       ? resolvedTarget
       : (def.itself || selfEffects.includes(def.effect))
         ? attacker

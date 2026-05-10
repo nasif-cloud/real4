@@ -1320,9 +1320,11 @@ module.exports = {
 
       // Perform damage for each target
       const perTargetDmg = [];
+      let base = calculateUserDamage(card, action);
+      // If attacking multiple targets, divide the base damage across them
+      if (targets.length > 1) base = Math.max(0, Math.floor(base / targets.length));
       for (const tgt of targets) {
         if (!tgt) continue;
-        const base = calculateUserDamage(card, action);
         const attrMultiplier = getDamageMultiplier(card.def.attribute, tgt.def.attribute);
         const proneMultiplier = getProneMultiplier(card, tgt);
         const attackMod = getAttackModifier(card);
@@ -1357,8 +1359,8 @@ module.exports = {
         let effectTarget = null;
         if (card.def.effect === 'team_stun') {
           effectTarget = opponentTeam.filter(c => c.currentHP > 0);
-        } else if (card.def.all) {
-          // If special has an effect, apply it to the same selected targets; if no effect present, nothing to apply
+        } else if (card.def.scount || card.def.all) {
+          // If special has an effect and is multi-target (scount/all), apply it to the same selected targets; if no effect present, nothing to apply
           if (card.def.effect) effectTarget = targets;
         } else {
           // default: effect targets the first selected target (or resolved target)
@@ -1462,24 +1464,38 @@ module.exports = {
         }
         // pick a target index now, default to first alive opponent
         let targetIdx = opponentTeam.findIndex(c => c.currentHP > 0);
-        // if there are multiple opponents, prompt the player
-        if (aliveOpponents.length > 1 && !state.awaitingTarget) {
-          // If the selected card has a `count` or `scount` property, prompt for multiple targets
-          let required = 1;
-          if (act === 'attack' && card.def.count) {
-            if (typeof card.def.count === 'number') required = Math.min(card.def.count, aliveOpponents.length);
-            else required = aliveOpponents.length;
-          } else if (act === 'special' && card.def.scount) {
-            if (typeof card.def.scount === 'number') required = Math.min(card.def.scount, aliveOpponents.length);
-            else required = aliveOpponents.length;
-          }
+        
+        // Determine if this card should trigger multi-target selection
+        let required = 1;
+        if (act === 'attack' && card.def.count) {
+          if (typeof card.def.count === 'number') required = Math.min(card.def.count, aliveOpponents.length);
+          else required = aliveOpponents.length;
+        } else if (act === 'special' && card.def.scount) {
+          if (typeof card.def.scount === 'number') required = Math.min(card.def.scount, aliveOpponents.length);
+          else required = aliveOpponents.length;
+        }
+
+        // If multi-target is required and we have multiple opponents to choose from, decide between
+        // prompting the player (when they must pick specific targets) or auto-selecting all targets
+        // when the required count equals or exceeds the number of alive opponents.
+        let autoTargets = null;
+        if (!state.awaitingTarget && aliveOpponents.length > 1) {
           if (required > 1) {
-            state.awaitingTarget = { action: act, required, selections: [] };
+            if (required >= aliveOpponents.length) {
+              // auto-target all alive opponents
+              autoTargets = opponentTeam.filter(c => c.currentHP > 0);
+            } else {
+              // require player to pick `required` targets
+              state.awaitingTarget = { action: act, required, selections: [] };
+              await updateDuelMessage(interaction.message, state);
+              return safeDefer(interaction);
+            }
           } else {
+            // single target: prompt user to pick one
             state.awaitingTarget = act;
+            await updateDuelMessage(interaction.message, state);
+            return safeDefer(interaction);
           }
-          await updateDuelMessage(interaction.message, state);
-          return safeDefer(interaction);
         }
 
         // Energy checks
@@ -1495,43 +1511,78 @@ module.exports = {
 
         card.turnsUntilRecharge = 2;
         const baseDmg = calculateUserDamage(card, act, myUser);
-        // determine damage target(s) and effect target(s)
-        let damageTarget;
-        let effectTarget;
-        if (act === 'special' && card.def.effect === 'team_stun') {
-          // team_stun: damage single target, stun all alive opponents
-          damageTarget = opponentTeam[targetIdx];
-          effectTarget = opponentTeam.filter(c => c.currentHP > 0);
-        } else {
-          const target = opponentTeam[targetIdx];
-          damageTarget = target;
-          effectTarget = resolveDuelEffectTarget(card, myTeam, opponentTeam, target);
-        }
-        // calculate final damage with attribute and status modifiers
-        let attrMultiplier = 1;
-        let proneMultiplier = 1;
-        let attackMod = getAttackModifier(card);
-        let defenseMultiplier = 1;
-        if (damageTarget) {
-          attrMultiplier = getDamageMultiplier(card.def.attribute, damageTarget.def.attribute);
-          proneMultiplier = getProneMultiplier(card, damageTarget);
-          defenseMultiplier = getDefenseMultiplier(card, damageTarget);
-        }
-        const dmg = Math.floor(baseDmg * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier);
-        if (damageTarget) {
-          damageTarget.currentHP -= dmg;
-          if (damageTarget.currentHP <= 0) {
-            damageTarget.currentHP = 0;
-            const ko = handleKO(damageTarget);
-            if (ko) logs.push(ko);
+
+        // If we auto-selected multiple targets (e.g., scount:3 hitting all enemies), apply
+        // per-target damage distributed across targets, then apply effects to the appropriate targets.
+        if (autoTargets && autoTargets.length) {
+          const targets = autoTargets;
+          // divide base damage evenly across targets so the card's attack stat is split
+          const basePerTarget = Math.max(0, Math.floor(baseDmg / Math.max(1, targets.length)));
+          const perTargetDmg = [];
+          for (const tgt of targets) {
+            if (!tgt) continue;
+            const attrMultiplier = getDamageMultiplier(card.def.attribute, tgt.def.attribute);
+            const proneMultiplier = getProneMultiplier(card, tgt);
+            const attackMod = getAttackModifier(card);
+            const defenseMultiplier = getDefenseMultiplier(card, tgt);
+            let dmg = Math.max(0, Math.floor(basePerTarget * attrMultiplier * proneMultiplier * attackMod * defenseMultiplier));
+
+            const reflect = getReflectStatus(tgt);
+            if (reflect) {
+              card.currentHP = Math.max(0, (card.currentHP || 0) - dmg);
+              const reflectKO = handleKO(card);
+              if (reflectKO) logs.push(reflectKO);
+              logs.push(`${tgt.def.character}'s reflect sends the attack back to ${card.def.character} for **${dmg} DMG**!`);
+            } else {
+              tgt.currentHP -= dmg;
+              if (tgt.currentHP <= 0) {
+                tgt.currentHP = 0;
+                const ko = handleKO(tgt);
+                if (ko) logs.push(ko);
+              }
+            }
+            // unfreeze the damage target if it was frozen
+            if (tgt.status) {
+              const freezeIdx = tgt.status.findIndex(st => st.type === 'freeze');
+              if (freezeIdx >= 0) tgt.status.splice(freezeIdx, 1);
+            }
+            perTargetDmg.push(dmg);
           }
-        }
-        // unfreeze the damage target if it was frozen
-        if (damageTarget.status) {
-          const freezeIdx = damageTarget.status.findIndex(st => st.type === 'freeze');
-          if (freezeIdx >= 0) {
-            damageTarget.status.splice(freezeIdx, 1);
+
+          // Apply status effects for specials according to multi-target rules
+          let effectLogs = [];
+          if (act === 'special') {
+            let effectTarget = null;
+            if (card.def.effect === 'team_stun') {
+              effectTarget = opponentTeam.filter(c => c.currentHP > 0);
+            } else if (card.def.scount || card.def.count || card.def.all) {
+              if (card.def.effect) effectTarget = targets;
+            } else {
+              effectTarget = targets[0] || null;
+            }
+            if (effectTarget) {
+              try {
+                effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
+              } catch (e) {
+                console.error('Error applying effect:', e);
+              }
+            }
           }
+
+          // Build action summary
+          const names = targets.map(t => `${t.def.emoji || ''} ${t.def.character}`).join(', ');
+          const dmgSummary = perTargetDmg.length ? (perTargetDmg.every(d => d === perTargetDmg[0]) ? `**${perTargetDmg[0]} DMG** each` : perTargetDmg.map(d => `**${d}**`).join('/')) : '**0 DMG**';
+          const cost = act === 'attack' ? 1 : act === 'special' ? 3 : 0;
+          const actionVerb = act === 'special' ? (card.def.special_attack?.name || 'Special Attack') : 'attacked';
+          const actionText = `${card.def.emoji} **${card.def.character}** ${act === 'special' ? 'used' : 'attacked'} ${act === 'special' ? actionVerb : names} for ${dmgSummary}! **<:energy:1478051414558118052> -${cost}**`;
+          if (isPlayer1) state.lastP1Action = actionText; else state.lastP2Action = actionText;
+
+          if (effectLogs && effectLogs.length) effectLogs.forEach(l => appendLog(state, l));
+          if (logs.length > 0) logs.forEach(l => appendLog(state, l));
+
+          state.selected = null;
+          await finalizeAction(state, interaction.message);
+          return safeDefer(interaction);
         }
         // apply status effect only for specials
         let effectLogs = [];
@@ -1561,7 +1612,7 @@ module.exports = {
             try {
               let desc = `${card.def.character} uses ${card.def.special_attack.name || 'Special Attack'}!`;
               if (card.def.effect && card.def.effectDuration) {
-                const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration, !!card.def.itself, card.def.effectAmount, card.def.effectChance);
+                const effectDesc = getEffectDescription(card.def.effect, card.def.effectDuration, !!card.def.itself, card.def.effectAmount, card.def.effectChance, !!card.def.scount);
                 if (effectDesc) desc += `\n*${effectDesc}*`;
               } else if (effectSummary) {
                 // fallback to previous short summary if no duration available
