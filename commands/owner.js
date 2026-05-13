@@ -21,7 +21,7 @@ async function list({ message }) {
     .setColor(0xFF0000)
     .setDescription('Available prefix commands for the bot owner/developer')
     .addFields(
-      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, bounty, resettoken, card, pack, memerod, item\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
+      { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, bounty, resettoken, card, pack, memerod, item\n- card syntax: op owner give card <cardId> <level> <@user> (level is optional, defaults to 1)\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
       { name: 'op owner remove <type> <amount> <@user>', value: 'Types: beli, gems, bounty\n- Removes the specified amount (bounty has minimum of 100)', inline: false },
       { name: 'op owner removecard <cardId> <@user>', value: 'Remove all copies of a card from a user', inline: false },
       { name: 'op owner setresets <#channel>', value: 'Configure a channel to receive pull reset notifications', inline: false },
@@ -165,6 +165,43 @@ async function execute({ message, args }) {
         return message.reply(`Given ${amtParsed} ${itemId}(s) to <@${targetId}>`);
       }
 
+      // card: op owner give card <cardId> <level> <@user>  (level optional)
+      if (type === 'card') {
+        const cardId = args[2];
+        const levelArg = args[3];
+        const mention = args[4] || args[3];
+        // if levelArg looks like a mention, no level was provided
+        const levelProvided = levelArg && !levelArg.startsWith('<@') && !isNaN(parseInt(levelArg, 10));
+        const resolvedMention = levelProvided ? args[4] : args[3];
+        targetId = parseMention(resolvedMention);
+        if (!cardId || !targetId) return message.reply('Usage: op owner give card <cardId> [level] <@user>');
+        const cardDef = getCardById(cardId);
+        if (!cardDef) return message.reply(`No card with id ${formatCardId(cardId)} exists`);
+        let target = await User.findOne({ userId: targetId });
+        if (!target) return message.reply('Target user does not have an account.');
+        if (target.ownedCards.some(e => e.cardId === cardDef.id)) {
+          return message.reply('User already owns that card, gift cancelled.');
+        }
+        const actualCardId = cardDef.id;
+        const { getMaxLevelForRank } = require('../utils/starLevel');
+        const maxLevel = getMaxLevelForRank(cardDef.rank);
+        let giveLevel = 1;
+        if (levelProvided) {
+          const parsed = parseInt(levelArg, 10);
+          if (!isNaN(parsed) && parsed >= 1) giveLevel = Math.min(parsed, maxLevel);
+        }
+        target.ownedCards.push({ cardId: actualCardId, level: giveLevel, xp: 0 });
+        if (!target.history.includes(actualCardId)) target.history.push(actualCardId);
+        await target.save();
+        try {
+          const { checkAndAwardAll } = require('../utils/achievements');
+          await checkAndAwardAll(target, message.client, { event: 'owner_give_card', cardId: actualCardId });
+        } catch (err) {
+          console.error('Achievement check after owner give card failed', err);
+        }
+        return message.reply(`Added card ${formatCardId(actualCardId)} (Lv. ${giveLevel}) to <@${targetId}>'s collection`);
+      }
+
       // fallback for simple two-arg give
       const amountArg = args[2];
       const mention = args[3];
@@ -205,36 +242,6 @@ async function execute({ message, args }) {
         return message.reply(`Given ${amtParsed} reset token(s) to <@${targetId}>`);
       }
 
-      if (type === 'card') {
-        const cardId = amountArg;
-        // check existence
-        const cardDef = getCardById(cardId);
-        if (!cardDef) return message.reply(`No card with id ${formatCardId(cardId)} exists`);
-        // check ownership first
-        if (target.ownedCards.some(e => e.cardId === cardDef.id)) {
-          return message.reply('User already owns that card, gift cancelled.');
-        }
-        const actualCardId = cardDef.id;
-        // optional level argument (args[4])
-        const { getMaxLevelForRank } = require('../utils/starLevel');
-        const maxLevel = getMaxLevelForRank(cardDef.rank);
-        let giveLevel = 1;
-        if (args[4]) {
-          const parsed = parseInt(args[4], 10);
-          if (!isNaN(parsed) && parsed >= 1) giveLevel = Math.min(parsed, maxLevel);
-        }
-        target.ownedCards.push({ cardId: actualCardId, level: giveLevel, xp: 0 });
-        if (!target.history.includes(actualCardId)) target.history.push(actualCardId);
-        await target.save();
-        // check achievements for the receiver (e.g., UR card / faculty completion)
-        try {
-          const { checkAndAwardAll } = require('../utils/achievements');
-          await checkAndAwardAll(target, message.client, { event: 'owner_give_card', cardId: actualCardId });
-        } catch (err) {
-          console.error('Achievement check after owner give card failed', err);
-        }
-        return message.reply(`Added card ${formatCardId(actualCardId)} (Lv. ${giveLevel}) to <@${targetId}>'s collection`);
-      }
 
       return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');
     }
