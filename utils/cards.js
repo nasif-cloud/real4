@@ -928,10 +928,19 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
           `**Attribute:** ${attributeIcon}`
   ];
   if (exactEntry) {
-    descLines.push(`**Level:** ${lvl}${typeof exactEntry.xp === 'number' ? ` (XP: ${exactEntry.xp})` : ''}`);
+    const { getMaxLevelForRank: _getMaxLvl } = require('../utils/starLevel');
+    const _maxLevel = _getMaxLvl(cardDef.rank);
+    const _isAtMax = lvl >= _maxLevel;
+    descLines.push(`**Level:** ${lvl}${_isAtMax ? ' (max)' : (typeof exactEntry.xp === 'number' ? ` (xp: ${exactEntry.xp})` : '')}`);
   }
   descLines.push(`**Owned:** ${isOwned ? 'Yes' : 'No'}`);
   descLines.push(`**Rank:** ${cardDef.rank}`);
+  {
+    const { buildStarDisplay: _bsd } = require('../utils/starLevel');
+    const _cardStar = exactEntry ? (exactEntry.starLevel || 0) : 0;
+    descLines.push('');
+    descLines.push(_bsd(cardDef.attribute, _cardStar, cardDef.rank));
+  }
 
   const isFavN = user && Array.isArray(user.favoriteCards) && user.favoriteCards.includes(cardDef.id);
   const isWishN = user && Array.isArray(user.wishlistCards) && user.wishlistCards.includes(cardDef.id);
@@ -1020,45 +1029,55 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   embed.addFields({ name: 'Stats', value: statsLines.join('\n'), inline: false });
 
   if (cardDef.special_attack && scaled.special_attack) {
-    const sa = cardDef.special_attack;
-    const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
-    const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
-    const infoScountIcon = cardDef.scountIcon || (cardDef.scount === 2 ? '<:2_:1503002986560094228>' : (cardDef.scount ? '<:3_:1503002985578365118>' : null));
-    let specialAttackValue;
-    if (cardDef.scount && Number.isFinite(cardDef.scount) && cardDef.scount > 1) {
-      const divisor = cardDef.scount;
-      const perMin = Math.floor(scaled.special_attack.min / divisor);
-      const perMax = Math.floor(scaled.special_attack.max / divisor);
-      specialAttackValue = `${sa.name} (${perMin}-${perMax} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
+    const { isSpecialAttackUnlocked: _isSpecUnlocked, isStatusEffectUnlocked: _isEffUnlocked } = require('../utils/starLevel');
+    const _cardStarForSpec = exactEntry ? (exactEntry.starLevel || 0) : 0;
+    if (exactEntry && !_isSpecUnlocked(_cardStarForSpec)) {
+      embed.addFields({ name: 'Special Attack', value: '🔒 Locked — Reach **Star Level 4** to unlock', inline: false });
     } else {
-      specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
-    }
-    if (cardDef.effect && cardDef.effectDuration) {
-      const effectDesc = cardDef.effect === 'undead' && cardDef.itself
-        ? 'Keeps itself alive at 1 HP until the effect ends'
-        : getEffectDescription(cardDef.effect, cardDef.effectDuration, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance, !!cardDef.scount);
-      if (effectDesc) {
-        let amountLabel = '';
-        if (['cut', 'bleed'].includes(cardDef.effect)) {
-          const amount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'cut' ? 1 : 2);
-          amountLabel = ` (${amount} damage)`;
-        } else if (cardDef.effect === 'acid') {
-          const amount = normalizeEffectValue(cardDef.effectAmount, 1);
-          amountLabel = ` (${amount} initial)`;
-        } else if (cardDef.effect === 'prone') {
-          const amount = normalizeEffectValue(cardDef.effectAmount, 20);
-          amountLabel = ` (${amount}% extra)`;
-        } else if (cardDef.effect === 'drunk') {
-          const amount = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 20);
-          amountLabel = ` (${amount}% wrong target chance)`;
-        } else if (cardDef.effect === 'hungry') {
-          const amount = normalizeEffectValue(cardDef.effectAmount, 1);
-          amountLabel = ` (${amount} damage/turn)`;
-        }
-        specialAttackValue += ` - *${effectDesc}${amountLabel}*`;
+      const sa = cardDef.special_attack;
+      const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
+      const normalizedEffectChance = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 50);
+      const infoScountIcon = cardDef.scountIcon || (cardDef.scount === 2 ? '<:2_:1503002986560094228>' : (cardDef.scount ? '<:3_:1503002985578365118>' : null));
+      let specialAttackValue;
+      if (cardDef.scount && Number.isFinite(cardDef.scount) && cardDef.scount > 1) {
+        const divisor = cardDef.scount;
+        const perMin = Math.floor(scaled.special_attack.min / divisor);
+        const perMax = Math.floor(scaled.special_attack.max / divisor);
+        specialAttackValue = `${sa.name} (${perMin}-${perMax} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
+      } else {
+        specialAttackValue = `${sa.name} (${scaled.special_attack.min}-${scaled.special_attack.max} Atk)` + (infoScountIcon ? ` ${infoScountIcon}` : '');
       }
+      if (cardDef.effect && cardDef.effectDuration) {
+        if (!exactEntry || _isEffUnlocked(_cardStarForSpec)) {
+          const effectDesc = cardDef.effect === 'undead' && cardDef.itself
+            ? 'Keeps itself alive at 1 HP until the effect ends'
+            : getEffectDescription(cardDef.effect, cardDef.effectDuration, !!cardDef.itself, normalizedEffectAmount, normalizedEffectChance, !!cardDef.scount);
+          if (effectDesc) {
+            let amountLabel = '';
+            if (['cut', 'bleed'].includes(cardDef.effect)) {
+              const amount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'cut' ? 1 : 2);
+              amountLabel = ` (${amount} damage)`;
+            } else if (cardDef.effect === 'acid') {
+              const amount = normalizeEffectValue(cardDef.effectAmount, 1);
+              amountLabel = ` (${amount} initial)`;
+            } else if (cardDef.effect === 'prone') {
+              const amount = normalizeEffectValue(cardDef.effectAmount, 20);
+              amountLabel = ` (${amount}% extra)`;
+            } else if (cardDef.effect === 'drunk') {
+              const amount = normalizeEffectValue(cardDef.effectChance ?? cardDef.effectAmount, 20);
+              amountLabel = ` (${amount}% wrong target chance)`;
+            } else if (cardDef.effect === 'hungry') {
+              const amount = normalizeEffectValue(cardDef.effectAmount, 1);
+              amountLabel = ` (${amount} damage/turn)`;
+            }
+            specialAttackValue += ` - *${effectDesc}${amountLabel}*`;
+          }
+        } else {
+          specialAttackValue += ` - 🔒 *Status Effect locked (Star 5 required)*`;
+        }
+      }
+      embed.addFields({ name: 'Special Attack', value: specialAttackValue, inline: false });
     }
-    embed.addFields({ name: 'Special Attack', value: specialAttackValue, inline: false });
   }
 
   if (cardDef.effect && (!cardDef.special_attack || !scaled.special_attack)) {

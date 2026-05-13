@@ -215,7 +215,15 @@ async function execute({ message, args }) {
           return message.reply('User already owns that card, gift cancelled.');
         }
         const actualCardId = cardDef.id;
-        target.ownedCards.push({ cardId: actualCardId, level: 1, xp: 0 });
+        // optional level argument (args[4])
+        const { getMaxLevelForRank } = require('../utils/starLevel');
+        const maxLevel = getMaxLevelForRank(cardDef.rank);
+        let giveLevel = 1;
+        if (args[4]) {
+          const parsed = parseInt(args[4], 10);
+          if (!isNaN(parsed) && parsed >= 1) giveLevel = Math.min(parsed, maxLevel);
+        }
+        target.ownedCards.push({ cardId: actualCardId, level: giveLevel, xp: 0 });
         if (!target.history.includes(actualCardId)) target.history.push(actualCardId);
         await target.save();
         // check achievements for the receiver (e.g., UR card / faculty completion)
@@ -225,7 +233,7 @@ async function execute({ message, args }) {
         } catch (err) {
           console.error('Achievement check after owner give card failed', err);
         }
-        return message.reply(`Added card ${formatCardId(actualCardId)} to <@${targetId}>'s collection`);
+        return message.reply(`Added card ${formatCardId(actualCardId)} (Lv. ${giveLevel}) to <@${targetId}>'s collection`);
       }
 
       return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');

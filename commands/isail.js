@@ -532,7 +532,8 @@ function makeActionRow(state) {
         .setStyle(ButtonStyle.Primary)
         .setDisabled(isUndead || card.energy < 1)
     );
-    if (card.def.special_attack) {
+    const { isSpecialAttackUnlocked: _isailSpecUnlocked } = require('../utils/starLevel');
+    if (card.def.special_attack && _isailSpecUnlocked(card.userEntry?.starLevel)) {
       row.addComponents(
         new ButtonBuilder()
           .setCustomId('isail_action:special')
@@ -1947,7 +1948,8 @@ module.exports = {
             console.log(`[isail] applying effect=${card.def.effect} id=${card.def.id} all=${!!card.def.all} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
           } catch (e) {}
         }
-        const effectLogs = (!isDodgedByTruesight && act === 'special') ? applyCardEffectShared(card, effectTarget, { playerTeam: state.cards, opponentTeam: state.marines, marines: state.marines, cards: state.cards }) : [];
+        const { isStatusEffectUnlocked: _isailEffUnlocked } = require('../utils/starLevel');
+        const effectLogs = (!isDodgedByTruesight && act === 'special' && _isailEffUnlocked(card.userEntry?.starLevel)) ? applyCardEffectShared(card, effectTarget, { playerTeam: state.cards, opponentTeam: state.marines, marines: state.marines, cards: state.cards }) : [];
         effectLogs.forEach(l => appendLog(state, l));
         if (!isDodgedByTruesight && act === 'special' && card.def.special_attack?.gif) {
           try {

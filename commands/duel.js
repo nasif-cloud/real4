@@ -287,9 +287,9 @@ function buildEmbed(state) {
       const idx = state.player1Cards.indexOf(c);
       const isSelected = state.selected !== null && idx === state.selected && state.turn === 'player1';
       const level = c.userEntry ? c.userEntry.level : 1;
-      const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
+      const _starLvl1 = c.userEntry ? (c.userEntry.starLevel || 0) : 0;
       let value = `${hpBar(c.currentHP, c.maxHP)}`;
-      value += `\n${c.def.character} | Lv. ${level} U${upgradeMatch}`;
+      value += `\n${c.def.character} | Lv. ${level} S${_starLvl1}`;
       value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
       if (isSelected) value = `**> ${value}**`;
       embed.addFields({ name: fieldName, value, inline: true });
@@ -319,9 +319,9 @@ function buildEmbed(state) {
       const idx = state.player2Cards.indexOf(c);
       const isSelected = state.selected !== null && idx === state.selected && state.turn === 'player2';
       const level = c.userEntry ? c.userEntry.level : 1;
-      const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
+      const _starLvl2 = c.userEntry ? (c.userEntry.starLevel || 0) : 0;
       let value = `${hpBar(c.currentHP, c.maxHP)}`;
-      value += `\n${c.def.character} | Lv. ${level} U${upgradeMatch}`;
+      value += `\n${c.def.character} | Lv. ${level} S${_starLvl2}`;
       value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
       if (isSelected) value = `**> ${value}**`;
       embed.addFields({ name: fieldName, value, inline: true });
@@ -393,7 +393,8 @@ function makeActionRow(state, isPlayer1Turn) {
       .setStyle(ButtonStyle.Primary)
       .setDisabled(isUndead)
   );
-  if (card.def.special_attack && card.energy >= 3) {
+  const { isSpecialAttackUnlocked: _duelSpecUnlocked } = require('../utils/starLevel');
+  if (card.def.special_attack && card.energy >= 3 && _duelSpecUnlocked(card.userEntry?.starLevel)) {
     row.addComponents(
       new ButtonBuilder()
         .setCustomId('duel_action:special')
@@ -1370,7 +1371,8 @@ module.exports = {
           // default: effect targets the first selected target (or resolved target)
           effectTarget = targets[0] || null;
         }
-        if (effectTarget) {
+        const { isStatusEffectUnlocked: _duelAwaitEffUnlocked } = require('../utils/starLevel');
+        if (effectTarget && _duelAwaitEffUnlocked(card.userEntry?.starLevel)) {
           try {
             effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
           } catch (e) {
@@ -1564,7 +1566,8 @@ module.exports = {
             } else {
               effectTarget = targets[0] || null;
             }
-            if (effectTarget) {
+            const { isStatusEffectUnlocked: _duelAutoEffUnlocked } = require('../utils/starLevel');
+            if (effectTarget && _duelAutoEffUnlocked(card.userEntry?.starLevel)) {
               try {
                 effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
               } catch (e) {
@@ -1595,7 +1598,10 @@ module.exports = {
           try {
             console.log(`[duel] applying effect=${card.def.effect} id=${card.def.id} count=${card.def.count || 0} scount=${card.def.scount || 0} targetIsArray=${Array.isArray(effectTarget)} targetCount=${Array.isArray(effectTarget) ? effectTarget.length : (effectTarget ? 1 : 0)}`);
           } catch (e) {}
-          effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
+          const { isStatusEffectUnlocked: _duelSingEffUnlocked } = require('../utils/starLevel');
+          if (_duelSingEffUnlocked(card.userEntry?.starLevel)) {
+            effectLogs = applyCardEffectShared(card, effectTarget, { playerTeam: myTeam, opponentTeam });
+          }
           // Build effect summary for GIF embed (e.g., "and stuns Roronoa Zoro")
           if (card.def.effect === 'team_stun') {
             effectSummary = ' and stunned the whole team';

@@ -1,0 +1,91 @@
+Please implement a new Star Level progression system that restricts card abilities and stats based on their rank and current level.
+
+
+
+1. Rank & Level Caps
+
+Each card rank now has a strictly enforced Maximum Star Level and Maximum Level. A card can be leveled up to its max without upgrading stars, but it will not unlock perks.
+
+
+
+D Rank: Max Star Level 1 (Max Level 10).
+
+C Rank: Max Star Level 2 (Max Level 20).
+
+B Rank: Max Star Level 3 (Max Level 30).
+
+A Rank: Max Star Level 4 (Max Level 40).
+
+S Rank: Max Star Level 5 (Max Level 50).
+
+SS Rank: Max Star Level 6 (Max Level 60).
+
+UR Rank: Max Star Level 7 (Max Level 70).
+
+2. Star Level Perks (Locked by Default)
+
+All cards start at Star Level 0 with no perks. Abilities are unlocked only upon reaching the specific star level:
+
+
+
+Star 1–3: +1% All Stats boost per level.
+
+Star 4: Unlock Special Attack + 1% All Stats.
+
+Star 5: Unlock Status Effect (linked to Special) + 1% All Stats.
+
+Star 6: Unlock Signature Weapon + 1% All Stats.
+
+Star 7: +1% All Stats boost.
+
+3. The Upgrade Command (/upgrade or op upgrade)
+
+Users must reach 10 card levels per star (e.g., Level 30 required for Star Level 3).
+
+
+
+Buttons: The embed must have two grey buttons: "Use Gems" (Cost: 1 Gem) or "Use Shards" (Cost: Shards equal to the targeted Star Level).
+
+Shard Logic: Shards must match the card's attribute (e.g., Star Level 2 INT requires 2 INT Shards).
+
+4. Visual Embed Update (Star Display)
+
+Display stars at the very bottom of the info embed text (just before the image). Use the appropriate emoji based on the card's attribute and fill the remaining "Rank Max" with blank stars.
+
+Emoji References:
+
+
+
+STR: <:redstar:1504239990710865990>
+
+QCK: <:bluestar:1504240197318086706>
+
+DEX: <:greenstar:1504240199553515620>
+
+INT: <:purplestar:1504239997962944542>
+
+PSY: <:yellowstar:1504239996813705267>
+
+Blank: <:blankstar:1504239999535812659>
+
+Example Render (UR STR Star Level 2):<:redstar:1504239990710865990><:redstar:1504239990710865990><:blankstar:1504239999535812659><:blankstar:1504239999535812659><:blankstar:1504239999535812659><:blankstar:1504239999535812659><:blankstar:1504239999535812659>
+
+
+
+Make sure that on the info embed of a card, the star emojis are at the bottom of the embed, above the image below all the other text, there should be a space seperating the other text and the star emojis, it should just be the emojis with no additional context
+
+for all cards in the database that already surpass the level cap, they should be automatically set to the level cap. if a card is at max level, in the info command it should be for example Lvl 70 (max) instead of Lvl 70 (xp: 0)
+
+
+
+additionally, add an "level" value to op owner give card command, to set the cards level before giving it
+
+
+
+also, on the duel command, where U1, U2 or U3 is stated, instead it should be S1, S2, etc.. the number corresponding to the cards star level. 
+
+
+
+Personal AI Note:
+
+Remember to update the battle logic (sail + duels) so that it checks the starLevel variable before allowing a specialAttack or statusEffect to trigger. If the card isn't at least Star Level 4 or 5, these actions should return an "Ability Locked" message.

@@ -6,7 +6,8 @@ const UserCardSchema = new Schema({
   cardId: { type: String, required: true },
   level: { type: Number, default: 1 },
   xp: { type: Number, default: 0 },
-  equippedTo: { type: String, default: null }
+  equippedTo: { type: String, default: null },
+  starLevel: { type: Number, default: 0 }
 }, { _id: false });
 
 const UserSchema = new Schema({

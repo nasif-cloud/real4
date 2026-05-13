@@ -58,6 +58,35 @@ async function main() {
   const stockModule = require('./src/stock');
   stockModule.initStockSystem();
 
+  // Enforce card level caps based on rank (migration)
+  try {
+    const { RANK_MAX_LEVEL } = require('./utils/starLevel');
+    const { cards: cardDefs } = require('./data/cards');
+    const allUsers = await User.find({}, 'ownedCards');
+    let cappedUserCount = 0;
+    for (const u of allUsers) {
+      let modified = false;
+      for (const entry of (u.ownedCards || [])) {
+        const def = cardDefs.find(c => c.id === entry.cardId);
+        if (!def || !def.rank) continue;
+        const maxLevel = RANK_MAX_LEVEL[def.rank];
+        if (!maxLevel) continue;
+        if ((entry.level || 1) > maxLevel) {
+          entry.level = maxLevel;
+          entry.xp = 0;
+          modified = true;
+        }
+      }
+      if (modified) {
+        await u.save();
+        cappedUserCount++;
+      }
+    }
+    console.log(`Level cap enforcement complete. Updated ${cappedUserCount} user(s).`);
+  } catch (err) {
+    console.error('Error enforcing level caps:', err);
+  }
+
   // Normalize old rod inventory entries to remove duplicate/outdated rods
   try {
     const normalizedCount = await normalizeAllUserRods();
@@ -360,6 +389,11 @@ async function main() {
         if (action && action.startsWith('bulksell_confirm')) {
           const [, token, choice] = interaction.customId.split(':');
           return bulksellCmd.handleButton(interaction, choice, token);
+        }
+
+        // handle star upgrade button interactions
+        if (interaction.customId && (interaction.customId.startsWith('upgrade_star_') || interaction.customId === 'upgrade_cancel')) {
+          return require('./commands/upgrade').handleUpgradeButton(interaction);
         }
       }
     } catch (err) {

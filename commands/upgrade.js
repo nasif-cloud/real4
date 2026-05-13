@@ -1,15 +1,28 @@
 const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { cards, getCardById, getAllCardVersions, searchCards, findBestOwnedCard, getShardItemIdForAttribute } = require('../utils/cards');
+const { cards, getCardById, findBestOwnedCard } = require('../utils/cards');
+const { getMaxStarForRank, getMaxLevelForRank, getStarUpgradeRequirement, buildStarDisplay } = require('../utils/starLevel');
 
-const STAR_UPGRADE_REQUIREMENTS = {
-  1: { level: 5, gemCost: 1 },
-  2: { level: 15, shardCost: 2 },
-  3: { level: 25, shardCost: 3 },
-  4: { level: 35, shardCost: 4 },
-  5: { level: 45, shardCost: 5 },
-  6: { level: 55, shardCost: 6 },
-  7: { level: 65, shardCost: 7 }
+const ATTRIBUTE_SHARD_MAP = {
+  STR: 'red_shard',
+  QCK: 'blue_shard',
+  DEX: 'green_shard',
+  PSY: 'yellow_shard',
+  INT: 'purple_shard'
+};
+
+function getShardItemIdForAttribute(attribute) {
+  return ATTRIBUTE_SHARD_MAP[attribute] || null;
+}
+
+const STAR_PERKS = {
+  1: '+1% All Stats',
+  2: '+1% All Stats',
+  3: '+1% All Stats',
+  4: 'Special Attack Unlocked + 1% All Stats',
+  5: 'Status Effect Unlocked + 1% All Stats',
+  6: 'Signature Weapon Unlocked + 1% All Stats',
+  7: '+1% All Stats'
 };
 
 function getShardCount(user, shardItemId) {
@@ -29,50 +42,58 @@ function consumeItems(user, itemId, amount) {
   return amount - remaining;
 }
 
-function getNextStarRequirement(starLevel) {
-  return STAR_UPGRADE_REQUIREMENTS[starLevel + 1] || null;
-}
-
 function buildUpgradeEmbed(cardDef, ownedEntry, user, username, avatarUrl) {
-  const nextStar = (ownedEntry.starLevel || 0) + 1;
-  const maxStar = getCardById(cardDef.id) ? cardDef.mastery_total + 1 : 7;
-  const requirement = getNextStarRequirement(ownedEntry.starLevel || 0);
+  const currentStar = ownedEntry.starLevel || 0;
+  const nextStar = currentStar + 1;
+  const maxStar = getMaxStarForRank(cardDef.rank);
+  const maxLevel = getMaxLevelForRank(cardDef.rank);
+  const requirement = getStarUpgradeRequirement(nextStar);
   const shardItemId = getShardItemIdForAttribute(cardDef.attribute);
   const shardCount = getShardCount(user, shardItemId);
-  const hasGem = (user.gems || 0) >= (requirement?.gemCost || 0);
+  const hasGem = (user.gems || 0) >= 1;
   const hasShards = shardCount >= (requirement?.shardCost || 0);
-  const buttons = new ActionRowBuilder();
+  const meetsLevel = (ownedEntry.level || 1) >= (requirement?.level || 0);
+  const canUpgrade = !!requirement && meetsLevel && nextStar <= maxStar;
 
+  const buttons = new ActionRowBuilder();
   buttons.addComponents(
     new ButtonBuilder()
       .setCustomId(`upgrade_star_gem_${cardDef.id}`)
-      .setLabel(`Use Gems (${requirement?.gemCost || 0})`)
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(!requirement || !hasGem),
+      .setLabel(`Use Gems (Cost: 1 Gem)`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!canUpgrade || !hasGem),
     new ButtonBuilder()
       .setCustomId(`upgrade_star_shard_${cardDef.id}`)
-      .setLabel(`Use ${requirement?.shardCost || 0} ${cardDef.attribute} Shards`)
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(!requirement || !hasShards),
-    new ButtonBuilder()
-      .setCustomId('upgrade_cancel')
-      .setLabel('Cancel')
+      .setLabel(`Use Shards (Cost: ${requirement?.shardCost || 0} ${cardDef.attribute} Shards)`)
       .setStyle(ButtonStyle.Secondary)
+      .setDisabled(!canUpgrade || !hasShards)
   );
+
+  const starDisplay = buildStarDisplay(cardDef.attribute, currentStar, cardDef.rank);
+
+  const lines = [
+    `**Current Level:** ${ownedEntry.level || 1} / ${maxLevel}`,
+    `**Stars:** ${starDisplay} (${currentStar}/${maxStar})`,
+    ''
+  ];
+
+  if (requirement && nextStar <= maxStar) {
+    lines.push(`**Next Star:** ${nextStar} — ${STAR_PERKS[nextStar] || '+1% All Stats'}`);
+    lines.push(`**Required Level:** ${requirement.level}`);
+    lines.push(`**Gem Cost:** 1 Gem`);
+    lines.push(`**Shard Cost:** ${requirement.shardCost} ${cardDef.attribute} Shards`);
+  } else {
+    lines.push('No further star upgrades available for this rank.');
+  }
+
+  lines.push('');
+  lines.push(`**Your Gems:** ${user.gems || 0}`);
+  lines.push(`**Your ${cardDef.attribute} Shards:** ${shardCount}`);
 
   const embed = new EmbedBuilder()
     .setColor('#FFFFFF')
     .setTitle(`${cardDef.emoji || ''} Star Upgrade — ${cardDef.character}`)
-    .setDescription([`**Current Level:** ${ownedEntry.level || 1}`,
-      `**Current Stars:** ${ownedEntry.starLevel || 0}/${maxStar}`,
-      `**Next Star Unlock:** ${nextStar}`,
-      requirement ? `**Required Level:** ${requirement.level}` : 'No further star upgrades available.',
-      requirement && requirement.shardCost ? `**Shard Cost:** ${requirement.shardCost}x ${cardDef.attribute} Shards` : '',
-      requirement && requirement.gemCost ? `**Gem Cost:** ${requirement.gemCost} Gems` : '',
-      '',
-      `**Your Gems:** ${user.gems || 0}`,
-      `**Your ${cardDef.attribute} Shards:** ${shardCount}`
-    ].filter(Boolean).join('\n'))
+    .setDescription(lines.join('\n'))
     .setAuthor({ name: username, iconURL: avatarUrl });
 
   return { embed, buttons };
@@ -108,10 +129,20 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    const nextStar = (ownedEntry.starLevel || 0) + 1;
-    const requirement = getNextStarRequirement(ownedEntry.starLevel || 0);
+    const currentStar = ownedEntry.starLevel || 0;
+    const maxStar = getMaxStarForRank(cardDef.rank);
+
+    if (currentStar >= maxStar) {
+      const starDisplay = buildStarDisplay(cardDef.attribute, currentStar, cardDef.rank);
+      const reply = `**${cardDef.character}** is already at the maximum star level for its rank.\n${starDisplay}`;
+      if (message) return message.channel.send(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
+    const nextStar = currentStar + 1;
+    const requirement = getStarUpgradeRequirement(nextStar);
     if (!requirement) {
-      const reply = `**${cardDef.character}** is already at maximum star level.`;
+      const reply = `**${cardDef.character}** cannot be upgraded further.`;
       if (message) return message.channel.send(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }
@@ -120,7 +151,7 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor('#FFFFFF')
         .setTitle('Star Upgrade Locked')
-        .setDescription(`This card must reach level ${requirement.level} before it can gain star ${nextStar}.`)
+        .setDescription(`**${cardDef.character}** must reach **Level ${requirement.level}** before gaining Star ${nextStar}.\n\nCurrent level: **${ownedEntry.level || 1}**`)
         .setAuthor({ name: username, iconURL: avatarUrl });
       if (message) return message.channel.send({ embeds: [embed] });
       return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -153,19 +184,29 @@ module.exports = {
     const ownedEntry = (user.ownedCards || []).find(e => e.cardId === cardId);
     if (!ownedEntry) return interaction.update({ content: 'You no longer own that card.', embeds: [], components: [] });
 
-    const requirement = getNextStarRequirement(ownedEntry.starLevel || 0);
-    if (!requirement) return interaction.update({ content: 'This card is already at maximum star level.', embeds: [], components: [] });
-    if ((ownedEntry.level || 1) < requirement.level) {
-      return interaction.update({ content: `This card must reach level ${requirement.level} before it can gain the next star.`, embeds: [], components: [] });
+    const currentStar = ownedEntry.starLevel || 0;
+    const maxStar = getMaxStarForRank(cardDef.rank);
+    const nextStar = currentStar + 1;
+
+    if (currentStar >= maxStar) {
+      return interaction.update({ content: `This card is already at the maximum star level for its rank (${maxStar}★).`, embeds: [], components: [] });
     }
 
+    const requirement = getStarUpgradeRequirement(nextStar);
+    if (!requirement) return interaction.update({ content: 'This card cannot be upgraded further.', embeds: [], components: [] });
+
+    if ((ownedEntry.level || 1) < requirement.level) {
+      return interaction.update({ content: `This card must reach level ${requirement.level} before it can gain Star ${nextStar}.`, embeds: [], components: [] });
+    }
+
+    const shardItemId = getShardItemIdForAttribute(cardDef.attribute);
+
     if (method === 'gem') {
-      if ((user.gems || 0) < requirement.gemCost) {
-        return interaction.update({ content: `You need ${requirement.gemCost} Gems to upgrade this star.`, embeds: [], components: [] });
+      if ((user.gems || 0) < 1) {
+        return interaction.update({ content: 'You need 1 Gem to upgrade this star.', embeds: [], components: [] });
       }
-      user.gems -= requirement.gemCost;
+      user.gems -= 1;
     } else {
-      const shardItemId = getShardItemIdForAttribute(cardDef.attribute);
       const shardCount = getShardCount(user, shardItemId);
       if (shardCount < requirement.shardCost) {
         return interaction.update({ content: `You need ${requirement.shardCost} ${cardDef.attribute} Shards to upgrade this star.`, embeds: [], components: [] });
@@ -173,17 +214,25 @@ module.exports = {
       consumeItems(user, shardItemId, requirement.shardCost);
     }
 
-    ownedEntry.starLevel = (ownedEntry.starLevel || 0) + 1;
+    ownedEntry.starLevel = nextStar;
     await user.save();
+
+    const starDisplay = buildStarDisplay(cardDef.attribute, nextStar, cardDef.rank);
 
     const newEmbed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setTitle('Star Upgrade Successful')
-      .setDescription(`**${cardDef.character}** gained star level ${ownedEntry.starLevel}.`)
-      .addFields(
-        { name: 'Remaining Gems', value: `${user.gems || 0}`, inline: true },
-        { name: `${cardDef.attribute} Shards`, value: `${getShardCount(user, getShardItemIdForAttribute(cardDef.attribute))}`, inline: true }
-      );
+      .setTitle('Star Upgrade Successful!')
+      .setDescription([
+        `**${cardDef.emoji || ''} ${cardDef.character}** reached **Star ${nextStar}**!`,
+        '',
+        starDisplay,
+        '',
+        `**Perk Unlocked:** ${STAR_PERKS[nextStar] || '+1% All Stats'}`,
+        '',
+        `**Remaining Gems:** ${user.gems || 0}`,
+        `**${cardDef.attribute} Shards:** ${getShardCount(user, shardItemId)}`
+      ].join('\n'))
+      .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() });
 
     return interaction.update({ content: '', embeds: [newEmbed], components: [] });
   }
