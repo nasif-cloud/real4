@@ -1510,6 +1510,10 @@ module.exports = {
           card.energy -= 1;
           try { const bleedLocal = applyBleedOnEnergyUse(card, 1); if (bleedLocal && bleedLocal.length) bleedLocal.forEach(l => logs.push(l)); } catch (e) {}
         } else if (act === 'special') {
+          const { isSpecialAttackUnlocked: _duelSpecCheck } = require('../utils/starLevel');
+          if (!_duelSpecCheck(card.userEntry?.starLevel)) {
+            return interaction.reply({ content: `**${card.def.character}** has not unlocked Special Attack yet. Reach **Star Level 4** to unlock it.`, ephemeral: true });
+          }
           if (card.energy < 3) return interaction.reply({ content: 'Special attack requires 3 energy.', ephemeral: true });
           card.energy -= 3;
           try { const bleedLocal = applyBleedOnEnergyUse(card, 3); if (bleedLocal && bleedLocal.length) bleedLocal.forEach(l => logs.push(l)); } catch (e) {}

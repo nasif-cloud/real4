@@ -935,12 +935,6 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   }
   descLines.push(`**Owned:** ${isOwned ? 'Yes' : 'No'}`);
   descLines.push(`**Rank:** ${cardDef.rank}`);
-  {
-    const { buildStarDisplay: _bsd } = require('../utils/starLevel');
-    const _cardStar = exactEntry ? (exactEntry.starLevel || 0) : 0;
-    descLines.push('');
-    descLines.push(_bsd(cardDef.attribute, _cardStar, cardDef.rank));
-  }
 
   const isFavN = user && Array.isArray(user.favoriteCards) && user.favoriteCards.includes(cardDef.id);
   const isWishN = user && Array.isArray(user.wishlistCards) && user.wishlistCards.includes(cardDef.id);
@@ -1032,7 +1026,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     const { isSpecialAttackUnlocked: _isSpecUnlocked, isStatusEffectUnlocked: _isEffUnlocked } = require('../utils/starLevel');
     const _cardStarForSpec = exactEntry ? (exactEntry.starLevel || 0) : 0;
     if (exactEntry && !_isSpecUnlocked(_cardStarForSpec)) {
-      embed.addFields({ name: 'Special Attack', value: '🔒 Locked — Reach **Star Level 4** to unlock', inline: false });
+      embed.addFields({ name: 'Special Attack', value: '<:lock:1504265310893637724> Locked — Reach **Star Level 4** to unlock', inline: false });
     } else {
       const sa = cardDef.special_attack;
       const normalizedEffectAmount = normalizeEffectValue(cardDef.effectAmount, cardDef.effect === 'regen' ? 10 : 12);
@@ -1073,7 +1067,7 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
             specialAttackValue += ` - *${effectDesc}${amountLabel}*`;
           }
         } else {
-          specialAttackValue += ` - 🔒 *Status Effect locked (Star 5 required)*`;
+          specialAttackValue += ` - <:lock:1504265310893637724> *Status Effect locked (Star 5 required)*`;
         }
       }
       embed.addFields({ name: 'Special Attack', value: specialAttackValue, inline: false });
@@ -1089,7 +1083,12 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     }
   }
 
-  // No "Stat Boosts" section
+  // Star Level field — always shown at the bottom for regular cards
+  {
+    const { buildStarDisplay: _bsdField } = require('../utils/starLevel');
+    const _cardStarField = exactEntry ? (exactEntry.starLevel || 0) : 0;
+    embed.addFields({ name: 'Star Level', value: _bsdField(cardDef.attribute, _cardStarField, cardDef.rank), inline: false });
+  }
 
   return embed;
 }

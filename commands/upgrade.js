@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { cards, getCardById, findBestOwnedCard } = require('../utils/cards');
+const { cards } = require('../data/cards');
+const { getCardById, findBestOwnedCard } = require('../utils/cards');
 const { getMaxStarForRank, getMaxLevelForRank, getStarUpgradeRequirement, buildStarDisplay } = require('../utils/starLevel');
 
 const ATTRIBUTE_SHARD_MAP = {

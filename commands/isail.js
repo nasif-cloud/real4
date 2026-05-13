@@ -1880,6 +1880,10 @@ module.exports = {
           if (card.energy < 1) return interaction.followUp({ content: 'Not enough energy for attack.', ephemeral: true });
           card.energy -= 1;
         } else if (act === 'special') {
+          const { isSpecialAttackUnlocked: _isailSpecCheck } = require('../utils/starLevel');
+          if (!_isailSpecCheck(card.userEntry?.starLevel)) {
+            return interaction.followUp({ content: `**${card.def.character}** has not unlocked Special Attack yet. Reach **Star Level 4** to unlock it.`, ephemeral: true });
+          }
           if (card.energy < 3) return interaction.followUp({ content: 'Special attack requires 3 <:energy:1478051414558118052>.', ephemeral: true });
           card.energy -= 3;
           // set gif display
@@ -2090,6 +2094,10 @@ module.exports = {
       if (act === 'attack') {
         card.energy -= 1;
       } else if (act === 'special') {
+        const { isSpecialAttackUnlocked: _isailSpecCheck2 } = require('../utils/starLevel');
+        if (!_isailSpecCheck2(card.userEntry?.starLevel)) {
+          return interaction.followUp({ content: `**${card.def.character}** has not unlocked Special Attack yet. Reach **Star Level 4** to unlock it.`, ephemeral: true });
+        }
         card.energy -= 3;
         // Set gif display for special attacks
         if (card.def.special_attack && card.def.special_attack.gif) {
