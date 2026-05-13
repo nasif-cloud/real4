@@ -129,7 +129,7 @@ module.exports = {
       for (let i = 0; i < Math.floor(count); i++) {
         const crew = getRandomCrewByRank(pack.rank);
         if (crew) {
-          packRewards.push({ name: crew.name, emoji: crew.packEmoji || '' });
+          packRewards.push({ name: crew.name, emoji: crew.icon || '' });
           user.packInventory[crew.name] = (user.packInventory[crew.name] || 0) + 1;
         }
       }

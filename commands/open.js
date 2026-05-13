@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
-const { simulatePull, buildPullEmbed, getAllCardVersions, getCardById } = require('../utils/cards');
+const { simulatePull, buildPullEmbed, getAllCardVersions, getCardById, applyXpToEquippedArtifact } = require('../utils/cards');
 const { cards } = require('../data/cards');
 const crews = require('../data/crews');
 const { levelers } = require('../data/levelers');
@@ -240,7 +240,11 @@ module.exports = {
           const emoji = SHARD_EMOJIS[color] || '';
           return `${emoji} ${value}x ${key}`;
         }
-        return `${key} x${value}`;
+        // Extract GOD_EMOJI from key if present
+        if (key.includes('God Token')) {
+          return `${value}x ${key}`;
+        }
+        return `${value}x ${key}`;
       });
 
       const reply = `You opened ${chest.emoji} **${chest.name}** x${quantity} and received:\n${rewardLines.join('\n')}`;
@@ -461,6 +465,7 @@ module.exports = {
           duplicateText = 'Duplicate ship already owned';
         } else if (card.mastery < bestOwnedCard.mastery) {
           bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+          applyXpToEquippedArtifact(user, bestOwnedEntry, 100);
           const gained = Math.floor(bestOwnedEntry.xp / 100);
           if (gained > 0) {
             bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
@@ -469,6 +474,7 @@ module.exports = {
           duplicateText = `Duplicate +100 XP${gained ? ` (+${gained} lvl)` : ''}`;
         } else if (card.mastery === bestOwnedCard.mastery) {
           bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+          applyXpToEquippedArtifact(user, bestOwnedEntry, 100);
           const gained = Math.floor(bestOwnedEntry.xp / 100);
           if (gained > 0) {
             bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
@@ -491,6 +497,7 @@ module.exports = {
             duplicateText = `Upgraded!`;
           } else {
             bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+            applyXpToEquippedArtifact(user, bestOwnedEntry, 100);
             const gained = Math.floor(bestOwnedEntry.xp / 100);
             if (gained > 0) {
               bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;

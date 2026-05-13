@@ -136,6 +136,14 @@ module.exports = {
       return interaction.reply({ content: reply, flags: 64 });
     }
 
+    // Check if target is artifact or ship
+    if (card.artifact || card.ship) {
+      const type = card.artifact ? 'artifact' : 'ship';
+      const reply = `You cannot feed levelers to a ${type}.`;
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, flags: 64 });
+    }
+
     // Check if owned
     const ownedCard = user.ownedCards.find(c => c.cardId === card.id);
     if (!ownedCard) {

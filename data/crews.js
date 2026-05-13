@@ -6,15 +6,13 @@ module.exports = [
     name: "Strawhat Pirates",
     icon: '<:Strawats:1477827990397259858>',
     packImage: 'https://files.catbox.moe/yzb6ru.webp',
-    packEmoji: '<:strawhatpiratespack:1491566740570636349>',
     rank: 'A',
-    color: '#f40000'
+    color: '#ea0404'
   },
   {
     name: "Buggy Pirates",
     icon: '<:buggypirates:1479924477557997690>',
     packImage: 'https://files.catbox.moe/6jdjgs.webp',
-    packEmoji: '<:Buggypiratespack:1491566887933317311>',
     rank: 'A',
     color: '#ff1500'
   },
@@ -22,7 +20,6 @@ module.exports = [
     name: "Cross Guild",
     icon: '<:CrossGuild:1480010003896340482>',
     packImage: 'https://files.catbox.moe/tjvgbt.webp',
-    packEmoji: '<:Crossguildpack:1491567315282559077>',
     rank: 'A',
     color: '#a64dff'
   },
@@ -30,7 +27,6 @@ module.exports = [
     name: "Marines",
     icon: '<:Marines:1480016473794805760>',
     packImage: 'https://files.catbox.moe/74j02n.webp',
-    packEmoji: '<:marinespack:1491567224941711571>',
     rank: 'C',
     color: '#a3c1f9'
   },
@@ -38,7 +34,6 @@ module.exports = [
     name: "Boroque Works",
     icon: '<:BoroqueWorks:1480254004150800607>',
     packImage: 'https://files.catbox.moe/33dxzb.webp',
-    packEmoji: '<:boroqueworkspack:1491567131140034570>',
     rank: 'A',
     color: '#a42bf9'
   },
@@ -46,7 +41,6 @@ module.exports = [
     name: "Red-Haired Pirates",
     icon: '<:redhairpirates:1489447902391570432>',
     packImage: 'https://files.catbox.moe/pqtpc0.webp',
-    packEmoji: '<:RedHairedpiratespack:1491567444744212631>',
     rank: 'S',
     color: '#fe1302'
   },
@@ -54,7 +48,6 @@ module.exports = [
     name: "Blackbeard Pirates",
     icon: '<:blackbeardpirates:1489679789076779319>',
     packImage: 'https://files.catbox.moe/e9muh7.webp',
-    packEmoji: '<:Blackbearddpiratespack:1491567558455726302>',
     rank: 'S',
     color: '#080808'
   },
@@ -62,8 +55,505 @@ module.exports = [
     name: "Whitebeard Pirates",
     icon: '<:whitrbeardpirates:1490852513174519929>',
     packImage: 'https://files.catbox.moe/whvj21.webp',
-    packEmoji: '<:whitebeardpiratespack:1491568020118835362>',
     rank: 'S',
     color: '#e8e8e8'
   },
+  {
+    name: "Thriller Bark Pirates",
+    icon: '<:ThrillerBarkIcon:1503927485887156234>',
+    packImage: 'https://files.catbox.moe/5d7ayl.webp',
+    rank: 'B',
+    color: '#0b000f'
+  },
+  {
+    name: "Foxy Pirates",
+    icon: '<:Foxypiratesicon:1503931337491611788>',
+    packImage: 'https://files.catbox.moe/qdgn2c.webp',
+    rank: 'C',
+    color: '#ff95fd'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage:'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  {
+    name: "Whitebeard Pirates",
+    icon: '<:whitrbeardpirates:1490852513174519929>',
+    packImage: 'https://files.catbox.moe/whvj21.webp',
+    rank: 'S',
+    color: '#e8e8e8'
+  },
+  
 ];

@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const { cards } = require('../data/cards');
 const { PULL_LIMIT, PULL_RESET_HOURS, PULL_RATES, PITY_TARGET, PITY_DISTRIBUTION } = require('../config');
-const { buildPullEmbed, getAllCardVersions, getCardById, pickFromPoolWithWishlist } = require('../utils/cards');
+const { buildPullEmbed, getAllCardVersions, getCardById, pickFromPoolWithWishlist, applyXpToEquippedArtifact } = require('../utils/cards');
 const stockUtils = require('../src/stock');
 const getPreviousPullResetDate = stockUtils.getPreviousPullResetDate;
 const getTimeUntilNextPullReset = stockUtils.getTimeUntilNextPullReset;
@@ -156,6 +156,7 @@ module.exports = {
       
       if (pulledCard.mastery < bestOwnedCard.mastery) {
         bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+        applyXpToEquippedArtifact(user, bestOwnedEntry, 100);
         const gained = Math.floor(bestOwnedEntry.xp / 100);
         if (gained > 0) {
           bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
@@ -164,6 +165,7 @@ module.exports = {
         duplicateText = `+100 XP`;
       } else if (pulledCard.mastery === bestOwnedCard.mastery) {
         bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+        applyXpToEquippedArtifact(user, bestOwnedEntry, 100);
         const gained = Math.floor(bestOwnedEntry.xp / 100);
         if (gained > 0) {
           bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;
@@ -176,6 +178,7 @@ module.exports = {
         // check if the card on team prevents upgrade
         if (user.team && user.team.includes(bestOwnedIdVal)) {
           bestOwnedEntry.xp = (bestOwnedEntry.xp || 0) + 100;
+          applyXpToEquippedArtifact(user, bestOwnedEntry, 100);
           const gained = Math.floor(bestOwnedEntry.xp / 100);
           if (gained > 0) {
             bestOwnedEntry.level = (bestOwnedEntry.level || 1) + gained;

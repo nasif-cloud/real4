@@ -340,98 +340,37 @@ function energyDisplay(energy) {
 
 // return an array of marine objects for the given progress level
 function getMarinesForLevel(stage, prevRanks = []) {
-  const maxIdx = marines.length - 1;
-  // determine count range by stage (keeps encounter sizes reasonable)
-  let minCount = 1, maxCount = 1;
-  if (stage <= 5) { minCount = maxCount = 1; }
-  else if (stage <= 15) { minCount = 1; maxCount = 2; }
-  else { minCount = 2; maxCount = 3; }
+  // Filter eligible ranks based on stagerange
+  const eligible = marines.filter(m => stage >= m.stagerange[0] && stage <= m.stagerange[1]);
+  if (eligible.length === 0) return [];
 
-  // HP target benchmarks (keeps difficulty scaling similar to prior logic)
-  let targetHP;
-  if (stage <= 10) targetHP = 30;
-  else if (stage <= 20) targetHP = 80;
-  else targetHP = 150;
+  // Randomly determine count: 1, 2, or 3
+  const count = randomInt(1, 3);
 
-  // allow higher rank pool as stage increases
-  const rearIdx = marines.findIndex(m => m.rank === 'Rear admiral');
-  const viceIdx = marines.findIndex(m => m.rank === 'Vice admiral');
-  const admiralIdx = marines.findIndex(m => m.rank === 'Admiral');
-  const fleetIdx = marines.findIndex(m => m.rank === 'Fleet Admiral');
-  let rankMinIdx = 0;
-  let rankMaxIdx = Math.min(maxIdx, Math.floor(stage / 2) + 1);
-
-  if (stage >= 42 && fleetIdx !== -1) {
-    rankMinIdx = fleetIdx;
-    rankMaxIdx = fleetIdx;
-    minCount = maxCount = 3;
-  } else if (stage >= 38 && admiralIdx !== -1) {
-    rankMinIdx = admiralIdx;
-    rankMaxIdx = admiralIdx;
-    minCount = maxCount = 3;
-  } else if (stage >= 34 && viceIdx !== -1) {
-    rankMinIdx = viceIdx;
-    rankMaxIdx = viceIdx;
-    minCount = maxCount = 3;
-  } else if (stage >= 30 && rearIdx !== -1) {
-    rankMinIdx = rearIdx;
-    rankMaxIdx = rearIdx;
-    minCount = maxCount = 3;
+  const group = [];
+  for (let i = 0; i < count; i++) {
+    // Randomly select from eligible ranks
+    const c = eligible[Math.floor(Math.random() * eligible.length)];
+    const rank = c.rank;
+    const pool = c.pool || [];
+    const poolEntry = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : { emoji: '', attribute: 'STR' };
+    const emoji = poolEntry.emoji;
+    const attribute = poolEntry.attribute;
+    const maxHP = marines.getRandomMarineHP(c.rank, stage);
+    group.push({ rank, speed: c.speed, atk: c.atk, maxHP, currentHP: maxHP, status: [], emoji, attribute });
   }
 
-  // point budget system: stage * 5 points to "buy" marines
-  const budget = Math.max(1, Math.floor(stage * 5));
-
-  // cost function: higher-rank marines cost more (index+1)
-  const costFor = (idx) => idx + 1;
-
-  let best = null;
-  for (let t = 0; t < 400; t++) {
-    const count = randomInt(minCount, maxCount);
-    const group = [];
-    let remaining = budget;
-    let attempts = 0;
-    while (group.length < count && attempts < 30) {
-      attempts++;
-      const idx = randomInt(rankMinIdx, rankMaxIdx);
-      const c = marines[idx];
-      const cost = costFor(idx);
-      if (cost > remaining) continue;
-      const rank = c.rank;
-      const pool = c.pool || [];
-      const poolEntry = pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : { emoji: '', attribute: 'STR' };
-      const emoji = poolEntry.emoji;
-      const attribute = poolEntry.attribute;
-      const maxHP = (typeof c.minHP === 'number' && typeof c.maxHP === 'number')
-        ? marines.getRandomMarineHP(c.rank, stage)
-        : c.hp;
-      group.push({ rank, speed: c.speed, atk: c.atk, maxHP, currentHP: maxHP, status: [], emoji, attribute });
-      remaining -= cost;
-    }
-    if (!group.length) continue;
-
-    const totalHP = group.reduce((sum, m) => sum + m.maxHP, 0);
-    const score = Math.abs(totalHP - targetHP) + remaining; // prefer using budget and matching HP
-
-    // skip if the rank list matches previous exactly (order ignored)
-    const ranks = group.map(m => m.rank).sort().join(',');
-    const prevKey = prevRanks.slice().sort().join(',');
-    if (prevKey && ranks === prevKey) continue;
-
-    if (!best || score < best.score) {
-      best = { group, score };
-      if (score === 0) break;
-    }
-  }
-
-  if (!best) return [];
-  const groupLen = (best.group || []).length;
+  // Apply atk multiplier based on group length
+  const groupLen = group.length;
   const atkMultiplier = groupLen === 1 ? 2 : groupLen === 2 ? 1.5 : 1;
-  best.group = (best.group || []).map(m => {
+  group.forEach(m => {
     const newAtk = Math.max(0, Math.floor((m.atk || 0) * atkMultiplier));
-    return Object.assign({}, m, { atk: newAtk, attack_min: newAtk, attack_max: newAtk });
+    m.atk = newAtk;
+    m.attack_min = newAtk;
+    m.attack_max = newAtk;
   });
-  return best.group;
+
+  return group;
 }
 
 function buildEmbed(state, user, discordUser) {

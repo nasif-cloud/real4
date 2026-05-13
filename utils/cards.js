@@ -1213,6 +1213,23 @@ function getEffectDescription(effectType, duration, isSelf = false, effectAmount
   return effectDescriptions[effectType] || null;
 }
 
+// Apply XP to an equipped artifact when its host card gains XP
+function applyXpToEquippedArtifact(user, cardEntry, xpGain) {
+  if (!user || !user.ownedCards || !cardEntry) return;
+  
+  // Find any artifact equipped to this card
+  const artifact = user.ownedCards.find(a => a.equippedTo === cardEntry.cardId);
+  if (!artifact) return;
+  
+  // Apply the same XP to the artifact
+  artifact.xp = (artifact.xp || 0) + xpGain;
+  const artifactLevelsGained = Math.floor(artifact.xp / 100);
+  if (artifactLevelsGained > 0) {
+    artifact.level = (artifact.level || 1) + artifactLevelsGained;
+    artifact.xp = artifact.xp % 100;
+  }
+}
+
 module.exports = {
   searchCards,
   findFirstCard,
@@ -1238,4 +1255,5 @@ module.exports = {
   updateShipBalance,
   formatCardId,
   consumeShipCola,
+  applyXpToEquippedArtifact,
 };

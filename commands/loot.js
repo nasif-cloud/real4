@@ -59,7 +59,7 @@ module.exports = {
         user.packInventory = user.packInventory || {};
         user.packInventory[crew.name] = (user.packInventory[crew.name] || 0) + 1;
         user.markModified('packInventory');
-        extras.push(`\`1x\` ${crew.packEmoji ? crew.packEmoji + ' ' : ''}**${crew.name} pack**`);
+        extras.push(`\`1x\` ${crew.icon ? crew.icon + ' ' : ''}**${crew.name} pack**`);
       }
 
       const chestRoll = Math.random();

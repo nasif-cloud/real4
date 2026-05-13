@@ -116,7 +116,7 @@ function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
   const packLines = Object.keys(packObj).length
     ? Object.entries(packObj).map(([name, qty]) => {
         const crew = crews.find(c => c.name === name);
-        const emoji = crew && crew.packEmoji ? `${crew.packEmoji} ` : '';
+        const emoji = crew && crew.icon ? `${crew.icon} ` : '';
         return `${emoji}${name} x${qty}`;
       })
     : [];

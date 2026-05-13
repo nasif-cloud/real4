@@ -142,8 +142,30 @@ function buildBoostEmbed(cardDef, userEntry, user) {
   // Always show level boost last, no emoji
   lines.push(`**Levels**: boosts all stats by \`${levelBoostPct}%\``);
 
-  // Compose summary
-  const baseStats = `**Base stats:** ${cardDef.power} Power, ${cardDef.health} Health, ${cardDef.speed} Speed, ${cardDef.attack_min} - ${cardDef.attack_max} Attack`;
+  // For artifacts, show boost information instead of base stats
+  let baseStats = '';
+  if (cardDef.artifact && cardDef.boost) {
+    // Parse artifact boost format: "Target (pct)%" or "Target, Stat (pct)%"
+    const regex = /([\w .'-]+?)(?:,\s*([\w ]+))?\s*\((\d+)%\)/gi;
+    let match;
+    const baseBoosts = [];
+    while ((match = regex.exec(cardDef.boost)) !== null) {
+      const target = match[1].trim();
+      const stat = match[2] ? match[2].trim() : null;
+      const pct = parseInt(match[3], 10);
+      if (stat) {
+        baseBoosts.push(`${stat} by ${pct}%`);
+      } else {
+        baseBoosts.push(`${target} by ${pct}%`);
+      }
+    }
+    if (baseBoosts.length > 0) {
+      baseStats = `**Base boost:** ${baseBoosts.join(', ')}`;
+    }
+  } else {
+    baseStats = `**Base stats:** ${cardDef.power} Power, ${cardDef.health} Health, ${cardDef.speed} Speed, ${cardDef.attack_min} - ${cardDef.attack_max} Attack`;
+  }
+
   // Compose total boost summary in requested format
   let totalParts = [];
   // Add all stats (levels + other all stats boosts)

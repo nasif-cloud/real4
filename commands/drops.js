@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const User = require('../models/User');
 const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const { simulatePull, isArtifactCard, formatCardId } = require('../utils/cards');
+const { simulatePull, isArtifactCard, formatCardId, applyXpToEquippedArtifact } = require('../utils/cards');
 const { cards } = require('../data/cards');
 
 const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
@@ -436,6 +436,7 @@ async function handleDropClaim(interaction, dropId) {
     if (existingEntry) {
       // Add XP as duplicate
       existingEntry.xp = (existingEntry.xp || 0) + 100;
+      applyXpToEquippedArtifact(user, existingEntry, 100);
       const gained = Math.floor(existingEntry.xp / 100);
       if (gained > 0) {
         existingEntry.level = (existingEntry.level || 1) + gained;
