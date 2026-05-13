@@ -40,12 +40,17 @@ function parseSegment(segment) {
     const query = (amountMatch[1] || amountMatch[2] || '').trim();
     return { type: 'item', query, amount: parseInt(amountMatch[3], 10) };
   }
+  // Treat explicit 'all' or 'levelers' as all queries
   const allMatch = segment.match(/^all(?:\s+(.+))?$/i);
   if (allMatch) {
     const query = (allMatch[1] || '').trim();
     return { type: 'all', query };
   }
-  return { type: 'item', query: segment.trim(), amount: 1 };
+  const levelersOnly = segment.match(/^levelers?$/i);
+  if (levelersOnly) return { type: 'all', query: '' };
+
+  // Default: item with unspecified amount (null) meaning "all matches" unless amount explicitly provided
+  return { type: 'item', query: segment.trim(), amount: null };
 }
 
 function searchLevelers(query) {
@@ -150,6 +155,24 @@ function buildSellPlan(user, requests) {
         }
         continue;
       }
+      // Check for simple rank-only queries like 's', 'ss', 'ur', 'a', etc.
+      const rankOnlyMatch = String(request.query || '').trim().toUpperCase().match(/^(D|C|B|A|S|SS|UR)$/);
+      if (rankOnlyMatch) {
+        const wantedRank = rankOnlyMatch[1];
+        const ownedIds = (user.ownedCards || []).map(e => e.cardId);
+        const matches = ownedIds
+          .map(id => getCardById(id))
+          .filter(Boolean)
+          .filter(c => !c.ship && String(c.rank).toUpperCase() === String(wantedRank).toUpperCase());
+        for (const card of matches) {
+          const price = (card.rank === 'D' ? 10 : card.rank === 'C' ? 10 : card.rank === 'B' ? 25 : card.rank === 'A' ? 50 : card.rank === 'S' ? 200 : card.rank === 'SS' ? 750 : card.rank === 'UR' ? 2500 : 0);
+          if (price <= 0) continue;
+          actions.push({ type: 'card', card, price });
+          total += price;
+          lines.push(`${card.emoji || ''} **${card.character}** (${card.rank})`);
+        }
+        continue;
+      }
     }
     if (request.type === 'all') {
       const matches = findMatchingLevelers(request.query, user);
@@ -179,7 +202,10 @@ function buildSellPlan(user, requests) {
       const item = user.items.find(i => i.itemId === leveler.id);
       if (!item || item.quantity <= 0) continue;
       // Default to selling all of a leveler when no explicit amount provided
-      const quantity = (request.amount === 1) ? item.quantity : Math.min(item.quantity, request.amount);
+      let quantity;
+      if (request.amount === null || request.amount === undefined) quantity = item.quantity;
+      else if (request.amount === 'all') quantity = item.quantity;
+      else quantity = Math.min(item.quantity, Number(request.amount) || item.quantity);
       actions.push({ type: 'leveler', leveler, quantity });
       total += leveler.beli * quantity;
       lines.push(`${leveler.emoji || ''} **${leveler.name}** x${quantity}`);
@@ -191,7 +217,10 @@ function buildSellPlan(user, requests) {
       for (const levelerMatch of broadLevelers) {
         const item = user.items.find(i => i.itemId === levelerMatch.id);
         if (!item || item.quantity <= 0) continue;
-        const quantity = Math.min(item.quantity, request.amount === 'all' ? item.quantity : request.amount);
+        let quantity;
+        if (request.amount === null || request.amount === undefined) quantity = item.quantity;
+        else if (request.amount === 'all') quantity = item.quantity;
+        else quantity = Math.min(item.quantity, Number(request.amount) || item.quantity);
         actions.push({ type: 'leveler', leveler: levelerMatch, quantity });
         total += levelerMatch.beli * quantity;
         lines.push(`${levelerMatch.emoji || ''} **${levelerMatch.name}** x${quantity}`);
@@ -201,7 +230,8 @@ function buildSellPlan(user, requests) {
 
     const cardMatches = findMatchingOwnedCards(request.query, user);
     if (!cardMatches.length) continue;
-    const requested = Number.isFinite(Number(request.amount)) ? Math.max(0, Number(request.amount)) : 1;
+    // If no explicit amount provided, default to selling all matching cards
+    const requested = (request.amount === null || request.amount === undefined) ? cardMatches.length : Math.max(0, Number(request.amount) || 0);
     let remaining = Math.min(requested, cardMatches.length);
     for (const card of cardMatches) {
       if (remaining <= 0) break;
@@ -282,7 +312,7 @@ module.exports = {
     // but the plan.actions contains all items that will be sold.
     const displayLimit = MAX_CARD_SELL;
     const displayLines = plan.lines.slice(0, displayLimit);
-    if (plan.lines.length > displayLimit) displayLines.push(`and ${plan.lines.length - displayLimit} more`);
+    if (plan.lines.length > displayLimit) displayLines.push(`and ${plan.lines.length - displayLimit}x more...`);
     const description = `Are you sure you want to sell the following items for **${plan.total}** ¥?\n\n${displayLines.join('\n')}`;
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
@@ -335,8 +365,13 @@ module.exports = {
 
     const embed = new EmbedBuilder()
       .setColor('#FFFFFF')
-      .setTitle('Bulk Sell Completed')
-      .setDescription(`Sold ${result.soldLines.length} item(s) for **${result.total}** ¥.\n\n${result.soldLines.join('\n')}`);
+      .setTitle('Bulk Sell Completed');
+
+    // Limit sold lines display and show "and Nx more..." if necessary
+    const soldDisplayLimit = MAX_CARD_SELL;
+    const soldLinesDisplay = result.soldLines.slice(0, soldDisplayLimit);
+    if (result.soldLines.length > soldDisplayLimit) soldLinesDisplay.push(`and ${result.soldLines.length - soldDisplayLimit}x more...`);
+    embed.setDescription(`Sold ${result.soldLines.length} item(s) for **${result.total}** ¥.\n\n${soldLinesDisplay.join('\n')}`);
 
     return interaction.update({ embeds: [embed], components: [] });
   }

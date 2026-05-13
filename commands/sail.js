@@ -105,8 +105,16 @@ module.exports = {
     }
 
       // Directly send the checkpoint map image with island select (no intro)
-      const buffer = await renderMapImage(user);
-      const attachment = new AttachmentBuilder(buffer, { name: 'eastblue.png' });
+      let buffer = null;
+      try {
+        buffer = await renderMapImage(user);
+      } catch (err) {
+        console.warn('Failed to render sail map image:', err?.message || err);
+      }
+      const files = [];
+      if (buffer) {
+        files.push(new AttachmentBuilder(buffer, { name: 'eastblue.png' }));
+      }
 
       // build select options for unlocked islands
       const options = [];
@@ -124,13 +132,15 @@ module.exports = {
         .addOptions(options);
       const row = new ActionRowBuilder().addComponents(menu);
 
+      const payload = { components: [row] };
+      if (files.length) payload.files = files;
       if (message) {
-        return message.channel.send({ components: [row], files: [attachment] });
+        return message.channel.send(payload);
       }
       if (!interaction.deferred && !interaction.replied) {
-        return interaction.reply({ components: [row], files: [attachment] });
+        return interaction.reply(payload);
       }
-      return interaction.followUp({ components: [row], files: [attachment] });
+      return interaction.followUp(payload);
   },
 
   // handle button interactions (sail_ready and sail_stage)
@@ -143,8 +153,16 @@ module.exports = {
         if (!user) return interaction.reply({ content: 'No profile found.', ephemeral: true });
 
         await interaction.deferUpdate();
-        const buffer = await renderMapImage(user);
-        const attachment = new AttachmentBuilder(buffer, { name: 'eastblue.png' });
+        let buffer = null;
+        try {
+          buffer = await renderMapImage(user);
+        } catch (err) {
+          console.warn('Failed to render sail map image:', err?.message || err);
+        }
+        const files = [];
+        if (buffer) {
+          files.push(new AttachmentBuilder(buffer, { name: 'eastblue.png' }));
+        }
 
         // build select options for unlocked islands
         const options = [];
@@ -163,8 +181,10 @@ module.exports = {
           .addOptions(options);
 
         const row = new ActionRowBuilder().addComponents(menu);
+        const payload = { components: [row] };
+        if (files.length) payload.files = files;
         // Edit reply to include the map image file and keep the dropdown (no embed)
-        return interaction.editReply({ components: [row], files: [attachment] });
+        return interaction.editReply(payload);
       }
 
       if (action === 'sail_stage') {

@@ -78,7 +78,17 @@ async function createStockImage(stock) {
   const imagePromises = stock.slice(0, packCount).map(async (pack) => {
     if (pack.packImage && pack.packImage.trim()) {
       try {
-        const response = await fetch(pack.packImage, { method: 'GET', headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(10000) });
+        const controller = typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+          ? null
+          : new AbortController();
+        const response = await fetch(pack.packImage, {
+          method: 'GET',
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: controller ? controller.signal : AbortSignal.timeout(10000)
+        });
+        if (controller) {
+          setTimeout(() => controller.abort(), 10000);
+        }
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
@@ -86,8 +96,8 @@ async function createStockImage(stock) {
         const buffer = Buffer.from(arrayBuffer);
         return await loadImage(buffer);
       } catch (err) {
-        console.error(`Failed to load image for ${pack.name}:`, err.message);
-        return null; // fallback
+        console.warn(`Stock pack image unavailable for ${pack.name}: ${err?.message || err}`);
+        return null;
       }
     }
     return null;

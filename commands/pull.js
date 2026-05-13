@@ -56,11 +56,28 @@ module.exports = {
     let rank;
     let pityTriggered = false;
     let category = 'cards';
-    // If pity triggered (prefix pulls only), force an SS card from the card pool
-    if (message && user.pityCount >= PITY_TARGET) {
+    // Atomically claim pity for prefix pulls to avoid two quick pulls both consuming pity
+    let pityClaimed = false;
+    if (message && PITY_TARGET && (user.pityCount || 0) >= PITY_TARGET) {
+      try {
+        const claimed = await User.findOneAndUpdate(
+          { userId, pityCount: { $gte: PITY_TARGET } },
+          { $set: { pityCount: 0 } },
+          { new: true }
+        );
+        if (claimed) {
+          pityClaimed = true;
+          user.pityCount = 0;
+        }
+      } catch (e) {
+        console.error('Error claiming pity for user', userId, e);
+      }
+    }
+
+    // If pity was successfully claimed, force an SS card from the card pool
+    if (message && pityClaimed) {
       rank = 'SS';
       category = 'cards';
-      user.pityCount = 0;
       pityTriggered = true;
     } else {
       // choose category by weights (normalize in case they don't sum to 100)
@@ -85,7 +102,8 @@ module.exports = {
       if (category === 'cards') rank = pickFromDist(CARD_RATES);
       else rank = pickFromDist(ARTIFACT_SHIP_RATES);
 
-      if (message) user.pityCount += 1;
+      // increment pity for prefix pulls only when we did not atomically claim pity
+      if (message) user.pityCount = (user.pityCount || 0) + 1;
     }
 
     const pityProgress = message ? `Pity: ${user.pityCount}/${PITY_TARGET}` : '';

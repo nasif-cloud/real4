@@ -13,11 +13,33 @@ const ISLAND_ORDER = [
   'fusha_village', 'alvidas_hideout', 'shells_town', 'orange_town', 'syrup_village', 'baratie', 'arlong_park', 'loguetown'
 ];
 
-async function fetchBuffer(url) {
+async function fetchBuffer(url, timeout = 10000) {
   if (!url) throw new Error('No URL provided');
-  const globalFetch = (typeof fetch === 'function') ? fetch : null;
-  if (!globalFetch) throw new Error('fetch is not available in this environment');
-  const res = await globalFetch(url);
+  let globalFetch = (typeof fetch === 'function') ? fetch : null;
+  if (!globalFetch) {
+    try {
+      globalFetch = require('undici').fetch;
+    } catch (_) {
+      throw new Error('fetch is not available in this environment');
+    }
+  }
+
+  const signal = (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+    ? AbortSignal.timeout(timeout)
+    : undefined;
+  const controller = signal ? null : new AbortController();
+  const options = {
+    method: 'GET',
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  };
+  if (signal) {
+    options.signal = signal;
+  } else if (controller) {
+    options.signal = controller.signal;
+    setTimeout(() => controller.abort(), timeout);
+  }
+
+  const res = await globalFetch(url, options);
   if (!res.ok) throw new Error(`Failed to fetch image ${url}: ${res.status}`);
   const ab = await res.arrayBuffer();
   return Buffer.from(ab);
@@ -46,7 +68,12 @@ function getMapImageUrl(user) {
 
 async function getMapImageBuffer(user) {
   const url = getMapImageUrl(user);
-  return fetchBuffer(url);
+  try {
+    return await fetchBuffer(url);
+  } catch (e) {
+    console.warn(`Map image unavailable: ${url} - ${e?.message || e}`);
+    return null;
+  }
 }
 
-module.exports = { getMapImageUrl, getMapImageBuffer, fetchBuffer };
+module.exports = { getMapImageUrl, getMapImageBuffer, fetchBuffer }; 

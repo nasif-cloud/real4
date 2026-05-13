@@ -87,7 +87,7 @@ function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
     itemLines.push(rodDisplay);
   }
   (user.items || [])
-    .filter(it => it.itemId !== user.currentRod)
+    .filter(it => it.itemId !== user.currentRod && (it.durability === undefined || it.durability > 0))
     .forEach(i => {
       const leveler = levelers.find(l => l.id === i.itemId);
       if (!leveler) {
@@ -102,7 +102,7 @@ function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
     });
 
   const levelerLines = (user.items || [])
-    .filter(i => levelers.some(l => l.id === i.itemId))
+    .filter(i => levelers.some(l => l.id === i.itemId) && (i.durability === undefined || i.durability > 0))
     .map(i => {
       const leveler = levelers.find(l => l.id === i.itemId);
       let display = `${leveler.emoji} ${leveler.name} x${i.quantity}`;

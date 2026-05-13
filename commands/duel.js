@@ -592,9 +592,10 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
       xpGain = 0;
       const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
       if (winnerAllowed) {
-        // Award the target's bounty to the hunter's bounty total
-        winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
-        bountyClaimed = targetBounty;
+        // Award 5% (1/20) of the target's bounty to the hunter's bounty total
+        const bountyGain = Math.floor(targetBounty * 0.05);
+        winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
+        bountyClaimed = bountyGain;
         // Compute proportional beli reward
         const baseBeli = Math.ceil(targetBounty / 100000);
         // Bounty challenge advertises 2x reward; apply 2x to beli payout
@@ -606,14 +607,15 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
         winnerUser.lastBountyTarget = loserId;
         winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
         await winnerUser.save();
-        // Remove the claimed bounty from the loser (reset to baseline)
+        // Deduct 2.5% (1/40) of the loser's bounty
         try {
           if (loserUser) {
-            loserUser.bounty = 100;
+            const bountyLoss = Math.floor((loserUser.bounty || 100) * 0.025);
+            loserUser.bounty = Math.max(100, (loserUser.bounty || 100) - bountyLoss);
             await loserUser.save();
           }
         } catch (err) {
-          console.error('Failed to reset loser bounty after capture:', err);
+          console.error('Failed to deduct bounty from loser after capture:', err);
         }
         try {
           const { checkAndAwardAll } = require('../utils/achievements');
@@ -755,11 +757,12 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
         // Handle bounty duel where hunter captured their target
         if (state.isBountyDuel && winnerId === state.bountyHunter) {
           const targetBounty = loserUser.bounty || 100;
-          bountyClaimed = targetBounty;
+          const bountyGain = Math.floor(targetBounty * 0.05);
+          bountyClaimed = bountyGain;
           const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
           if (winnerAllowed) {
-            // award the bounty amount to the hunter's bounty
-            winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
+            // Award 5% (1/20) of the target's bounty to the hunter's bounty
+            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
             // proportional beli reward
             const baseBeli = Math.ceil(targetBounty / 100000);
             beliGain = baseBeli * 2; // 2x reward for bounty claim
@@ -768,14 +771,15 @@ async function finalizeAction(state, msg, timedOut = false, appliedCut = false) 
             winnerUser.lastBountyTarget = loserId;
             winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
             await winnerUser.save();
-            // Remove the claimed bounty from the loser (reset to baseline)
+            // Deduct 2.5% (1/40) of the loser's bounty
             try {
               if (loserUser) {
-                loserUser.bounty = 100;
+                const bountyLoss = Math.floor((loserUser.bounty || 100) * 0.025);
+                loserUser.bounty = Math.max(100, (loserUser.bounty || 100) - bountyLoss);
                 await loserUser.save();
               }
             } catch (err) {
-              console.error('Failed to reset loser bounty after capture:', err);
+              console.error('Failed to deduct loser bounty after capture:', err);
             }
             try {
               const { checkAndAwardAll } = require('../utils/achievements');

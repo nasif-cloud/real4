@@ -125,7 +125,8 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    const eligibleLevelers = getEligibleLevelers(base.attribute, requiredInfo.rank);
+    // If this is an artifact, require only rainbow levelers (attribute 'ALL')
+    const eligibleLevelers = base.artifact ? getEligibleLevelers('ALL', requiredInfo.rank) : getEligibleLevelers(base.attribute, requiredInfo.rank);
     const eligibleIds = eligibleLevelers.map(l => l.id);
     const userCount = getUserLevelerCount(user, eligibleIds);
     const remaining = Math.max(0, requiredInfo.count - userCount);
@@ -214,7 +215,8 @@ module.exports = {
       return interaction.update({ content: `Upgrade requirements not defined for ${nextCard.rank} mastery.`, embeds: [], components: [] });
     }
 
-    const eligibleLevelers = getEligibleLevelers(currentCard.attribute, requiredInfo.rank);
+    // If this is an artifact, require only rainbow levelers
+    const eligibleLevelers = currentCard.artifact ? getEligibleLevelers('ALL', requiredInfo.rank) : getEligibleLevelers(currentCard.attribute, requiredInfo.rank);
     const eligibleIds = eligibleLevelers.map(l => l.id);
     const userCount = getUserLevelerCount(user, eligibleIds);
 

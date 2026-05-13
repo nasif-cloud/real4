@@ -320,7 +320,7 @@ const levelers = [
    id: 'rainbow_pirate_penguin',
    name: 'Rainbow Pirate Penguin',
    emoji: '<:rainbowpiratepenguin:1491501016418357288>',
-   attribute: 'PSY',
+   attribute: 'INT',
    rank: 'A',
    xp: { INT: 80, QCK: 30, DEX: 30, STR: 30, PSY: 30 },
    beli: 8

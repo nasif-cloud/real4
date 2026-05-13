@@ -132,14 +132,15 @@ module.exports = {
           }
         }
 
-        // If this was a bounty duel and the hunter (bountyHunter) won, capture the full target bounty
+        // If this was a bounty duel and the hunter (bountyHunter) won, capture bounty
         if (state.isBountyDuel && winnerId === state.bountyHunter) {
           const targetBounty = loserUser.bounty || 100;
-          bountyClaimed = targetBounty;
+          const bountyGain = Math.floor(targetBounty * 0.2);
+          bountyClaimed = bountyGain;
           const winnerAllowed = !state.rewardsAllowed || !!state.rewardsAllowed[winnerId];
           if (winnerAllowed) {
-            // transfer target bounty to hunter's bounty total
-            winnerUser.bounty = (winnerUser.bounty || 100) + targetBounty;
+            // Award 20% (2/10) of the target's bounty to the hunter's bounty total
+            winnerUser.bounty = (winnerUser.bounty || 100) + bountyGain;
             // proportional beli reward (2x advertised)
             const baseBeli = Math.ceil(targetBounty / 100000);
             beliGain = baseBeli * 2;
@@ -147,14 +148,15 @@ module.exports = {
             winnerUser.activeBountyTarget = null;
             winnerUser.lastBountyTarget = loserId;
             winnerUser.bountyCooldownUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
-            // Remove the claimed bounty from the loser (reset to baseline)
+            // Deduct 10% (1/10) of the loser's bounty
             try {
               if (loserUser) {
-                loserUser.bounty = 100;
+                const bountyLoss = Math.floor((loserUser.bounty || 100) * 0.1);
+                loserUser.bounty = Math.max(100, (loserUser.bounty || 100) - bountyLoss);
                 await loserUser.save();
               }
             } catch (err) {
-              console.error('Failed to reset loser bounty after forfeit capture:', err);
+              console.error('Failed to deduct bounty from loser after forfeit capture:', err);
             }
             try {
               const { checkAndAwardAll } = require('../utils/achievements');

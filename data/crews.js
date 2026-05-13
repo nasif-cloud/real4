@@ -66,20 +66,4 @@ module.exports = [
     rank: 'S',
     color: '#e8e8e8'
   },
-  {
-    name: "Roger Pirates",
-    icon: '<:whitrbeardpirates:1490852513174519929>',
-    packImage: 'https://files.catbox.moe/whvj21.webp',
-    packEmoji: '<:whitebeardpiratespack:1491568020118835362>',
-    rank: 'S',
-    color: '#e8e8e8'
-  },
-  {
-    name: "Sun Pirates",
-    icon: '<:1000049441:1502489194444882052>',
-    packImage: 'https://files.catbox.moe/placeholder_sunpirates.webp',
-    packEmoji: '<:sunpiratespack:1502489194444882052>',
-    rank: 'B',
-    color: '#f4a460'
-  },
 ];

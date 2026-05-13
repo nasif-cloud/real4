@@ -22,6 +22,7 @@ async function list({ message }) {
     .setDescription('Available prefix commands for the bot owner/developer')
     .addFields(
       { name: 'op owner give <type> <amount> <@user>', value: 'Types: beli, gems, bounty, resettoken, card, pack, memerod, item\n- card uses cardId as amount\n- pack syntax: op owner give pack <crew name> <amount> <@user>\n- memerod syntax: op owner give memerod <@user>', inline: false },
+      { name: 'op owner remove <type> <amount> <@user>', value: 'Types: beli, gems, bounty\n- Removes the specified amount (bounty has minimum of 100)', inline: false },
       { name: 'op owner removecard <cardId> <@user>', value: 'Remove all copies of a card from a user', inline: false },
       { name: 'op owner setresets <#channel>', value: 'Configure a channel to receive pull reset notifications', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
@@ -229,6 +230,49 @@ async function execute({ message, args }) {
 
       return message.reply('Unknown give type; valid types are beli, gems, resettoken, card, pack');
     }
+
+  if (sub === 'remove') {
+      const type = args[1];
+      if (!type) return message.reply('Usage: op owner remove <type> <amount> <@user>\nTypes: beli, gems, bounty');
+
+      const amountArg = args[2];
+      const mention = args[3];
+      const targetId = parseMention(mention);
+
+      if (!amountArg || !targetId) {
+        return message.reply('Usage: op owner remove <type> <amount> <@user>');
+      }
+
+      let target = await User.findOne({ userId: targetId });
+      if (!target) {
+        return message.reply('Target user does not have an account.');
+      }
+
+      const amtParsed = parseInt(amountArg, 10);
+      if (isNaN(amtParsed) || amtParsed < 0) return message.reply('Amount must be a non-negative number');
+
+      // Remove bounty amount
+      if (type === 'bounty') {
+        const newBounty = Math.max(100, (target.bounty || 100) - amtParsed);
+        await User.findOneAndUpdate({ userId: targetId }, { bounty: newBounty });
+        return message.reply(`Removed ${amtParsed} bounty from <@${targetId}>. New bounty: ${newBounty}`);
+      }
+
+      if (type === 'beli') {
+        const newBalance = Math.max(0, (target.balance || 0) - amtParsed);
+        await User.findOneAndUpdate({ userId: targetId }, { balance: newBalance });
+        return message.reply(`Removed ¥${amtParsed} from <@${targetId}>. New balance: ¥${newBalance}`);
+      }
+
+      if (type === 'gems') {
+        const newGems = Math.max(0, (target.gems || 0) - amtParsed);
+        await User.findOneAndUpdate({ userId: targetId }, { gems: newGems });
+        return message.reply(`Removed ${amtParsed} gem(s) from <@${targetId}>. New gems: ${newGems}`);
+      }
+
+      return message.reply('Unknown remove type; valid types are beli, gems, bounty');
+    }
+
   if (sub === 'resetdata') {
     const subArg = args[1];
     if (!subArg) return message.reply('Usage: op owner resetdata <@user> | op owner resetdata all');
@@ -350,7 +394,7 @@ async function execute({ message, args }) {
     }
   }
 
-  if (sub === 'setresets') {
+  if (sub === 'setresets' || sub === 'setreset') {
     // syntax: op owner setresets <#channel>
     const channelMention = args[1];
     if (!channelMention) return message.reply('Usage: op owner setresets <#channel>');

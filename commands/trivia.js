@@ -199,7 +199,20 @@ async function startTriviaTimeout(session, interaction) {
         const timeoutEmbed = new EmbedBuilder()
           .setColor('#ff7070')
           .setTitle('Trivia Timed Out')
-          .setDescription('No response received for 30 seconds. Your session has ended and rewards earned so far have been granted.');
+          .setDescription(`No response received for 30 seconds. Your session has ended and rewards earned so far have been granted.\n\n**Final Rewards:**\n${buildRewardSummary(session)}`);
+        
+        // Use editReply to update the existing message instead of sending a new one
+        if (session.interaction) {
+          try {
+            await session.interaction.editReply({ embeds: [timeoutEmbed], components: [] });
+            return;
+          } catch (e) {
+            // If editReply fails, fall back to channel send
+            if (e.code !== 10062) console.error('Failed to edit reply on timeout:', e);
+          }
+        }
+        
+        // Fallback: send new message if editReply unavailable
         if (channel && typeof channel.send === 'function') {
           try { await channel.send({ content: `<@${ownerId}>`, embeds: [timeoutEmbed] }); } catch (e) {}
         }
@@ -288,6 +301,8 @@ module.exports = {
     const questionEmbed = buildQuestionEmbed(questions[0], 0, questions.length);
     const answerRow = buildAnswerRow(userId, 0);
     await interaction.update({ content: null, embeds: [questionEmbed], components: [answerRow] });
+    // Store interaction reference in session for timeout handler to use editReply
+    session.interaction = interaction;
     await startTriviaTimeout(session, interaction);
     return;
   },
