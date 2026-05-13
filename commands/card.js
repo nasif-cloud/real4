@@ -27,7 +27,7 @@ module.exports = {
     const query = message ? args.join(' ') : interaction.options.getString('query');
     const results = searchCards(query);
     if (!results.length) {
-      const reply = `No card found matching "${query}".`;
+      const reply = `No card found matching **${query}**.`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, ephemeral: true });
     }

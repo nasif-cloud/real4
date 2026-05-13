@@ -154,6 +154,26 @@ function applyCardEffect(attacker, target, context = {}) {
   const logs = [];
   if (!attacker || !attacker.def || !attacker.def.effect) return logs;
   const def = attacker.def;
+  
+  // Check if target is Gorosei - if so, they are immune to all status conditions
+  const checkGoroseiImmunity = (entity) => {
+    if (!entity) return false;
+    return entity.rank === 'Gorosei' || (entity.def && entity.def.character && entity.def.character.toLowerCase().includes('gorosei'));
+  };
+  
+  if (Array.isArray(target)) {
+    const goroseiTargets = target.filter(checkGoroseiImmunity);
+    if (goroseiTargets.length > 0) {
+      goroseiTargets.forEach(g => logs.push(`${g.rank || 'Gorosei'} is immune to status conditions!`));
+      // Remove Gorosei from target list
+      target = target.filter(t => !checkGoroseiImmunity(t));
+      if (target.length === 0) return logs;
+    }
+  } else if (target && checkGoroseiImmunity(target)) {
+    logs.push(`${target.rank || 'Gorosei'} is immune to status conditions!`);
+    return logs;
+  }
+  
   // Attempt to resolve a team target when `def.all` is set but a single
   // entity was passed. Callers may provide `context` with helpful team
   // arrays: `playerTeam`, `opponentTeam`, `marines` or `cards`.
@@ -188,6 +208,16 @@ function applyCardEffect(attacker, target, context = {}) {
       console.log(`[statusManager] resolvedTarget for defId=${def.id} defAllish=${!!defAllish} length=${Array.isArray(resolvedTarget)?resolvedTarget.length:'N/A'}`);
     } catch (e) {}
   }
+  
+  // Filter out Gorosei from resolvedTarget if present
+  if (Array.isArray(resolvedTarget)) {
+    const goroseiTargets = resolvedTarget.filter(checkGoroseiImmunity);
+    if (goroseiTargets.length > 0) {
+      goroseiTargets.forEach(g => logs.push(`${g.rank || 'Gorosei'} is immune to status conditions!`));
+      resolvedTarget = resolvedTarget.filter(t => !checkGoroseiImmunity(t));
+    }
+  }
+  
   // Store original duration for message display
   const origDur = def.effectDuration ?? (def.effect === 'doomed' ? 3 : 1);
   // If duration is 0 or -1, effect is permanent (use Infinity internally)

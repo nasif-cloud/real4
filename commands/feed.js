@@ -131,7 +131,7 @@ module.exports = {
     // Find card
     const card = await findBestOwnedCard(userId, cardQuery);
     if (!card) {
-      const reply = `No card found matching "${cardQuery}".`;
+      const reply = `No card found matching **${cardQuery}**.`;
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply, flags: 64 });
     }

@@ -81,7 +81,7 @@ module.exports = {
         console.error('Error resetting global timers for god token:', err);
       }
 
-      const reply = 'God Token used: all applicable timers reset for you and global resets triggered.';
+      const reply = 'Successfully used a **God Token**! All cooldowns and pulls have been reset.';
       if (message) return message.reply(reply);
       return interaction.reply({ content: reply });
     }

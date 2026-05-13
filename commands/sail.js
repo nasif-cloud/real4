@@ -227,13 +227,13 @@ module.exports = {
         if (islandId === 'fusha_village') {
           const name = stageNum === 1 ? 'Pistol Bandit' : stageNum === 2 ? 'Higuma' : 'Master of the Near Sea';
           const def = findEnemyDef(name);
-          const m = makeMarineFromDef(def, 3, 2);
+          const m = makeMarineFromDef(def, 1, 1);
           if (m) marines.push(m);
         } else if (islandId === 'alvidas_hideout') {
           // Alvida's Hideout story progression
           const name = stageNum === 1 ? 'Mohji & Richie' : stageNum === 2 ? 'Cabaji' : 'Alvida';
           const def = findEnemyDef(name);
-          const m = makeMarineFromDef(def, 3, 2);
+          const m = makeMarineFromDef(def, 1, 1);
           if (m) marines.push(m);
         }
 
@@ -336,12 +336,12 @@ module.exports = {
     if (island.id === 'fusha_village') {
       const name = stageToStart === 1 ? 'Pistol Bandit' : stageToStart === 2 ? 'Higuma' : 'Master of the Near Sea';
       const def = findEnemyDef(name);
-      const m = makeMarineFromDef(def, 3, 2);
+      const m = makeMarineFromDef(def, 1, 1);
       if (m) marines.push(m);
     } else if (island.id === 'alvidas_hideout') {
       const name = stageToStart === 1 ? 'Mohji & Richie' : stageToStart === 2 ? 'Cabaji' : 'Alvida';
       const def = findEnemyDef(name);
-      const m = makeMarineFromDef(def, 3, 2);
+      const m = makeMarineFromDef(def, 1, 1);
       if (m) marines.push(m);
     }
 

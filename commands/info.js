@@ -237,6 +237,45 @@ function getLevelerByName(query) {
   return levelers.find(l => l.name.toLowerCase() === q || l.id.toLowerCase() === q) || null;
 }
 
+function getShardByName(query) {
+  if (!query) return null;
+  const q = query.toLowerCase().trim();
+  const shardColors = ['red', 'blue', 'green', 'yellow', 'purple'];
+  const matched = shardColors.find(color => q === color || q === `${color} shard`);
+  if (matched) {
+    return {
+      id: `${matched}_shard`,
+      color: matched.charAt(0).toUpperCase() + matched.slice(1),
+      name: `${matched.charAt(0).toUpperCase() + matched.slice(1)} Shard`
+    };
+  }
+  return null;
+}
+
+function getGodTokenInfo(query) {
+  if (!query) return null;
+  const q = query.toLowerCase().trim();
+  if (q === 'god token' || q === 'godtoken' || q === 'god') {
+    return {
+      id: 'god_token',
+      name: 'God Token'
+    };
+  }
+  return null;
+}
+
+function getColaInfo(query) {
+  if (!query) return null;
+  const q = query.toLowerCase().trim();
+  if (q === 'cola') {
+    return {
+      id: 'cola',
+      name: 'Cola'
+    };
+  }
+  return null;
+}
+
 function getRodColor(rodId) {
   switch (rodId) {
     case 'basic_rod': return '#8B4513'; // brown
@@ -296,6 +335,86 @@ function buildLevelerEmbed(levelerDef, discordUser, user) {
     .setThumbnail(parseEmojiUrl(levelerDef.emoji))
     .setDescription(descLines.join('\n'))
     .addFields({ name: 'XP awarded', value: xpValue, inline: false });
+  if (discordUser) embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  return embed;
+}
+
+function buildShardEmbed(shardInfo, discordUser, user) {
+  const ownedCount = user && Array.isArray(user.items)
+    ? user.items.reduce((sum, item) => item.itemId === shardInfo.id ? sum + (item.quantity || 0) : sum, 0)
+    : 0;
+  const shardEmojis = {
+    red_shard: '<:RedShard:1494106374492131439>',
+    blue_shard: '<:Blueshard:1494106500149411980>',
+    green_shard: '<:GreenShard:1494106686963581039>',
+    yellow_shard: '<:YellowShard:1494106825627406530>',
+    purple_shard: '<:PurpleShard:1494106958582776008>'
+  };
+  const shardDescriptions = {
+    red_shard: 'Currency used for trading STR attribute cards. Collect these shards to upgrade or trade STR-type cards.',
+    blue_shard: 'Currency used for trading QCK attribute cards. Collect these shards to upgrade or trade QCK-type cards.',
+    green_shard: 'Currency used for trading DEX attribute cards. Collect these shards to upgrade or trade DEX-type cards.',
+    yellow_shard: 'Currency used for trading PSY attribute cards. Collect these shards to upgrade or trade PSY-type cards.',
+    purple_shard: 'Currency used for trading INT attribute cards. Collect these shards to upgrade or trade INT-type cards.'
+  };
+  const attributeMap = {
+    red_shard: 'STR',
+    blue_shard: 'QCK',
+    green_shard: 'DEX',
+    yellow_shard: 'PSY',
+    purple_shard: 'INT'
+  };
+  const emoji = shardEmojis[shardInfo.id] || '';
+  const attr = attributeMap[shardInfo.id] || 'N/A';
+  const desc = shardDescriptions[shardInfo.id] || 'Card trading shard';
+  const embed = new EmbedBuilder()
+    .setTitle(shardInfo.name)
+    .setColor(attributeColors[attr] || '#2b2d31')
+    .setThumbnail(emoji.includes(':') ? `https://cdn.discordapp.com/emojis/${emoji.match(/\d+/)[0]}.png` : null)
+    .setDescription(desc)
+    .addFields(
+      { name: 'Attribute', value: `${getAttributeEmoji(attr)} **${attr}**`, inline: true },
+      { name: 'Owned', value: `**${ownedCount}x**`, inline: true }
+    );
+  if (discordUser) embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  return embed;
+}
+
+function buildGodTokenEmbed(godTokenInfo, discordUser, user) {
+  const ownedCount = user && Array.isArray(user.items)
+    ? user.items.reduce((sum, item) => item.itemId === godTokenInfo.id ? sum + (item.quantity || 0) : sum, 0)
+    : 0;
+  const emoji = '<:godtoken:1499957056650608753>';
+  const embed = new EmbedBuilder()
+    .setTitle(godTokenInfo.name)
+    .setColor('#FFD700') // gold color
+    .setThumbnail('https://cdn.discordapp.com/emojis/1499957056650608753.png')
+    .setDescription('A rare and powerful token that resets all personal cooldowns and pulls when used. One of the most valuable items in the game.')
+    .addFields(
+      { name: 'Effect', value: 'Resets bounty, trivia, loot, bet cooldowns and restores your pull limit to maximum. All packs reset.', inline: false },
+      { name: 'Shop Price', value: '<:beri:1490738445319016651> 2700', inline: true },
+      { name: 'Owned', value: `**${ownedCount}x**`, inline: true },
+    );
+  if (discordUser) embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
+  return embed;
+}
+
+function buildColaEmbed(colaInfo, discordUser, user) {
+  const ownedCount = user && Array.isArray(user.items)
+    ? user.items.reduce((sum, item) => item.itemId === colaInfo.id ? sum + (item.quantity || 0) : sum, 0)
+    : 0;
+  const emoji = '<:cola:1494106165955792967>';
+  const embed = new EmbedBuilder()
+    .setTitle(colaInfo.name)
+    .setColor('#00CED1') // cyan color
+    .setThumbnail('https://cdn.discordapp.com/emojis/1494106165955792967.png')
+    .setDescription('Essential fuel for sailing adventures. Use cola to refuel your ship and continue your journey through the story islands.')
+    .addFields(
+      { name: 'Used For', value: 'Fueling ships for story mode sailing', inline: true },
+      { name: 'How to Obtain', value: 'Earned from chest openings (C, B, A chests have 30-40% chance) or purchased from the shop', inline: false },
+      { name: 'Shop Price', value: '<:beri:1490738445319016651> 204', inline: true },
+      { name: 'Owned', value: `**${ownedCount}x**`, inline: true },
+    );
   if (discordUser) embed.setAuthor({ name: discordUser.username, iconURL: discordUser.displayAvatarURL() });
   return embed;
 }
@@ -493,6 +612,30 @@ module.exports = {
       const levelerEmbed = buildLevelerEmbed(levelerDef, discordUser, user);
       if (message) return message.channel.send({ embeds: [levelerEmbed] });
       return safeReply(interaction, { embeds: [levelerEmbed] });
+    }
+
+    // Check for shard items
+    const shardInfo = getShardByName(query);
+    if (shardInfo) {
+      const shardEmbed = buildShardEmbed(shardInfo, discordUser, user);
+      if (message) return message.channel.send({ embeds: [shardEmbed] });
+      return safeReply(interaction, { embeds: [shardEmbed] });
+    }
+
+    // Check for god token
+    const godTokenInfo = getGodTokenInfo(query);
+    if (godTokenInfo) {
+      const godTokenEmbed = buildGodTokenEmbed(godTokenInfo, discordUser, user);
+      if (message) return message.channel.send({ embeds: [godTokenEmbed] });
+      return safeReply(interaction, { embeds: [godTokenEmbed] });
+    }
+
+    // Check for cola
+    const colaInfo = getColaInfo(query);
+    if (colaInfo) {
+      const colaEmbed = buildColaEmbed(colaInfo, discordUser, user);
+      if (message) return message.channel.send({ embeds: [colaEmbed] });
+      return safeReply(interaction, { embeds: [colaEmbed] });
     }
 
     // Otherwise, fall back to card lookup

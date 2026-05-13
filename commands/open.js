@@ -242,7 +242,7 @@ module.exports = {
         }
         // Extract GOD_EMOJI from key if present
         if (key.includes('God Token')) {
-          return `${value}x ${key}`;
+          return `${GOD_EMOJI} ${value}x God Token`;
         }
         return `${value}x ${key}`;
       });
