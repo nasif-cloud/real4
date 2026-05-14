@@ -74,16 +74,14 @@ function splitFieldValue(value, maxLength = 1024) {
 function buildInventoryEmbed(user, username, avatarUrl, pageIndex = 0) {
   const currentRod = rods.find(r => r.id === user.currentRod);
   const rodItem = user.items?.find(it => it.itemId === user.currentRod);
-  let rodDisplay = '❓ Unknown Rod';
-  if (currentRod) {
-    rodDisplay = `${currentRod.emoji} ${currentRod.name}`;
-    if (rodItem && rodItem.durability !== undefined) {
-      rodDisplay += ` (${rodItem.durability}/${currentRod.durability})`;
-    }
-  }
 
   const itemLines = [];
-  if (rodDisplay) {
+  // Only display the active rod if it exists, is valid, and has durability remaining
+  if (currentRod && rodItem && (rodItem.durability === undefined || rodItem.durability > 0)) {
+    let rodDisplay = `${currentRod.emoji} ${currentRod.name}`;
+    if (rodItem.durability !== undefined) {
+      rodDisplay += ` (${rodItem.durability}/${currentRod.durability})`;
+    }
     itemLines.push(rodDisplay);
   }
   (user.items || [])

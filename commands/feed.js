@@ -161,11 +161,13 @@ module.exports = {
         return interaction.reply({ content: reply, flags: 64 });
       }
 
-      // Collect candidate leveler defs to consume
+      // Collect candidate leveler defs to consume — rainbow levelers (xp is an
+      // object covering multiple attributes) are protected from bulk-feed actions.
+      const isRainbowLeveler = l => typeof l.xp === 'object' && l.xp !== null;
       const defsToUse = levelers.filter(l => {
+        if (isRainbowLeveler(l)) return false;
         if (attributeQuery === 'ALL') {
-          // Feed levelers matching the card attribute plus rainbow/ALL types
-          return (l.attribute === card.attribute) || (l.attribute === 'ALL') || (typeof l.xp === 'object' && l.xp && l.xp[card.attribute]);
+          return (l.attribute === card.attribute) || (l.attribute === 'ALL');
         }
         return l.attribute === attributeQuery;
       });

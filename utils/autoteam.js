@@ -1,6 +1,10 @@
 const { cards } = require('../data/cards');
 const { getCardFinalStats } = require('./cards');
 
+// Build a module-level card lookup Map once (all cards indexed by id)
+const _cardMap = new Map();
+for (const c of cards) _cardMap.set(c.id, c);
+
 // Select the best `count` cards for a user's auto-team. This function was
 // previously doing repeated, expensive score computations inside the sort
 // comparator which resulted in O(N log N) heavy computations. Cache the
@@ -15,9 +19,9 @@ function selectAutoTeam(user, count = 3) {
   const ownedMap = new Map();
   for (const e of ownedEntries) ownedMap.set(e.cardId, e);
 
-  // Resolve card defs for owned entries
+  // Resolve card defs using the pre-built Map for O(1) lookups
   const ownedDefs = ownedEntries
-    .map(e => cards.find(c => c.id === e.cardId))
+    .map(e => _cardMap.get(e.cardId))
     .filter(Boolean);
 
   // Exclude artifacts, ships and boost-type cards (attackers only)

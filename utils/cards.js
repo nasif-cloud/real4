@@ -1083,10 +1083,10 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     }
   }
 
-  // Star Level field — always shown at the bottom for regular cards
-  {
+  // Star Level field — only shown if the user owns the card
+  if (exactEntry) {
     const { buildStarDisplay: _bsdField } = require('../utils/starLevel');
-    const _cardStarField = exactEntry ? (exactEntry.starLevel || 0) : 0;
+    const _cardStarField = exactEntry.starLevel || 0;
     embed.addFields({ name: 'Star Level', value: _bsdField(cardDef.attribute, _cardStarField, cardDef.rank), inline: false });
   }
 

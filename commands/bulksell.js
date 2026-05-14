@@ -53,6 +53,10 @@ function parseSegment(segment) {
   return { type: 'item', query: segment.trim(), amount: null };
 }
 
+function isRainbowLeveler(l) {
+  return typeof l.xp === 'object' && l.xp !== null;
+}
+
 function searchLevelers(query) {
   if (!query) return [];
   const q = query.toLowerCase();
@@ -69,15 +73,18 @@ function searchLevelers(query) {
 function findLeveler(query) {
   const q = normalizeQuery(query);
   if (!q) return null;
-  return levelers.find(l => l.id.toLowerCase() === q || l.name.toLowerCase() === q) || null;
+  const match = levelers.find(l => l.id.toLowerCase() === q || l.name.toLowerCase() === q) || null;
+  if (match && isRainbowLeveler(match)) return null;
+  return match;
 }
 
 function findMatchingLevelers(query, user) {
   const q = normalizeQuery(query).replace(/levelers?$/, '').trim();
   if (!q) {
-    return levelers.filter(l => user.items.some(item => item.itemId === l.id && item.quantity > 0));
+    return levelers.filter(l => !isRainbowLeveler(l) && user.items.some(item => item.itemId === l.id && item.quantity > 0));
   }
   return levelers.filter(l => {
+    if (isRainbowLeveler(l)) return false;
     if (l.name.toLowerCase().includes(q)) return true;
     if (l.attribute.toLowerCase().includes(q)) return true;
     return false;

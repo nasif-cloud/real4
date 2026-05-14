@@ -1,0 +1,47 @@
+Please implement the following six updates to improve the bot's performance, logic accuracy, 
+
+and owner-level management.
+
+1. Protected Items (Bulksell & Feed Logic)
+
+Update: Modify the bulksell and feed commands for the INT attribute.
+
+Logic: Explicitly exclude items identified as "Rainbow Levelers" from these bulk actions. Even though they are technically INT attribute items, they must be protected so users don't accidentally sell or feed them when clearing their inventory. rainbow levelers are levelers that can be fed to all cards, if can be fed to all cards, then its an rainbow leveler
+
+2. UI Cleanup: Conditional Star Display
+
+Update: Modify the card info embed logic.
+
+Logic: The Star Level display (and the star emojis) should only be visible if the user currently owns the card. If a user is viewing a card they do not own (e.g., via a global lookup), the star section should be hidden entirely.
+
+3. New Admin Command: op owner unsetresets
+
+Requirement: Create a restricted owner-only command.
+
+Function: This command should unset/remove the "reset ping" configuration for the current channel, effectively stopping the bot from sending automated reset notifications there.
+
+4. Performance Optimization: Autoteam & Collection
+
+The Problem: There is a significant delay when running op autoteam and op collection.
+
+The Fix: * Review the database queries for these commands.
+
+Implement Caching or use Projections (only fetch the fields you need, like id and rank, instead of the full card object).
+
+If using Discord.js Collections, ensure you are using .filter() and .map() efficiently to reduce execution time.
+
+5. Inventory Sanitization (Broken Rods)
+
+The Issue: When a rod is broken or the ID is null, the inventory displays "unknown rod."
+
+The Fix: Update the inventory display loop. If a rod's durability is $\le 0$ or the rod data is missing/invalid, the entry must be completely removed from the inventory embed instead of showing a placeholder.
+
+6. New Admin Command: op owner guildlist
+
+Requirement: Create a paginated owner-only command.
+
+Function: List every server (guild) the bot is currently in.
+
+Embed Details: Each entry should show the Guild Name and a valid Invite Link.
+
+Navigation: Include "Next" and "Previous" buttons to navigate the list if the bot is in a large number of servers.

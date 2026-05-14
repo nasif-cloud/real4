@@ -391,6 +391,11 @@ async function main() {
           return bulksellCmd.handleButton(interaction, choice, token);
         }
 
+        // handle owner buttons (reset-all confirmation, guildlist pagination)
+        if (action && (action.startsWith('owner_reset_all') || action.startsWith('guildlist_prev') || action.startsWith('guildlist_next'))) {
+          return require('./commands/owner').handleButton(interaction, interaction.customId);
+        }
+
         // handle star upgrade button interactions
         if (interaction.customId && (interaction.customId.startsWith('upgrade_star_') || interaction.customId === 'upgrade_cancel')) {
           return require('./commands/upgrade').handleUpgradeButton(interaction);

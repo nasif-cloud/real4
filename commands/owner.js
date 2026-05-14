@@ -25,6 +25,8 @@ async function list({ message }) {
       { name: 'op owner remove <type> <amount> <@user>', value: 'Types: beli, gems, bounty\n- Removes the specified amount (bounty has minimum of 100)', inline: false },
       { name: 'op owner removecard <cardId> <@user>', value: 'Remove all copies of a card from a user', inline: false },
       { name: 'op owner setresets <#channel>', value: 'Configure a channel to receive pull reset notifications', inline: false },
+      { name: 'op owner unsetresets', value: 'Remove the reset notification channel configuration', inline: false },
+      { name: 'op owner guildlist', value: 'Paginated list of all servers the bot is in, with invite links', inline: false },
       { name: 'op owner resetdata <@user>', value: 'Deletes the user record so they must /start again', inline: false },
       { name: 'op owner setdrops <#channel> <value>', value: 'Enable card drops in a channel and set messages needed per drop (default 100)', inline: false },
       { name: 'op owner unsetdrops <#channel>', value: 'Disable card drops in the specified channel', inline: false },
@@ -418,6 +420,68 @@ async function execute({ message, args }) {
     return message.reply(`Removed ${removed} copies of ${formatCardId(cardDef.id)} from <@${targetId}>`);
   }
 
+  if (sub === 'unsetresets' || sub === 'unsetreset') {
+    const fs = require('fs');
+    const path = require('path');
+    const PULL_FILE = path.join(__dirname, '..', 'pull.json');
+    let data = {};
+    try {
+      if (fs.existsSync(PULL_FILE)) data = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
+    } catch (e) {
+      data = {};
+    }
+    if (!data.resetsChannel) {
+      return message.reply('No reset notification channel is currently configured.');
+    }
+    const oldChannel = data.resetsChannel;
+    delete data.resetsChannel;
+    try {
+      fs.writeFileSync(PULL_FILE, JSON.stringify(data, null, 2));
+    } catch (err) {
+      console.error('Error writing pull.json for unsetresets:', err);
+      return message.reply('Failed to remove reset channel. Check server logs.');
+    }
+    return message.reply(`Reset notifications have been disabled (was <#${oldChannel}>).`);
+  }
+
+  if (sub === 'guildlist') {
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+    const guilds = [...message.client.guilds.cache.values()];
+    const PAGE_SIZE = 10;
+    const totalPages = Math.max(1, Math.ceil(guilds.length / PAGE_SIZE));
+
+    async function buildGuildListEmbed(page) {
+      const start = page * PAGE_SIZE;
+      const slice = guilds.slice(start, start + PAGE_SIZE);
+      const lines = [];
+      for (const guild of slice) {
+        let inviteLink = 'No invite';
+        try {
+          const channels = guild.channels.cache.filter(c => c.type === 0 && c.permissionsFor(guild.members.me)?.has('CreateInstantInvite'));
+          const firstChannel = channels.first();
+          if (firstChannel) {
+            const invite = await firstChannel.createInvite({ maxAge: 0, maxUses: 0, unique: false }).catch(() => null);
+            if (invite) inviteLink = invite.url;
+          }
+        } catch {}
+        lines.push(`**${guild.name}** (${guild.memberCount} members)\n${inviteLink}`);
+      }
+      return new EmbedBuilder()
+        .setTitle(`Guild List (${guilds.length} total)`)
+        .setColor('#FFFFFF')
+        .setDescription(lines.join('\n\n') || 'No guilds.')
+        .setFooter({ text: `Page ${page + 1}/${totalPages}` });
+    }
+
+    const embed = await buildGuildListEmbed(0);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('guildlist_prev:0').setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(true),
+      new ButtonBuilder().setCustomId('guildlist_next:0').setLabel('Next').setStyle(ButtonStyle.Primary).setDisabled(totalPages <= 1)
+    );
+
+    return message.channel.send({ embeds: [embed], components: totalPages > 1 ? [row] : [] });
+  }
+
   if (sub === 'setdrops') {
     const channelMention = args[1];
     if (!channelMention) {
@@ -691,6 +755,49 @@ async function handleButton(interaction, customId) {
   const parts = customId.split(':');
   const key = parts[0];
   const action = parts[1];
+
+  if (key === 'guildlist_prev' || key === 'guildlist_next') {
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({ content: 'You are not permitted to use this.', ephemeral: true });
+    }
+    const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+    const guilds = [...interaction.client.guilds.cache.values()];
+    const PAGE_SIZE = 10;
+    const totalPages = Math.max(1, Math.ceil(guilds.length / PAGE_SIZE));
+    const currentPage = parseInt(action, 10) || 0;
+    const newPage = key === 'guildlist_next'
+      ? Math.min(totalPages - 1, currentPage + 1)
+      : Math.max(0, currentPage - 1);
+
+    const start = newPage * PAGE_SIZE;
+    const slice = guilds.slice(start, start + PAGE_SIZE);
+    const lines = [];
+    for (const guild of slice) {
+      let inviteLink = 'No invite';
+      try {
+        const channels = guild.channels.cache.filter(c => c.type === 0 && c.permissionsFor(guild.members.me)?.has('CreateInstantInvite'));
+        const firstChannel = channels.first();
+        if (firstChannel) {
+          const invite = await firstChannel.createInvite({ maxAge: 0, maxUses: 0, unique: false }).catch(() => null);
+          if (invite) inviteLink = invite.url;
+        }
+      } catch {}
+      lines.push(`**${guild.name}** (${guild.memberCount} members)\n${inviteLink}`);
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle(`Guild List (${guilds.length} total)`)
+      .setColor('#FFFFFF')
+      .setDescription(lines.join('\n\n') || 'No guilds.')
+      .setFooter({ text: `Page ${newPage + 1}/${totalPages}` });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`guildlist_prev:${newPage}`).setLabel('Previous').setStyle(ButtonStyle.Secondary).setDisabled(newPage === 0),
+      new ButtonBuilder().setCustomId(`guildlist_next:${newPage}`).setLabel('Next').setStyle(ButtonStyle.Primary).setDisabled(newPage >= totalPages - 1)
+    );
+
+    return interaction.update({ embeds: [embed], components: [row] });
+  }
 
   if (key !== 'owner_reset_all') return;
 
