@@ -78,6 +78,9 @@ const UserSchema = new Schema({
   lastFishFail: { type: Date, default: null },
   // rods for fishing
   currentRod: { type: String, default: 'basic_rod' },
+  // top.gg voting
+  voteStreak: { type: Number, default: 0 },
+  lastVoted: { type: Date, default: null },
 });
 
 module.exports = mongoose.model('User', UserSchema);

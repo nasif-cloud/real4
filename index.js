@@ -41,6 +41,8 @@ const forfeitCmd = require('./commands/forfeit');
 const favoriteCmd = require('./commands/favorite');
 const unfavoriteCmd = require('./commands/unfavorite');
 const favoritesCmd = require('./commands/favorites');
+const voteCmd = require('./commands/vote');
+const { startVoteWebhook } = require('./src/voteWebhook');
 const User = require('./models/User');
 
 async function main() {
