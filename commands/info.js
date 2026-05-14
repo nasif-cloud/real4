@@ -142,9 +142,9 @@ function buildBoostEmbed(cardDef, userEntry, user) {
       }
     });
   }
-  // Always show level boost last, no emoji
-  lines.push(`**Levels**: boosts all stats by \`${levelBoostPct}%\``);
-  if (starBoostPct > 0) lines.push(`**Star Level**: boosts all stats by \`${starBoostPct}%\``);
+  // Show level + star boost combined as a single line
+  const combinedLevelBoostPct = levelBoostPct + starBoostPct;
+  lines.push(`**Levels**: boosts all stats by \`${combinedLevelBoostPct}%\``);
 
   // For artifacts, show boost information instead of base stats
   let baseStats = '';
