@@ -216,23 +216,52 @@ module.exports = {
     }
 
     ownedEntry.starLevel = nextStar;
+
+    // Star 6: give this card's signature artifact (artifact whose boost targets this character)
+    let artifactLine = '';
+    if (nextStar === 6) {
+      const sigArtifacts = cards.filter(c => {
+        if (!c.artifact || !c.boost) return false;
+        return c.boost.toLowerCase().includes(cardDef.character.toLowerCase());
+      });
+
+      if (sigArtifacts.length === 0) {
+        artifactLine = 'Sorry, this card has no signature artifact.';
+      } else {
+        const ownedEntries = user.ownedCards || [];
+        const unowned = sigArtifacts.filter(a => !ownedEntries.some(e => e.cardId === a.id));
+        if (unowned.length > 0) {
+          const pick = unowned[Math.floor(Math.random() * unowned.length)];
+          user.ownedCards.push({ cardId: pick.id, level: 1, xp: 0 });
+          if (!user.history) user.history = [];
+          if (!user.history.includes(pick.id)) user.history.push(pick.id);
+          artifactLine = `Received **${pick.emoji || ''} ${pick.character}**`.trim();
+        } else {
+          ownedEntry.xp = (ownedEntry.xp || 0) + 50;
+          const sigNames = sigArtifacts.map(a => `${a.emoji || ''} ${a.character}`.trim()).join(', ');
+          artifactLine = `You already own all signature artifacts (${sigNames}), converted to **50 XP**.`;
+        }
+      }
+    }
+
     await user.save();
 
     const starDisplay = buildStarDisplay(cardDef.attribute, nextStar, cardDef.rank);
 
+    const descParts = [
+      `**${cardDef.emoji || ''} ${cardDef.character}** reached **Star ${nextStar}**!`,
+      '',
+      starDisplay,
+      '',
+      `**Perk Unlocked:** ${STAR_PERKS[nextStar] || '+1% All Stats'}`,
+    ];
+    if (artifactLine) descParts.push('', artifactLine);
+    descParts.push('', `**Remaining Gems:** ${user.gems || 0}`, `**${cardDef.attribute} Shards:** ${getShardCount(user, shardItemId)}`);
+
     const newEmbed = new EmbedBuilder()
       .setColor('#FFFFFF')
       .setTitle('Star Upgrade Successful!')
-      .setDescription([
-        `**${cardDef.emoji || ''} ${cardDef.character}** reached **Star ${nextStar}**!`,
-        '',
-        starDisplay,
-        '',
-        `**Perk Unlocked:** ${STAR_PERKS[nextStar] || '+1% All Stats'}`,
-        '',
-        `**Remaining Gems:** ${user.gems || 0}`,
-        `**${cardDef.attribute} Shards:** ${getShardCount(user, shardItemId)}`
-      ].join('\n'))
+      .setDescription(descParts.join('\n'))
       .setAuthor({ name: interaction.user.username, iconURL: interaction.user.displayAvatarURL() });
 
     return interaction.update({ content: '', embeds: [newEmbed], components: [] });

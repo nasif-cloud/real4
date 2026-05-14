@@ -71,7 +71,8 @@ function resolveStats(userCard, ownedCards) {
 
   // Delegate to computeScaledStats which applies level, total boosts, and
   // stat-specific boosts with the same rounding rules as the info command.
-  return computeScaledStats(def, level, totalBoostPct, statBoosts);
+  // Also pass starLevel so the 1%-per-star bonus is applied in battle.
+  return computeScaledStats(def, level, totalBoostPct, statBoosts, userCard.starLevel || 0);
 }
 
 module.exports = { resolveStats };

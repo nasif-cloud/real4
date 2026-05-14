@@ -366,7 +366,7 @@ function getCardFinalStats(cardDef, level, user) {
   const isOwned = !!userEntry;
   const higherVersionOwned = !isOwned && hasHigherVersionOwned(user, cardDef);
   const boostInfo = (isOwned || !higherVersionOwned) ? resolveBoostsForCard(cardDef, user) : { boostEntries: [], totalBoostPct: 0, statBoosts: {} };
-  const scaled = computeScaledStats(cardDef, level || 1, boostInfo.totalBoostPct, boostInfo.statBoosts);
+  const scaled = computeScaledStats(cardDef, level || 1, boostInfo.totalBoostPct, boostInfo.statBoosts, userEntry?.starLevel || 0);
   return {
     scaled,
     boostEntries: boostInfo.boostEntries,
@@ -1093,9 +1093,9 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
   return embed;
 }
 
-function computeScaledStats(cardDef, level, boostPct = 0, statBoosts = {}) {
-  // Use explicit formula: final = ceil(base * (1 + level*0.01)) then apply boosts
-  const levelMultiplier = 1 + (level || 0) * 0.01;
+function computeScaledStats(cardDef, level, boostPct = 0, statBoosts = {}, starLevel = 0) {
+  // 0.1% per level + 1% per star level (e.g. lvl 20 = 2%, star 6 = 6%, total 8%)
+  const levelMultiplier = 1 + (level || 0) * 0.001 + (starLevel || 0) * 0.01;
   const base = {
     power: Math.ceil(cardDef.power * levelMultiplier),
     health: Math.ceil(cardDef.health * levelMultiplier),

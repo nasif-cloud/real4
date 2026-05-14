@@ -285,8 +285,48 @@ async function execute({ message, args }) {
         return message.reply(`Removed ${amtParsed} gem(s) from <@${targetId}>. New gems: ${newGems}`);
       }
 
+      // Card level removal: op owner remove <cardID> <levelAmount> @user
+      const _removeDef = getCardById(type);
+      if (_removeDef) {
+        const levelsToRemove = parseInt(amountArg, 10);
+        if (isNaN(levelsToRemove) || levelsToRemove < 1) return message.reply('Level amount must be a positive number.');
+        const cardEntry = (target.ownedCards || []).find(e => e.cardId === _removeDef.id);
+        if (!cardEntry) return message.reply(`<@${targetId}> does not own **${_removeDef.character}**.`);
+        const oldLevel = cardEntry.level || 1;
+        const newLevel = Math.max(1, oldLevel - levelsToRemove);
+        const removed = oldLevel - newLevel;
+        cardEntry.level = newLevel;
+        cardEntry.xp = 0;
+        await target.save();
+        return message.reply(`Removed **${removed}** level(s) from **${_removeDef.character}** for <@${targetId}>. Now at Level **${newLevel}**.`);
+      }
+
       return message.reply('Unknown remove type; valid types are beli, gems, bounty');
     }
+
+  if (sub === 'add') {
+    const cardId = args[1];
+    const levelsArg = args[2];
+    const mention = args[3];
+    const targetId = parseMention(mention);
+    if (!cardId || !levelsArg || !targetId) return message.reply('Usage: op owner add <cardId> <levels> <@user>');
+    const cardDef = getCardById(cardId);
+    if (!cardDef) return message.reply(`No card with id ${formatCardId(cardId)} exists`);
+    const levelsToAdd = parseInt(levelsArg, 10);
+    if (isNaN(levelsToAdd) || levelsToAdd < 1) return message.reply('Level amount must be a positive number.');
+    const target = await User.findOne({ userId: targetId });
+    if (!target) return message.reply('Target user does not have an account.');
+    const cardEntry = (target.ownedCards || []).find(e => e.cardId === cardDef.id);
+    if (!cardEntry) return message.reply(`<@${targetId}> does not own **${cardDef.character}**.`);
+    const { getMaxLevelForRank } = require('../utils/starLevel');
+    const maxLevel = getMaxLevelForRank(cardDef.rank);
+    const oldLevel = cardEntry.level || 1;
+    const newLevel = Math.min(maxLevel, oldLevel + levelsToAdd);
+    const added = newLevel - oldLevel;
+    cardEntry.level = newLevel;
+    await target.save();
+    return message.reply(`Added **${added}** level(s) to **${cardDef.character}** for <@${targetId}>. Now at Level **${newLevel}**${newLevel >= maxLevel ? ' (max)' : ''}.`);
+  }
 
   if (sub === 'resetdata') {
     const subArg = args[1];
