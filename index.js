@@ -56,6 +56,9 @@ async function main() {
     await mongoose.connect(process.env.MONGODB_URI).then(() => console.log('Connected to MongoDB')).catch(err => console.error('MongoDB error', err));
   }
 
+  // Start top.gg vote webhook HTTP server
+  startVoteWebhook();
+
   // Initialize stock system
   const stockModule = require('./src/stock');
   stockModule.initStockSystem();
@@ -131,6 +134,8 @@ async function main() {
     await dropsModule.initializeDrops(client); // Initialize with client reference and restore any saved drop channel
     // let stock module know the client so it can post reset notifications
     try { stockModule.setClient(client); } catch (e) {}
+    // pass Discord client to vote webhook so it can DM voters
+    try { require('./src/voteWebhook').setClient(client); } catch (e) {}
     // start a periodic checker for daily reminders (runs every minute)
     const { EmbedBuilder } = require('discord.js');
     setInterval(async () => {
@@ -213,6 +218,7 @@ async function main() {
         if (commandName === 'user') return userCmd.execute({ interaction });
         if (commandName === 'leaderboard') return leaderboardCmd.execute({ interaction });
         if (commandName === 'daily') return dailyCmd.execute({ interaction });
+        if (commandName === 'vote') return voteCmd.execute({ interaction });
         if (commandName === 'stock') return stockCmd.execute({ interaction });
         if (commandName === 'open') return openCmd.execute({ interaction });
         if (commandName === 'trade') return tradeCmd.execute({ interaction });
@@ -467,6 +473,7 @@ async function main() {
       if (cmd === 'user') return await userCmd.execute({ message, args });
       if (cmd === 'leaderboard' || cmd === 'lb') return await leaderboardCmd.execute({ message, args });
       if (cmd === 'daily') return await dailyCmd.execute({ message });
+      if (cmd === 'vote') return await voteCmd.execute({ message });
       if (cmd === 'wanted') return await require('./commands/wanted').execute({ message, args });
       if (cmd === 'stock') return await stockCmd.execute({ message });
       if (cmd === 'open') return await openCmd.execute({ message, args });

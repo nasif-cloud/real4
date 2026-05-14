@@ -1,18 +1,22 @@
 const express = require('express');
-const crypto = require('crypto');
 const User = require('../models/User');
 
 const VOTE_CHEST_IDS = ['c_chest', 'b_chest', 'a_chest'];
 const GOD_TOKEN_STREAK_INTERVAL = 5;
 
+let _client = null;
+
+function setClient(client) {
+  _client = client;
+}
+
 function randomChestId() {
   return VOTE_CHEST_IDS[Math.floor(Math.random() * VOTE_CHEST_IDS.length)];
 }
 
-function startVoteWebhook(discordClient) {
+function startVoteWebhook() {
   const app = express();
 
-  // Parse raw body for signature verification
   app.use('/webhook/topgg', express.raw({ type: '*/*' }));
   app.use(express.json());
 
@@ -34,7 +38,6 @@ function startVoteWebhook(discordClient) {
         return res.status(400).send('Bad Request');
       }
 
-      // top.gg sends { user, bot, type, isWeekend }
       const voterId = payload.user;
       const type = payload.type;
 
@@ -48,22 +51,17 @@ function startVoteWebhook(discordClient) {
 
       if (!voterId) return;
 
-      // Find or create user
       let user = await User.findOne({ userId: voterId });
       if (!user) {
         console.log(`[vote-webhook] Vote from unknown user ${voterId} — no account`);
         return;
       }
 
-      // Update streak
+      // Update streak — reset if more than 48 hours since last vote
       const now = new Date();
       const lastVoted = user.lastVoted ? new Date(user.lastVoted) : null;
       const hoursSinceLast = lastVoted ? (now - lastVoted) / (1000 * 60 * 60) : Infinity;
-
-      // Reset streak if more than 48 hours since last vote (missed a cycle)
-      if (hoursSinceLast > 48) {
-        user.voteStreak = 0;
-      }
+      if (hoursSinceLast > 48) user.voteStreak = 0;
 
       user.voteStreak = (user.voteStreak || 0) + 1;
       user.lastVoted = now;
@@ -95,9 +93,9 @@ function startVoteWebhook(discordClient) {
       await user.save();
 
       // DM the voter with their rewards
-      if (discordClient) {
+      if (_client) {
         try {
-          const discordUser = await discordClient.users.fetch(voterId).catch(() => null);
+          const discordUser = await _client.users.fetch(voterId).catch(() => null);
           if (discordUser) {
             const { EmbedBuilder } = require('discord.js');
             const chestNames = { c_chest: 'C Chest', b_chest: 'B Chest', a_chest: 'A Chest' };
@@ -107,7 +105,7 @@ function startVoteWebhook(discordClient) {
               a_chest: '<:Achest:1492559635507450068>'
             };
 
-            let rewardLines = [
+            const rewardLines = [
               `<:resettoken:1490738386540171445> **1x Reset Token**`,
               `${chestEmojis[chestId]} **1x ${chestNames[chestId]}**`
             ];
@@ -120,7 +118,7 @@ function startVoteWebhook(discordClient) {
               .setTitle('Thanks for voting!')
               .setDescription(`You voted for the bot on top.gg and received:\n\n${rewardLines.join('\n')}`)
               .setFooter({ text: `Vote streak: ${user.voteStreak} — vote again in 12 hours!` })
-              .setThumbnail(discordClient.user.displayAvatarURL());
+              .setThumbnail(_client.user.displayAvatarURL());
 
             await discordUser.send({ embeds: [embed] }).catch(() => {});
           }
@@ -136,13 +134,12 @@ function startVoteWebhook(discordClient) {
     }
   });
 
-  // Health check
   app.get('/webhook/topgg', (req, res) => res.send('Vote webhook active'));
 
   const port = process.env.PORT || 3000;
   app.listen(port, '0.0.0.0', () => {
-    console.log(`Vote webhook listening on port ${port} (https://${process.env.REPLIT_DEV_DOMAIN}/webhook/topgg)`);
+    console.log(`[vote-webhook] Listening on port ${port} — register https://${process.env.REPLIT_DEV_DOMAIN || 'your-repl.replit.app'}/webhook/topgg in the top.gg dashboard`);
   });
 }
 
-module.exports = { startVoteWebhook };
+module.exports = { startVoteWebhook, setClient };

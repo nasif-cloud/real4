@@ -36,3 +36,7 @@ OWNER_ID = "1257718161298690119"
 
 [deployment]
 deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
