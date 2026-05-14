@@ -33,3 +33,6 @@ outputType = "console"
 
 [userenv.shared]
 OWNER_ID = "1257718161298690119"
+
+[deployment]
+deploymentTarget = "cloudrun"
