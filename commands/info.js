@@ -113,8 +113,11 @@ function buildBoostEmbed(cardDef, userEntry, user) {
   const stats = getCardFinalStats(cardDef, lvl, user);
   const boostEntries = stats.boostEntries || [];
   const statBoosts = stats.statBoosts || {};
-  // Calculate level boost percent
-  const levelBoostPct = Math.ceil(lvl / 10); // +1% per 10 levels, rounded up
+  // Calculate level boost percent (0.1% per level)
+  const levelBoostPct = Math.round(lvl * 0.1 * 10) / 10;
+  // Star level boost (1% per star)
+  const starLevel = userEntry ? (userEntry.starLevel || 0) : 0;
+  const starBoostPct = starLevel;
 
   // Always define cardEmoji at the top
   const cardEmoji = cardDef.emoji ? cardDef.emoji + ' ' : '';
@@ -141,6 +144,7 @@ function buildBoostEmbed(cardDef, userEntry, user) {
   }
   // Always show level boost last, no emoji
   lines.push(`**Levels**: boosts all stats by \`${levelBoostPct}%\``);
+  if (starBoostPct > 0) lines.push(`**Star Level**: boosts all stats by \`${starBoostPct}%\``);
 
   // For artifacts, show boost information instead of base stats
   let baseStats = '';
@@ -169,7 +173,7 @@ function buildBoostEmbed(cardDef, userEntry, user) {
   // Compose total boost summary in requested format
   let totalParts = [];
   // Add all stats (levels + other all stats boosts)
-  let allStatsTotal = levelBoostPct + (stats.totalBoostPct || 0);
+  let allStatsTotal = levelBoostPct + starBoostPct + (stats.totalBoostPct || 0);
   if (allStatsTotal > 0) totalParts.push(`\`${allStatsTotal}%\` all stats`);
   // Add stat-specific boosts
   Object.entries(statBoosts).forEach(([stat, pct]) => {

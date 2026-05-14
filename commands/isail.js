@@ -478,9 +478,9 @@ function buildEmbed(state, user, discordUser) {
       const idx = state.cards.indexOf(c);
       const isSelected = state.selected !== null && idx === state.selected;
       const level = c.userEntry ? c.userEntry.level : 1;
-      const upgradeMatch = (c.def.id.match(/-u(\d+)$/) || [])[1] || '1';
+      const _starLvlI = c.userEntry ? (c.userEntry.starLevel || 0) : 0;
       let value = `${hpBar(c.currentHP, c.maxHP)}`;
-      value += `\nLv. ${level} U${upgradeMatch}`;
+      value += `\nLv. ${level} S${_starLvlI}`;
       value += `\n${c.currentHP}/${c.maxHP} ${energyDisplay(c.energy)}`;
       if (isSelected) value = `**> ${value}**`;
       embed.addFields({ name: fieldName, value, inline: true });

@@ -1,8 +1,17 @@
 const User = require('../models/User');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { cards } = require('../data/cards');
-const { getCardById, findBestOwnedCard } = require('../utils/cards');
+const { getCardById, findBestOwnedCard, formatCardId } = require('../utils/cards');
 const { getMaxStarForRank, getMaxLevelForRank, getStarUpgradeRequirement, buildStarDisplay } = require('../utils/starLevel');
+
+const GEM_EMOJI = '<:gem:1490741488081043577>';
+const SHARD_EMOJI_MAP = {
+  red_shard: '<:RedShard:1494106374492131439>',
+  blue_shard: '<:Blueshard:1494106500149411980>',
+  green_shard: '<:GreenShard:1494106686963581039>',
+  yellow_shard: '<:YellowShard:1494106825627406530>',
+  purple_shard: '<:PurpleShard:1494106958582776008>'
+};
 
 const ATTRIBUTE_SHARD_MAP = {
   STR: 'red_shard',
@@ -87,9 +96,10 @@ function buildUpgradeEmbed(cardDef, ownedEntry, user, username, avatarUrl) {
     lines.push('No further star upgrades available for this rank.');
   }
 
+  const shardEmoji = SHARD_EMOJI_MAP[shardItemId] || '';
   lines.push('');
-  lines.push(`**Your Gems:** ${user.gems || 0}`);
-  lines.push(`**Your ${cardDef.attribute} Shards:** ${shardCount}`);
+  lines.push(`**Gems:** ${GEM_EMOJI} ${user.gems || 0}`);
+  lines.push(`**${cardDef.attribute} Shards:** ${shardEmoji} ${shardCount}`);
 
   const embed = new EmbedBuilder()
     .setColor('#FFFFFF')
@@ -235,7 +245,7 @@ module.exports = {
           user.ownedCards.push({ cardId: pick.id, level: 1, xp: 0 });
           if (!user.history) user.history = [];
           if (!user.history.includes(pick.id)) user.history.push(pick.id);
-          artifactLine = `Received **${pick.emoji || ''} ${pick.character}**`.trim();
+          artifactLine = `Received **${pick.emoji || ''} ${pick.character}** \`${formatCardId(pick.id)}\``.trim();
         } else {
           ownedEntry.xp = (ownedEntry.xp || 0) + 50;
           const sigNames = sigArtifacts.map(a => `${a.emoji || ''} ${a.character}`.trim()).join(', ');
@@ -256,7 +266,8 @@ module.exports = {
       `**Perk Unlocked:** ${STAR_PERKS[nextStar] || '+1% All Stats'}`,
     ];
     if (artifactLine) descParts.push('', artifactLine);
-    descParts.push('', `**Remaining Gems:** ${user.gems || 0}`, `**${cardDef.attribute} Shards:** ${getShardCount(user, shardItemId)}`);
+    const _shardEmoji = SHARD_EMOJI_MAP[shardItemId] || '';
+    descParts.push('', `**Gems:** ${GEM_EMOJI} ${user.gems || 0}`, `**${cardDef.attribute} Shards:** ${_shardEmoji} ${getShardCount(user, shardItemId)}`);
 
     const newEmbed = new EmbedBuilder()
       .setColor('#FFFFFF')
