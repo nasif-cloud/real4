@@ -169,7 +169,21 @@ function startVoteWebhook() {
     }
   });
 
-  app.get('/webhook/topgg', (req, res) => res.send('Vote webhook is active'));
+  app.get('/webhook/topgg', (req, res) => {
+    res.send('Vote webhook is active. Set this URL in top.gg: POST /webhook/topgg');
+  });
+
+  // Diagnostic endpoint — visit /webhook-status to confirm the server is reachable
+  app.get('/webhook-status', (req, res) => {
+    const authConfigured = !!process.env.TOPGG_WEBHOOK_AUTH;
+    const clientReady = !!_client;
+    res.json({
+      status: 'running',
+      authConfigured,
+      discordClientReady: clientReady,
+      webhookUrl: 'POST /webhook/topgg',
+    });
+  });
 
   const port = process.env.PORT || 3000;
   app.listen(port, '0.0.0.0', () => {

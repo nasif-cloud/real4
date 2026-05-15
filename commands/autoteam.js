@@ -23,16 +23,21 @@ module.exports = {
     user.team = selectedIds;
     await user.save();
 
-    // check achievements for team power after auto-team set
+    // Reply immediately — achievement check runs in background so there's no delay
+    const reply = 'Your team has been set to the strongest possible cards!';
+    const replyPromise = message ? message.reply(reply) : interaction.reply({ content: reply });
+
+    // Fire-and-forget achievement check (do not await)
     try {
       const { checkAndAwardAll } = require('../utils/achievements');
-      await checkAndAwardAll(user, message ? message.client : interaction.client, { event: 'team' });
+      const client = message ? message.client : interaction.client;
+      checkAndAwardAll(user, client, { event: 'team' }).catch(err =>
+        console.error('Error checking achievements after autoteam', err)
+      );
     } catch (err) {
-      console.error('Error checking achievements after autoteam', err);
+      console.error('Error initiating achievement check after autoteam', err);
     }
 
-    const reply = 'Your team has been set to the strongest possible cards!';
-    if (message) return message.reply(reply);
-    return interaction.reply({ content: reply });
+    return replyPromise;
   }
 };

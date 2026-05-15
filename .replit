@@ -29,6 +29,15 @@ args = "npm start"
 [workflows.workflow.metadata]
 outputType = "console"
 
+[[workflows.workflow]]
+name = "push to jrma"
+mode = "sequential"
+author = 39764317
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "git push -u https://d7D5T:r8DHf9i6KPj4@justrunmy.app/git/a27057_Ds62 HEAD:deploy"
+
 [userenv]
 
 [userenv.shared]

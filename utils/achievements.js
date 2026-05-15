@@ -16,6 +16,10 @@ for (const c of allCards) {
   facultyMap[key].push(c.id);
 }
 
+// O(1) card lookup by id — avoids repeated allCards.find() inside achievement checks
+const _cardById = new Map();
+for (const c of allCards) _cardById.set(c.id, c);
+
 const ACHIEVEMENTS = [
   // 1. Strawhat Pirate
   (function() { return {
@@ -58,9 +62,8 @@ const ACHIEVEMENTS = [
     title: 'Adept Pirate',
     icon: '<:UR:1493742900247531572>',
     check: (user) => {
-      const owned = (user.ownedCards || []).map(e => e.cardId);
-      return owned.some(id => {
-        const def = allCards.find(c => c.id === id);
+      return (user.ownedCards || []).some(e => {
+        const def = _cardById.get(e.cardId);
         return def && def.rank === 'UR';
       });
     },

@@ -200,14 +200,14 @@ function buildCollectionBoostEmbed(cardDef, userEntry, user) {
   return embed;
 }
 
-async function renderCard(interaction, user, session, index) {
+async function renderCard(interaction, session, index) {
   const item = session.cards[index];
   if (!item) {
     return interaction.reply({ content: 'No collection card found.', ephemeral: true });
   }
 
   const avatarUrl = interaction.user.displayAvatarURL();
-  const embed = buildCardEmbed(item.card, item.entry, avatarUrl, user);
+  const embed = buildCardEmbed(item.card, item.entry, avatarUrl, session.cachedUser);
 
   const rowNav = makeNavRow(interaction.user.id, index, session.cards.length, item.card, !!item.entry);
   const rowSort = makeSortButton(interaction.user.id);
@@ -235,7 +235,7 @@ module.exports = {
       return interaction.reply({ content: reply, ephemeral: true });
     }
 
-    const session = { userId, cards: sorted, original: sorted, currentIndex: 0, mode: 'strongest-weakest' };
+    const session = { userId, cards: sorted, original: sorted, currentIndex: 0, mode: 'strongest-weakest', cachedUser: user };
     if (!global.collectionSessions) global.collectionSessions = new Map();
     global.collectionSessions.set(`${userId}_collection`, session);
 
@@ -265,7 +265,7 @@ module.exports = {
 
     if (action === 'collection_sort_select') {
       const mode = interaction.values?.[0] || 'strongest-weakest';
-      const filtered = sortAndFilter(session.original, mode, await User.findOne({ userId: interaction.user.id }));
+      const filtered = sortAndFilter(session.original, mode, session.cachedUser);
       session.cards = filtered;
       session.currentIndex = 0;
       session.mode = mode;
@@ -274,21 +274,15 @@ module.exports = {
         return interaction.update({ content: 'No cards match that filter.', embeds: [], components: [] });
       }
 
-      return renderCard(interaction, await User.findOne({ userId: interaction.user.id }), session, 0);
+      return renderCard(interaction, session, 0);
     }
 
     if (action === 'collection_boost') {
-      const user = await User.findOne({ userId: interaction.user.id });
-      if (!user) {
-        return interaction.reply({ content: 'Unable to find your profile.', ephemeral: true });
-      }
       const item = session.cards[session.currentIndex];
       if (!item) {
         return interaction.reply({ content: 'No card found at current index.', ephemeral: true });
       }
-      const cardDef = item.card;
-      const userEntry = item.entry;
-      const embed = buildCollectionBoostEmbed(cardDef, userEntry, user);
+      const embed = buildCollectionBoostEmbed(item.card, item.entry, session.cachedUser);
       return interaction.reply({ embeds: [embed], ephemeral: true });
     }
 
@@ -299,7 +293,7 @@ module.exports = {
 
     session.currentIndex = nextIndex;
 
-    return renderCard(interaction, await User.findOne({ userId: interaction.user.id }), session, nextIndex);
+    return renderCard(interaction, session, nextIndex);
   },
   sortedOwnedCards
 };
