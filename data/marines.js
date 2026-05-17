@@ -46,7 +46,7 @@ const marines = [
   { 
     rank: 'Seaman First Class', // appears from isail 4
     minHP: 5, maxHP: 10, 
-    atk: 3, 
+    atk: 2, 
     speed: 2, 
     attribute: 'DEX',
     stagerange: [6, 10],
@@ -59,7 +59,7 @@ const marines = [
   { 
     rank: 'Petty Officer', // appears from isail 6
     minHP: 10, maxHP: 15, 
-    atk: 4, 
+    atk: 3, 
     speed: 3, 
     attribute: 'STR',
     stagerange: [10, 15],
@@ -72,7 +72,7 @@ const marines = [
   { 
     rank: 'Chief Petty Officer', // appears from isail 8
     minHP: 15, maxHP: 20, 
-    atk: 5, 
+    atk: 3, 
     speed: 3, 
     attribute: 'STR',
     stagerange: [11, 16],
@@ -84,7 +84,7 @@ const marines = [
   { 
     rank: 'Master Chief Petty Officer', // appears from isail 10
     minHP: 20, maxHP: 25, 
-    atk: 6, 
+    atk: 4, 
     speed: 3, 
     attribute: 'QCK',
     stagerange: [12, 18],
@@ -96,7 +96,7 @@ const marines = [
   { 
     rank: 'Warrant Officer', // appears from isail 12
     minHP: 25, maxHP: 30, 
-    atk: 7, 
+    atk: 4, 
     speed: 4, 
     attribute: 'PSY',
     stagerange: [15, 22],
@@ -109,7 +109,7 @@ const marines = [
   { 
     rank: 'Ensign', // appears from isail 14
     minHP: 30, maxHP: 36, 
-    atk: 8, 
+    atk: 5, 
     speed: 4, 
     attribute: 'QCK',
     stagerange: [18, 25],
@@ -124,7 +124,7 @@ const marines = [
   { 
     rank: 'Lieutenant Junior Grade', // appears from isail 16
     minHP: 35, maxHP: 47, 
-    atk: 9, 
+    atk: 5, 
     speed: 5, 
     attribute: 'QCK',
     stagerange: [24, 30],
@@ -139,7 +139,7 @@ const marines = [
   { 
     rank: 'Lieutenant', // appears from isail 18
     minHP: 46, maxHP: 55, 
-    atk: 10, 
+    atk: 6, 
     speed: 5, 
     attribute: 'QCK',
     stagerange: [25, 31],
@@ -154,7 +154,7 @@ const marines = [
   { 
     rank: 'Lieutenant Commander', // appears from isail 20
     minHP: 54, maxHP: 68, 
-    atk: 11, 
+    atk: 6, 
     speed: 6, 
     attribute: 'INT',
     stagerange: [26, 32],
@@ -167,7 +167,7 @@ const marines = [
   { 
     rank: 'Captain', // appears from isail 22
     minHP: 66, maxHP: 80, 
-    atk: 12, 
+    atk: 8, 
     speed: 6, 
     attribute: 'PSY',
     stagerange: [30, 35],
@@ -182,7 +182,7 @@ const marines = [
   { 
     rank: 'Commodore', // appears from isail 24
     minHP: 75, maxHP: 90, 
-    atk: 13, 
+    atk: 9, 
     speed: 6, 
     attribute: 'PSY',
     stagerange: [32, 40],
@@ -194,7 +194,7 @@ const marines = [
   { 
     rank: 'Rear admiral', // appears from isail 26
     minHP: 80, maxHP: 100, 
-    atk: 15, 
+    atk: 10, 
     speed: 7, 
     attribute: 'PSY',
     stagerange: [37, 45],
@@ -207,7 +207,7 @@ const marines = [
   { 
     rank: 'Vice admiral', // appears from isail 34
     minHP: 95, maxHP: 120, 
-    atk: 18, 
+    atk: 13, 
     speed: 10, 
     attribute: 'PSY',
     stagerange: [40, 50],
@@ -229,7 +229,7 @@ const marines = [
   { 
     rank: 'Admiral', // appears from isail 38
     minHP: 105, maxHP: 140, 
-    atk: 20, 
+    atk: 15, 
     speed: 11, 
     attribute: 'PSY',
     stagerange: [42, 50],
@@ -243,7 +243,7 @@ const marines = [
     { 
     rank: 'Gorosei', // appears from isail 42
     minHP: 150, maxHP: 200, 
-    atk: 20, 
+    atk: 15, 
     speed: 15, 
     attribute: 'PSY',
     stagerange: [40, 999],
@@ -259,7 +259,7 @@ const marines = [
   { 
     rank: 'Fleet Admiral', // appears from isail 42
     minHP: 135, maxHP: 160, 
-    atk: 25, 
+    atk: 20, 
     speed: 15, 
     attribute: 'PSY',
     stagerange: [45, 999],

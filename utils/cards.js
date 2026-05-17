@@ -818,7 +818,6 @@ function buildCardEmbed(cardDef, userEntry, avatarUrl, user) {
     const descLines = [cardDef.title || ''];
     if (attributeIcon) descLines.push('', `**Attribute:** ${attributeIcon}`);
     if (wielderLine) descLines.push(wielderLine);
-    if (boostSummary) descLines.push(`**Boost:** \`${boostSummary}\` Of all stats`);
     if (exactEntry) {
       descLines.push(`**Level:** ${lvl}${typeof exactEntry.xp === 'number' ? ` (XP: ${exactEntry.xp})` : ''}`);
     }
