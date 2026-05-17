@@ -421,27 +421,13 @@ async function execute({ message, args }) {
   }
 
   if (sub === 'unsetresets' || sub === 'unsetreset') {
-    const fs = require('fs');
-    const path = require('path');
-    const PULL_FILE = path.join(__dirname, '..', 'pull.json');
-    let data = {};
-    try {
-      if (fs.existsSync(PULL_FILE)) data = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
-    } catch (e) {
-      data = {};
-    }
-    if (!data.resetsChannel) {
+    const { getBotConfig: _getBC, deleteBotConfig: _deleteBC } = require('../models/BotConfig');
+    const resetsChannel = await _getBC('resetsChannel');
+    if (!resetsChannel) {
       return message.reply('No reset notification channel is currently configured.');
     }
-    const oldChannel = data.resetsChannel;
-    delete data.resetsChannel;
-    try {
-      fs.writeFileSync(PULL_FILE, JSON.stringify(data, null, 2));
-    } catch (err) {
-      console.error('Error writing pull.json for unsetresets:', err);
-      return message.reply('Failed to remove reset channel. Check server logs.');
-    }
-    return message.reply(`Reset notifications have been disabled (was <#${oldChannel}>).`);
+    await _deleteBC('resetsChannel');
+    return message.reply(`Reset notifications have been disabled (was <#${resetsChannel}>).`);
   }
 
   if (sub === 'guildlist') {
@@ -520,22 +506,8 @@ async function execute({ message, args }) {
     const channelMatch = channelMention.match(/<#(\d+)>/);
     if (!channelMatch) return message.reply('Invalid channel format. Use: op owner setresets <#channel>');
     const channelId = channelMatch[1];
-    const fs = require('fs');
-    const path = require('path');
-    const PULL_FILE = path.join(__dirname, '..', 'pull.json');
-    let data = {};
-    try {
-      if (fs.existsSync(PULL_FILE)) data = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
-    } catch (e) {
-      data = {};
-    }
-    data.resetsChannel = channelId;
-    try {
-      fs.writeFileSync(PULL_FILE, JSON.stringify(data, null, 2));
-    } catch (err) {
-      console.error('Error writing pull.json for setresets:', err);
-      return message.reply('Failed to save reset channel. Check server logs.');
-    }
+    const { setBotConfig: _setBC } = require('../models/BotConfig');
+    await _setBC('resetsChannel', channelId);
     return message.reply(`Reset notifications will be sent to <#${channelId}>`);
   }
 

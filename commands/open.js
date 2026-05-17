@@ -289,6 +289,14 @@ module.exports = {
     };
     const normalizedPack = normalizeName(matchedPack);
 
+    // Require at least 20 pullable cards in this pack's faculty before allowing opens
+    const packCardPoolCheck = cards.filter(c => c.pullable && !c.artifact && !c.ship && normalizeName(c.faculty) === normalizedPack);
+    if (packCardPoolCheck.length < 20) {
+      const reply = `The **${matchedPack}** pack is not yet complete — it needs at least 20 cards before it can be opened!`;
+      if (message) return message.reply(reply);
+      return interaction.reply({ content: reply, ephemeral: true });
+    }
+
     // Build pools for this pack faculty
     let artifactCandidates = cards.filter(c => c.artifact && c.pullable && normalizeName(c.faculty) === normalizedPack);
     if (!artifactCandidates.length && isStrawhatPack(matchedPack)) {
@@ -514,11 +522,6 @@ module.exports = {
         if (!user.history.includes(card.id)) user.history.push(card.id);
       }
       pulledCards.push({ card, dup: duplicateText });
-      // Update pity
-      user.pityCount += 1;
-      if (user.pityCount >= require('../config').PITY_TARGET) {
-        user.pityCount = 0;
-      }
     }
 
     // Preserve the pack draw order so the first pulled card remains the guaranteed artifact

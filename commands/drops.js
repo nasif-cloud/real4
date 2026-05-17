@@ -1,11 +1,8 @@
-const fs = require('fs');
-const path = require('path');
 const User = require('../models/User');
+const { getBotConfig, setBotConfig, deleteBotConfig } = require('../models/BotConfig');
 const { ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
 const { simulatePull, isArtifactCard, formatCardId, applyXpToEquippedArtifact } = require('../utils/cards');
 const { cards } = require('../data/cards');
-
-const DROP_CONFIG_FILE = path.join(__dirname, '..', 'drop.json');
 
 // Store active drops: drop ID -> { messageId, channelId, userId, expiresAt, card }
 const activeDrops = new Map();
@@ -20,29 +17,23 @@ let dropIntervalTimer = null;
 const configuredDropChannels = new Set();
 let dropsClient = null; // Discord client reference
 
-function loadDropChannelIds() {
+async function loadDropChannelIds() {
   try {
-    if (fs.existsSync(DROP_CONFIG_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DROP_CONFIG_FILE, 'utf8'));
-      // New format: { channels: [{ channelId, threshold, progress }] }
-      if (Array.isArray(data.channels)) {
-        return data.channels.map(c => ({
-          channelId: c.channelId,
-          threshold: typeof c.threshold === 'number' ? c.threshold : 100,
-          progress: typeof c.progress === 'number' ? c.progress : 0
-        }));
-      }
-      // Backwards compat: support old { channelIds: [...] } format
-      if (Array.isArray(data.channelIds)) return data.channelIds.map(cid => ({ channelId: cid, threshold: 100, progress: 0 }));
-      if (data.channelId) return [{ channelId: data.channelId, threshold: 100, progress: 0 }];
+    const channels = await getBotConfig('dropChannels');
+    if (Array.isArray(channels)) {
+      return channels.map(c => ({
+        channelId: c.channelId,
+        threshold: typeof c.threshold === 'number' ? c.threshold : 100,
+        progress: typeof c.progress === 'number' ? c.progress : 0
+      }));
     }
   } catch (err) {
-    console.error('Error loading drop config:', err);
+    console.error('Error loading drop config from DB:', err);
   }
   return [];
 }
 
-function saveDropChannelIds(channelConfigs) {
+async function saveDropChannelIds(channelConfigs) {
   try {
     let channels = [];
     if (Array.isArray(channelConfigs)) {
@@ -57,9 +48,9 @@ function saveDropChannelIds(channelConfigs) {
     } else {
       channels = Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }));
     }
-    fs.writeFileSync(DROP_CONFIG_FILE, JSON.stringify({ channels }, null, 2));
+    await setBotConfig('dropChannels', channels);
   } catch (err) {
-    console.error('Error saving drop config:', err);
+    console.error('Error saving drop config to DB:', err);
   }
 }
 
@@ -90,13 +81,11 @@ async function createAttachmentFromUrl(url) {
   }
 }
 
-function clearDropChannelIds() {
+async function clearDropChannelIds() {
   try {
-    if (fs.existsSync(DROP_CONFIG_FILE)) {
-      fs.unlinkSync(DROP_CONFIG_FILE);
-    }
+    await deleteBotConfig('dropChannels');
   } catch (err) {
-    console.error('Error clearing drop config:', err);
+    console.error('Error clearing drop config from DB:', err);
   }
 }
 
@@ -107,7 +96,7 @@ async function initializeDrops(client) {
   dropsClient = client;
   if (!client) return;
 
-  const savedChannels = loadDropChannelIds();
+  const savedChannels = await loadDropChannelIds();
   if (Array.isArray(savedChannels) && savedChannels.length) {
     for (const entry of savedChannels) {
       try {
@@ -150,7 +139,7 @@ async function _spawnDrop(channelId) {
       // cleanup per-channel in-memory state
       messageCounts.delete(channelId);
       channelThresholds.delete(channelId);
-      saveDropChannelIds(Array.from(configuredDropChannels));
+      saveDropChannelIds(Array.from(configuredDropChannels)).catch(() => {});
       return;
     }
 
@@ -268,7 +257,7 @@ async function startDropTimer(client, channelId, threshold = 100, initialProgres
     messageCounts.set(channelId, Number.isFinite(Number(initialProgress)) ? Number(initialProgress) : 0);
   }
   // persist full channel configs
-  saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 })));
+  saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }))).catch(() => {});
 
   // ensure previous listener cleared before attaching a new one
   try {
@@ -341,7 +330,7 @@ function stopDropTimer(channelId = null) {
     // remove single channel from configured set
     configuredDropChannels.delete(channelId);
     // persist remaining channels with their thresholds/progress
-    saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 })));
+    saveDropChannelIds(Array.from(configuredDropChannels).map(cid => ({ channelId: cid, threshold: channelThresholds.get(cid) || 100, progress: messageCounts.get(cid) || 0 }))).catch(() => {});
     // remove in-memory entries
     messageCounts.delete(channelId);
     channelThresholds.delete(channelId);
@@ -366,7 +355,7 @@ function stopDropTimer(channelId = null) {
 
   configuredDropChannels.clear();
   messageCounts.clear();
-  clearDropChannelIds();
+  clearDropChannelIds().catch(() => {});
 }
 
 /**

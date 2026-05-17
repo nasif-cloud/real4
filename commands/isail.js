@@ -1081,13 +1081,25 @@ async function handleVictory(state, msg, user, discordUser) {
         if (firstTimeRewards.id_card_1) displayIdCards.push(firstTimeRewards.id_card_1);
         if (firstTimeRewards.id_card_2) displayIdCards.push(firstTimeRewards.id_card_2);
         if (Array.isArray(firstTimeRewards.id_cards)) displayIdCards.push(...firstTimeRewards.id_cards);
+        const ATTR_EMOJIS = {
+          STR: '<:STRrandom:1492293852873232455>',
+          DEX: '<:Dexrandom:1492293859785441400>',
+          QCK: '<:Qckrandom:1492293854265868300>',
+          INT: '<:INTrandom:1492293858170765466>',
+          PSY: '<:psyrandom:1492293855700062258>'
+        };
         Array.from(new Set(displayIdCards.map(String))).forEach(id => {
           try {
             const cardDef = getCardById(id);
             if (cardDef) {
-              const emoji = cardDef.emoji ? `${cardDef.emoji} ` : '';
-              const name = cardDef.character || cardDef.title || id;
-              descLines.push(`• Obtained ${emoji}${name} \`${cardDef.id}\``);
+              if (cardDef.artifact && cardDef.attribute) {
+                const attrEmoji = ATTR_EMOJIS[cardDef.attribute] || '';
+                descLines.push(`• Obtained ${attrEmoji ? attrEmoji + ' ' : ''}${cardDef.attribute} \`${cardDef.id}\``);
+              } else {
+                const emoji = cardDef.emoji ? `${cardDef.emoji} ` : '';
+                const name = cardDef.character || cardDef.title || id;
+                descLines.push(`• Obtained ${emoji}${name} \`${cardDef.id}\``);
+              }
             } else {
               descLines.push(`• Obtained \`${id}\``);
             }

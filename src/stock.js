@@ -111,10 +111,11 @@ async function resetPullCounter() {
     console.log('Pulls reset');
     // If a client is set and a reset notification channel is configured, post a message
     try {
-      if (globalClient && fs.existsSync(PULL_FILE)) {
-        const pdata = JSON.parse(fs.readFileSync(PULL_FILE, 'utf8')) || {};
-        if (pdata.resetsChannel) {
-          const ch = await globalClient.channels.fetch(pdata.resetsChannel).catch(() => null);
+      if (globalClient) {
+        const { getBotConfig } = require('../models/BotConfig');
+        const resetsChannel = await getBotConfig('resetsChannel');
+        if (resetsChannel) {
+          const ch = await globalClient.channels.fetch(resetsChannel).catch(() => null);
           if (ch) {
             const roleMention = '<@&1389619213492158464>';
             ch.send(`${roleMention} Pulls have been reset! you can start pulling in command channels.`).catch(() => {});
