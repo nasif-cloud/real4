@@ -83,7 +83,7 @@ async function execute({ message, interaction, args }) {
 
   const starStr = (ownedEntry.starLevel || 0) > 0 ? ` ${'⭐'.repeat(ownedEntry.starLevel)}` : '';
   return reply(
-    `✅ Listed **${cardDef.emoji ? cardDef.emoji + ' ' : ''}${cardDef.character}**${starStr} (Lvl. ${ownedEntry.level || 1}) for **${formatPrice(price)}** ${BELI_EMOJI}!\nListing expires in 2 weeks. Use \`op market\` to view all listings.`
+    `Listed **${cardDef.emoji ? cardDef.emoji + ' ' : ''}${cardDef.character}**${starStr} (Lvl. ${ownedEntry.level || 1}) for **${formatPrice(price)}** ${BELI_EMOJI}!\nListing expires in 2 weeks. Use \`op market\` to view all listings.`
   );
 }
 
