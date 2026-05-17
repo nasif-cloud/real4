@@ -136,32 +136,33 @@ function buildBoostEmbed(cardDef, userEntry, user) {
         emoji = boosterCard.emoji + ' ';
       }
       if (b.stat) {
-        lines.push(`${emoji}**${b.source}**: +${b.pct}% ${b.stat}`);
+        lines.push(`${emoji}**${b.source}**: \`+${b.pct}%\` ${b.stat}`);
       } else {
-        lines.push(`${emoji}**${b.source}**: +${b.pct}% All stats`);
+        lines.push(`${emoji}**${b.source}**: \`+${b.pct}%\` All stats`);
       }
     });
   }
   // Show level + star boost combined as a single line
   const combinedLevelBoostPct = levelBoostPct + starBoostPct;
-  lines.push(`**Levels**: +${combinedLevelBoostPct}% All stats`);
+  lines.push(`**Levels**: \`+${combinedLevelBoostPct}%\` All stats`);
 
-  // For artifacts, parse base boost % and show it cleanly
+  // For boost/artifact cards, parse base boost % and show it cleanly
+  const isBoostCard = !!(cardDef.boost);
   let baseStats = '';
   let artifactBasePct = 0;
-  if (cardDef.artifact && cardDef.boost) {
+  if (isBoostCard) {
     const _boostRegex = /([\w .'-]+?)(?:,\s*([\w ]+))?\s*\((\d+)%\)/gi;
     let _m;
     const _pcts = [];
     const _statNames = [];
     while ((_m = _boostRegex.exec(cardDef.boost)) !== null) {
       _pcts.push(parseInt(_m[3], 10));
-      if (_m[2]) _statNames.push(_m[2].trim());
+      if (_m[2] && _m[2].trim().toLowerCase() !== 'all') _statNames.push(_m[2].trim());
     }
     if (_pcts.length > 0) {
       artifactBasePct = _pcts[0];
       const statLabel = _statNames.length > 0 ? _statNames[0] : 'All stats';
-      baseStats = `**Base boost:** ${artifactBasePct}% ${statLabel}`;
+      baseStats = `**Base boost:** \`${artifactBasePct}%\` ${statLabel}`;
     }
   } else {
     baseStats = `**Base stats:** ${cardDef.power} Power, ${cardDef.health} Health, ${cardDef.speed} Speed, ${cardDef.attack_min} - ${cardDef.attack_max} Attack`;
@@ -169,9 +170,9 @@ function buildBoostEmbed(cardDef, userEntry, user) {
 
   // Compose total boost summary
   let totalParts = [];
-  if (cardDef.artifact && cardDef.boost) {
-    const artifactTotal = artifactBasePct + combinedLevelBoostPct;
-    totalParts.push(`${artifactTotal}% All stats`);
+  if (isBoostCard) {
+    const artifactTotal = Math.round((artifactBasePct + combinedLevelBoostPct) * 10) / 10;
+    totalParts.push(`\`${artifactTotal}%\` All stats`);
   } else {
     const allStatsTotal = levelBoostPct + starBoostPct + (stats.totalBoostPct || 0);
     if (allStatsTotal > 0) totalParts.push(`\`${allStatsTotal}%\` all stats`);

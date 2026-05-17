@@ -43,6 +43,9 @@ const unfavoriteCmd = require('./commands/unfavorite');
 const favoritesCmd = require('./commands/favorites');
 const voteCmd = require('./commands/vote');
 const { startVoteWebhook } = require('./src/voteWebhook');
+const marketCmd = require('./commands/market');
+const marketListCmd = require('./commands/marketlist');
+const marketListingsCmd = require('./commands/marketlistings');
 const User = require('./models/User');
 
 async function main() {
@@ -180,6 +183,13 @@ async function main() {
         processingInteractions.add(interaction.user.id);
       }
 
+      if (interaction.isModalSubmit()) {
+        const [action] = interaction.customId.split(':');
+        if (action === 'market_search_modal') {
+          return marketCmd.handleModal(interaction);
+        }
+      }
+
       if (interaction.isStringSelectMenu()) {
         const [action] = interaction.customId.split(':');
         if (action === 'collection_sort_select') {
@@ -196,6 +206,9 @@ async function main() {
         }
         if (action === 'sail_select') {
           return require('./commands/sail').handleSelect(interaction);
+        }
+        if (action === 'market_rank' || action === 'market_attr' || action === 'market_star' || action === 'market_buy') {
+          return marketCmd.handleSelect(interaction);
         }
       }
 
@@ -404,6 +417,16 @@ async function main() {
           return require('./commands/owner').handleButton(interaction, interaction.customId);
         }
 
+        // handle market navigation and search buttons
+        if (action && (action === 'market_prev' || action === 'market_next' || action === 'market_search' || action === 'market_back')) {
+          return marketCmd.handleButton(interaction);
+        }
+
+        // handle market listing cancel buttons
+        if (action === 'marketcancel') {
+          return marketListingsCmd.handleButton(interaction);
+        }
+
         // handle star upgrade button interactions
         if (interaction.customId && (interaction.customId.startsWith('upgrade_star_') || interaction.customId === 'upgrade_cancel')) {
           return require('./commands/upgrade').handleUpgradeButton(interaction);
@@ -506,6 +529,9 @@ async function main() {
       if (cmd === 'owner') return await require('./commands/owner').execute({ message, args });
       if (cmd === 'removebadge') return await require('./commands/removebadge').execute({ message, args });
       if (cmd === 'badges') return await require('./commands/badges').execute({ message, args });
+      if (cmd === 'market') return await marketCmd.execute({ message, args });
+      if (cmd === 'marketlist') return await marketListCmd.execute({ message, args });
+      if (cmd === 'marketlistings' || cmd === 'mylistings') return await marketListingsCmd.execute({ message, args });
       return; // unknown command - don't respond
     } catch (err) {
       console.error(err);

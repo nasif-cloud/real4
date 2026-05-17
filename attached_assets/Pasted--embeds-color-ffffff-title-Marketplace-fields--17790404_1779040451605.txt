@@ -1,0 +1,133 @@
+{
+ "embeds": [
+  {
+   "color": "#ffffff",
+   "title": "Marketplace",
+   "fields": [
+    {
+     "name": "<:0794:1492528601281859694> Monkey D. Luffy (Lvl. max) ",
+     "value": "`ID: 3550` | 17'000 <:beri:1490738445319016651>",
+     "inline": true
+    },
+    {
+     "name": "<:1000049477:1502740051472416908> Arlong (Lvl. 18)",
+     "value": "`ID: 0017` | 350 <:beri:1490738445319016651>",
+     "inline": false
+    },
+    {
+     "name": "etc..",
+     "value": "...",
+     "inline": false
+    }
+   ],
+   "author": {
+    
+   },
+   "footer": {
+    "text": "Page <value> of <value> | Total: <value> listings"
+   }
+  }
+ ],
+ "components": [
+  {
+   "type": 1,
+   "components": [
+    {
+     "type": 3,
+     "custom_id": null,
+     "options": [
+      {
+       "label": "All ranks"
+      },
+      {
+       "label": "D ranks"
+      },
+      {
+       "label": "C ranks"
+      },
+      {
+       "label": "B ranks"
+      },
+      {
+       "label": "A ranks"
+      },
+      {
+       "label": "S ranks"
+      },
+      {
+       "label": "SS ranks"
+      },
+      {
+       "label": "UR ranks"
+      }
+     ],
+     "placeholder": "Filter",
+     "min_values": 1,
+     "max_values": 1
+    }
+   ]
+  },
+  {
+   "type": 1,
+   "components": [
+    {
+     "type": 3,
+     "custom_id": null,
+     "options": [
+      {
+       "label": "Newest"
+      },
+      {
+       "label": "Oldest"
+      },
+      {
+       "label": "Price: Low to high"
+      },
+      {
+       "label": "Price: Hight to low"
+      }
+     ],
+     "placeholder": "Filter",
+     "min_values": 1,
+     "max_values": 1
+    }
+   ]
+  },
+  {
+   "type": 1,
+   "components": [
+    {
+     "type": 3,
+     "custom_id": null,
+     "options": [],
+     "placeholder": "Choose a card",
+     "min_values": 1,
+     "max_values": 1
+    }
+   ]
+  },
+  {
+   "type": 1,
+   "components": [
+    {
+     "type": 2,
+     "style": 1,
+     "label": "Next",
+     "custom_id": null
+    },
+    {
+     "type": 2,
+     "style": 1,
+     "label": "Previous",
+     "custom_id": null
+    },
+    {
+     "type": 2,
+     "style": 2,
+     "label": "Search",
+     "custom_id": null
+    }
+   ]
+  }
+ ]
+}
